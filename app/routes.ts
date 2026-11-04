@@ -22,6 +22,8 @@ export default [
   route("account/passkeys", "routes/account.passkeys.tsx"),
   route("account/passkeys/options", "routes/account.passkeys.options.ts"),
   route("passkeys/sign-in-options", "routes/passkeys.sign-in-options.ts"),
+  route("p/:slug", "routes/product.tsx"),
+  route("img/:id", "routes/img.ts"),
   route("styleguide", "routes/styleguide.tsx"),
   route("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;
