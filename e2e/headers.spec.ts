@@ -94,7 +94,7 @@ test("pages hydrate with no console errors and no CSP violations", async ({ page
   const problems: string[] = [];
   page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") problems.push(m.text()); });
   page.on("pageerror", (e) => problems.push(e.message));
-  for (const path of ["/", "/styleguide"]) {
+  for (const path of ["/", "/sign-in", "/sign-up", "/forgot-password", "/styleguide"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
   }

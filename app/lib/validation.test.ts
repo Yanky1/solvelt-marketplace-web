@@ -19,3 +19,27 @@ describe("validation", () => {
     expect([str(f, "a"), str(f, "b"), str(f, "c")]).toEqual(["1", "", ""]);
   });
 });
+
+import { COUNTRIES, readAddress, validateAddress, validatePhone } from "./validation";
+
+describe("phone and address validation", () => {
+  it.each(["", "+1 (555) 123-4567", "0501234567", "+972-50-123-4567"])("accepts phone %j", (p) => { expect(validatePhone(p)).toBeNull(); });
+  it.each(["abc", "12", "+++++++", "<script>", "1".repeat(30)])("rejects phone %j", (p) => { expect(validatePhone(p)).not.toBeNull(); });
+  it("can require a phone", () => { expect(validatePhone("", true)).not.toBeNull(); });
+
+  const valid = { fullName: "Dana Levi", line1: "1 Main St", line2: "", city: "Haifa", region: "", postalCode: "3100001", country: "IL", phone: "", isDefault: false };
+  it("accepts a complete address", () => { expect(validateAddress(valid)).toEqual({}); });
+  it("reports each missing or oversized field", () => {
+    const e = validateAddress({ ...valid, fullName: "", line1: "x".repeat(121), city: "", postalCode: "", country: "ZZ", phone: "x" });
+    expect(Object.keys(e).sort()).toEqual(["city", "country", "fullName", "line1", "phone", "postalCode"]);
+  });
+  it("reads a form: trims, upper-cases the country, checkbox on/off", () => {
+    const f = new FormData(); f.set("fullName", "  Dana "); f.set("country", "il"); f.set("isDefault", "on");
+    const a = readAddress(f);
+    expect(a.fullName).toBe("Dana");
+    expect(a.country).toBe("IL");
+    expect(a.isDefault).toBe(true);
+    expect(readAddress(new FormData()).isDefault).toBe(false);
+  });
+  it("only offers listed countries", () => { expect(Object.keys(COUNTRIES)).toContain("IL"); });
+});

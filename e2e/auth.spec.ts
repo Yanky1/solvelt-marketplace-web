@@ -202,7 +202,7 @@ for (const theme of ["light", "dark"] as const) {
     await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
     const email = await newVerifiedUser(page, `axe${theme}`);
     await page.goto("/sign-in");
-    await page.getByRole("button", { name: "Sign in" }).click(); // empty submit -> field errors
+    await page.getByRole("button", { name: "Sign in", exact: true }).click(); // empty submit -> field errors
     await expect(page.getByRole("alert").first()).toBeVisible();
     for (const check of [async () => undefined, async () => { await signIn(page, email); await expect(page).toHaveURL(/\/account$/); }]) {
       await check();

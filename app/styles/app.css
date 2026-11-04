@@ -6,7 +6,7 @@
 @import "./tokens.css";
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 9rem; } /* keep focused/anchored fields clear of the sticky header (two rows on phones) */
 body { margin: 0; background: var(--bg); color: var(--fg); font: var(--fs-base)/1.55 var(--font); min-height: 100vh; display: flex; flex-direction: column; }
 h1, h2, h3 { font-family: var(--font-display); line-height: 1.2; margin: 0 0 var(--s2); }
 h1 { font-size: var(--fs-2xl); } h2 { font-size: var(--fs-xl); } h3 { font-size: var(--fs-lg); }
@@ -45,7 +45,7 @@ main { flex: 1; padding-block: var(--s4); }
 .field-hint { color: var(--muted); font-size: var(--fs-sm); }
 .field-error { color: var(--err); font-size: var(--fs-sm); font-weight: 600; }
 .check { display: flex; align-items: center; gap: var(--s1); min-height: var(--target); cursor: pointer; }
-.check input { width: 22px; height: 22px; accent-color: var(--primary); }
+.check input { width: 24px; height: 24px; margin: 0; flex: none; accent-color: var(--primary); }
 
 /* Display */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-card); padding: var(--s3); }

@@ -63,3 +63,20 @@ export const privateHeaders = { "Cache-Control": "private, no-store" } as const;
 export function formError<T extends object>(body: T, status = 400) {
   return data(body, { status, headers: privateHeaders });
 }
+
+/** Pages that need an account: a request context carrying the session token, or a redirect to sign-in. */
+export function requireAccount(request: Request, context: AppLoadContext): { session: SessionData; ctx: ApiRequestContext } {
+  const session = readSession(request, getConfig());
+  if (!session?.token) signInRedirect(request);
+  return { session, ctx: apiCtx(request, context, session) };
+}
+
+/** Maps an API failure on an account page: dead session -> sign-in, unknown/foreign resource -> 404, anything else -> 503. */
+export function failAccount(e: unknown, request: Request): never {
+  if (e instanceof Response) throw e;
+  if (e instanceof ApiError) {
+    if (e.status === 401) signInRedirect(request);
+    if (e.status === 404) throw new Response("Not found", { status: 404 });
+  }
+  throw new Response("Service unavailable", { status: 503 });
+}

@@ -11,6 +11,14 @@ export class ApiError extends Error {
   }
 }
 
+export interface Profile { id: string; displayName: string; email: string; phone?: string }
+export interface Address {
+  id: string; fullName: string; line1: string; line2?: string; city: string; region?: string; postalCode: string; country: string; phone?: string; isDefault: boolean;
+}
+export type AddressBody = Omit<Address, "id">;
+export interface PasskeyInfo { id: string; name: string; createdAt: string; lastUsedAt?: string }
+export interface PasskeyChallenge { challengeId: string; options: Record<string, unknown> }
+
 export interface ApiUser { id: string; displayName: string; email?: string }
 
 async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string): Promise<T> {
@@ -41,4 +49,18 @@ export const api = {
   forgotPassword: (ctx: ApiRequestContext, email: string) => call<void>(ctx, "/api/v1/auth/forgot-password", { email }),
   resetPassword: (ctx: ApiRequestContext, b: { token: string; password: string }) => call<void>(ctx, "/api/v1/auth/reset-password", b),
   me: (ctx: ApiRequestContext) => call<ApiUser>(ctx, "/api/v1/account/me"),
+  profile: (ctx: ApiRequestContext) => call<Profile>(ctx, "/api/v1/account/profile"),
+  updateProfile: (ctx: ApiRequestContext, b: { displayName: string; phone: string }) => call<Profile>(ctx, "/api/v1/account/profile", b, "PUT"),
+  addresses: (ctx: ApiRequestContext) => call<Address[]>(ctx, "/api/v1/account/addresses"),
+  address: (ctx: ApiRequestContext, id: string) => call<Address>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}`),
+  createAddress: (ctx: ApiRequestContext, b: AddressBody) => call<Address>(ctx, "/api/v1/account/addresses", b),
+  updateAddress: (ctx: ApiRequestContext, id: string, b: AddressBody) => call<Address>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}`, b, "PUT"),
+  deleteAddress: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}`, undefined, "DELETE"),
+  setDefaultAddress: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}/default`, {}),
+  passkeys: (ctx: ApiRequestContext) => call<PasskeyInfo[]>(ctx, "/api/v1/account/passkeys"),
+  passkeyRegistrationOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/account/passkeys/options", {}),
+  registerPasskey: (ctx: ApiRequestContext, b: { challengeId: string; name: string; credential: unknown }) => call<PasskeyInfo>(ctx, "/api/v1/account/passkeys", b),
+  deletePasskey: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/passkeys/${encodeURIComponent(id)}`, undefined, "DELETE"),
+  passkeySignInOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/auth/passkey/options", {}),
+  passkeySignIn: (ctx: ApiRequestContext, b: { challengeId: string; credential: unknown }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/passkey/sign-in", b),
 };

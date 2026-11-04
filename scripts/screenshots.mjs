@@ -48,9 +48,22 @@ for (const [form, device] of [["desktop", devices["Desktop Chrome"]], ["mobile",
     await page.goto(`${BASE}/sign-in`);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill("correct horse battery staple");
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await page.waitForURL(/\/account$/);
     await page.screenshot({ path: `docs/screenshots/account-${form}-${theme}.png`, fullPage: true });
+    await page.goto(`${BASE}/account/addresses/new`);
+    await page.getByLabel("Full name").fill("Dana Levi");
+    await page.getByLabel("Street address").fill("1 Herzl Street");
+    await page.getByLabel("City").fill("Haifa");
+    await page.getByLabel("Postal code").fill("3100001");
+    await page.getByLabel("Country").selectOption("IL");
+    await page.screenshot({ path: `docs/screenshots/address-new-${form}-${theme}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Save address" }).click();
+    await page.waitForURL(/\/account\/addresses$/);
+    for (const [name, path] of [["addresses", "/account/addresses"], ["profile", "/account/profile"], ["passkeys", "/account/passkeys"]]) {
+      await page.goto(BASE + path, { waitUntil: "networkidle" });
+      await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
+    }
     await context.close();
   }
 }

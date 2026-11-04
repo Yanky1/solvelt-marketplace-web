@@ -13,6 +13,13 @@ export default [
   route("forgot-password", "routes/forgot-password.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
   route("account", "routes/account.tsx"),
+  route("account/profile", "routes/account.profile.tsx"),
+  route("account/addresses", "routes/account.addresses.tsx"),
+  route("account/addresses/new", "routes/account.addresses.new.tsx"),
+  route("account/addresses/:id", "routes/account.addresses.$id.tsx"),
+  route("account/passkeys", "routes/account.passkeys.tsx"),
+  route("account/passkeys/options", "routes/account.passkeys.options.ts"),
+  route("passkeys/sign-in-options", "routes/passkeys.sign-in-options.ts"),
   route("styleguide", "routes/styleguide.tsx"),
   route("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;
