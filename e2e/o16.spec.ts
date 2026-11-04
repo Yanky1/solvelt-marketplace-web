@@ -120,6 +120,7 @@ test.describe("step-up goes through the API's reauthenticate endpoint", () => {
     await signUp(page, email);
     await verifyEmail(page, email);
     await signIn(page, email);
+    await expect(page).toHaveURL(/\/account$/); // wait for the sign-in to finish: navigating away would cancel it
     await page.goto("/account/confirm");
     await waitHydrated(page);
     await page.getByLabel("Password").fill("trigger-429");
