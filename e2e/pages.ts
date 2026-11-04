@@ -11,4 +11,9 @@ export const PAGES = [
   "/verify-email?sent=1",
   "/verify-email?token=abc",
   "/p/classic-braided-challah",
+  "/search",
+  "/search?q=challah&available=true&kosher=OU",
+  "/search?q=zzzz",
+  "/c/food-drink",
+  "/c/gifts?page=2",
 ];

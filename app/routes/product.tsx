@@ -6,10 +6,9 @@ import { JsonLd } from "~/components/JsonLd";
 import { VariantPicker } from "~/components/VariantPicker";
 import { Badge, Breadcrumb, Price } from "~/components/ui/display";
 import { Link, useSearchParams } from "react-router";
-import { ApiError } from "~/lib/api-client.server";
 import { apiCtx } from "~/lib/auth.server";
 import { attributeLabel, attributeValues, deliveryLabels, pickVariant, specAttributes, type ListingDetail } from "~/lib/catalog";
-import { catalog, GUID } from "~/lib/catalog.server";
+import { catalog, catalogErrorResponse, GUID } from "~/lib/catalog.server";
 import { getConfig } from "~/lib/config.server";
 import { breadcrumbJsonLd, clipText, imageUrl, listingJsonLd, priceString } from "~/lib/seo";
 import { brandPath, categoryPath, listingPath, sellerPath } from "~/lib/urls";
@@ -26,8 +25,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   try {
     result = await catalog.listing(apiCtx(request, context, null), slug);
   } catch (e) {
-    const status = e instanceof ApiError && e.status === 429 ? 429 : 503;
-    throw new Response(status === 429 ? "Too many requests" : "Service unavailable", { status, headers: { ...noStore, ...(status === 429 ? { "Retry-After": "30" } : {}) } });
+    throw catalogErrorResponse(e);
   }
   if (result.kind === "gone") throw new Response("Gone", { status: 410, headers: noStore });
   if (result.kind === "notFound") throw new Response("Not found", { status: 404, headers: noStore });

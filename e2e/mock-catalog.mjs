@@ -7,6 +7,7 @@ const categories = [
   { slug: "food-drink", name: "Food & Drink", parent: null }, { slug: "bakery", name: "Bakery", parent: "food-drink" }, { slug: "wine-spirits", name: "Wine & Grape Juice", parent: "food-drink" },
   { slug: "home-judaica", name: "Home & Judaica", parent: null }, { slug: "candlesticks", name: "Candles & Candlesticks", parent: "home-judaica" },
   { slug: "services", name: "Services", parent: null }, { slug: "cleaning", name: "Cleaning", parent: "services" },
+  { slug: "gifts", name: "Gifts", parent: null },   // 26 generated listings: two pages at 24 per page
 ];
 const brands = [
   { slug: "challah-corner", name: "Challah Corner", seller: "mazel" }, { slug: "brooklyn-judaica", name: "Brooklyn Judaica", seller: "judaica" },
@@ -31,6 +32,7 @@ const rows = [
     "Top-to-bottom clean by a two-person team.\n\nBook a time that suits you; the seller confirms the details after your request.",
     [["2 bedrooms", 18000, 20000, true], ["3 bedrooms", 24000, null, true]], [["service-area", "Brooklyn, Manhattan, Queens"], ["duration", "4 to 6 hours"], ["insured", "yes"], ["delivery", "at-home"]], [["What areas do you serve?", "Brooklyn, Manhattan, Queens"]], 3],
 ];
+for (let n = 1; n <= 26; n++) rows.push([`gift-box-${n}`, `Gift Box ${String(n).padStart(2, "0")}`, "product", "brooklyn-judaica", "gifts", `Gift box number ${n}.`, `Gift box number ${n}.`, [["Box", 2000 + n * 100, null, true]], [["delivery", "ships"]], [], 1]);
 const unlisted = new Set(["retired-spice-gift-set"]); // 410
 const iso = (d) => new Date(Date.UTC(2026, 8, 1 + d, 9)).toISOString();
 
@@ -59,6 +61,16 @@ const card = (l) => ({
 
 const descendants = (slug) => { const out = [slug]; for (let i = 0; i < out.length; i++) for (const c of categories) if (c.parent === out[i] && !out.includes(c.slug)) out.push(c.slug); return out; };
 
+
+/** The category tree counting only `pool` (empty categories left out), as the API does. */
+function categoryTree(pool) {
+  const build = (parent) => categories.filter((c) => c.parent === parent).map((c) => {
+    const children = build(c.slug), n = pool.filter((l) => l.categoryPath.at(-1).slug === c.slug).length;
+    return { id: gid(`cat:${c.slug}`), slug: c.slug, name: c.name, listingCount: n + children.reduce((t, k) => t + k.listingCount, 0), children };
+  }).filter((n) => n.listingCount > 0);
+  return build(null);
+}
+
 /** @returns {{status:number, body:unknown, headers?:Record<string,string>}|null} */
 export function catalogResponse(path, url) {
   const ok = (body) => ({ status: 200, body, headers: { "Cache-Control": "public, max-age=5" } });
@@ -72,21 +84,44 @@ export function catalogResponse(path, url) {
   }
   if (path === "/api/v1/catalog/listings") {
     const q = url.searchParams, term = (q.get("q") ?? "").toLowerCase().trim();
-    let items = list.filter((l) => (!q.get("type") || l.type === q.get("type")) && (!q.get("brand") || l.brand.slug === q.get("brand"))
-      && (!q.get("category") || descendants(q.get("category")).includes(l.categoryPath.at(-1).slug)) && (!term || `${l.title} ${l.summary} ${l.brand.name}`.toLowerCase().includes(term)));
+    const words = term.split(/\s+/).filter(Boolean);
+    const attrPairs = q.getAll("attr").map((x) => [x.slice(0, x.indexOf(":")), x.slice(x.indexOf(":") + 1)]);
+    const multi = (name) => q.getAll(name).join(",").split(",").map((x) => x.trim()).filter(Boolean);
+    const has = (l, key, values) => values.length === 0 || l.attributes.some((a) => a.key === key && values.includes(a.value));
+    // every filter except the one named (a facet counts with all filters but its own, as the real API does)
+    const matches = (l, except) => (except === "type" || !q.get("type") || l.type === q.get("type"))
+      && (except === "brand" || !q.get("brand") || l.brand.slug === q.get("brand"))
+      && (except === "category" || !q.get("category") || descendants(q.get("category")).includes(l.categoryPath.at(-1).slug))
+      && (!q.get("seller") || l.seller.id === q.get("seller"))
+      && (words.length === 0 || words.every((w) => `${l.title} ${l.summary} ${l.brand.name}`.toLowerCase().includes(w)))
+      && (except === "price" || ((q.get("priceMin") === null || l.priceToCents >= Number(q.get("priceMin"))) && (q.get("priceMax") === null || l.priceFromCents <= Number(q.get("priceMax")))))
+      && (except === "available" || q.get("available") !== "true" || l.available)
+      && (except === "kosher" || has(l, "kosher-certification", multi("kosher")))
+      && (except === "delivery" || has(l, "delivery", multi("delivery")))
+      && attrPairs.every(([k, v]) => l.attributes.some((a) => a.key === k && a.value === v));
+    if (q.get("priceMin") !== null && q.get("priceMax") !== null && Number(q.get("priceMin")) > Number(q.get("priceMax"))) return err(400, "invalid_query");
+    const items = list.filter((l) => matches(l));
     const sort = q.get("sort") ?? (term ? "relevance" : "newest");
     if (sort === "price_asc") items.sort((a, b) => a.priceFromCents - b.priceFromCents); else if (sort === "price_desc") items.sort((a, b) => b.priceFromCents - a.priceFromCents);
     else if (sort === "title") items.sort((a, b) => a.title.localeCompare(b.title)); else items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = Number(q.get("page") ?? 1), size = Number(q.get("pageSize") ?? 24);
-    return ok({ items: items.slice((page - 1) * size, page * size).map(card), page, pageSize: size, total: items.length, totalPages: Math.ceil(items.length / size), nextCursor: null });
+    const body = { items: items.slice((page - 1) * size, page * size).map(card), page, pageSize: size, total: items.length, totalPages: Math.ceil(items.length / size), nextCursor: null };
+    if (q.get("facets") === "true") {
+      const count = (pool, pick) => { const m = new Map(); for (const l of pool) for (const v of new Set(pick(l))) m.set(v, (m.get(v) ?? 0) + 1); return m; };
+      const attrFacet = (key, except) => [...count(list.filter((l) => matches(l, except)), (l) => l.attributes.filter((a) => a.key === key).map((a) => a.value))].map(([value, c]) => ({ value, count: c })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+      const priced = list.filter((l) => matches(l, "price"));
+      body.facets = {
+        categories: [], types: [...count(list.filter((l) => matches(l, "type")), (l) => [l.type])].map(([value, c]) => ({ value, count: c })),
+        brands: [...count(list.filter((l) => matches(l, "brand")), (l) => [l.brand.slug])].map(([slug, c]) => ({ id: gid(`b:${slug}`), slug, name: brands.find((b) => b.slug === slug).name, count: c })),
+        sellers: [], available: list.filter((l) => matches(l, "available") && l.available).length,
+        price: priced.length ? { minCents: Math.min(...priced.map((l) => l.priceFromCents)), maxCents: Math.max(...priced.map((l) => l.priceToCents)) } : null,
+        attributes: { "kosher-certification": attrFacet("kosher-certification", "kosher"), "kosher-status": attrFacet("kosher-status"), delivery: attrFacet("delivery", "delivery") },
+      };
+      body.facets.categories = categoryTree(list.filter((l) => matches(l, "category")));
+    }
+    return ok(body);
   }
-  if (path === "/api/v1/catalog/categories") {
-    const build = (parent) => categories.filter((c) => c.parent === parent).map((c) => {
-      const children = build(c.slug), n = list.filter((l) => l.categoryPath.at(-1).slug === c.slug).length;
-      return { id: gid(`cat:${c.slug}`), slug: c.slug, name: c.name, listingCount: n + children.reduce((s, k) => s + k.listingCount, 0), children };
-    }).filter((n) => n.listingCount > 0);
-    return ok(build(null));
-  }
+  if (path === "/api/v1/catalog/categories") return ok(categoryTree(list));
   if (path === "/api/v1/catalog/brands") return ok(brands.map((b) => ({ id: gid(`b:${b.slug}`), slug: b.slug, name: b.name, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] }, logoImageId: null, listingCount: list.filter((l) => l.brand.slug === b.slug).length })).filter((b) => b.listingCount > 0));
   return null;
 }
