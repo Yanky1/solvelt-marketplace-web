@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasFilters, activeFilters, centsAddress, cleanQuery, defaultSort, effectiveSort, emptyQuery, parseBrandStorefront, parseListingPage, parseListingQuery, parseSellerStorefront, toApiParams, toSearchParams, withChange, type ListingQuery } from "./search";
+import { hasFilters, activeFilters, centsAddress, cleanQuery, defaultSort, effectiveSort, emptyQuery, parseBrandStorefront, parseListingPage, parseListingQuery, parseSellerStorefront, parseSuggestions, toApiParams, toSearchParams, withChange, type ListingQuery } from "./search";
 
 const parse = (qs: string, fixed = {}) => parseListingQuery(new URLSearchParams(qs), fixed);
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
@@ -172,5 +172,16 @@ describe("hasFilters", () => {
     expect(hasFilters({ ...emptyQuery(), seller: "s", brand: "b" }, ["seller"])).toBe(true);        // a brand inside a seller page is a real filter
     expect(hasFilters({ ...emptyQuery(), category: "c" }, ["category"])).toBe(false);
     expect(hasFilters({ ...emptyQuery(), available: true }, ["brand", "seller", "category"])).toBe(true);
+  });
+});
+
+describe("parseSuggestions", () => {
+  it("reads the three kinds and leaves out one bad entry without losing the list", () => {
+    const out = parseSuggestions({ query: "c", suggestions: [{ kind: "listing", text: "A", slug: "a" }, { kind: "brand", text: "B", slug: "../b" }, { kind: "robot", text: "C", slug: "c" }, { kind: "category", text: "D" }, { kind: "category", text: "E", slug: "e" }] });
+    expect(out).toEqual([{ kind: "listing", text: "A", slug: "a" }, { kind: "category", text: "E", slug: "e" }]);
+  });
+  it("is null when the answer is not a suggestion list, and never longer than 20", () => {
+    for (const bad of [null, "x", {}, { suggestions: "no" }]) expect(parseSuggestions(bad)).toBeNull();
+    expect(parseSuggestions({ suggestions: Array.from({ length: 50 }, (_, i) => ({ kind: "listing", text: `T${i}`, slug: `s${i}` })) })).toHaveLength(20);
   });
 });
