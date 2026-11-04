@@ -51,7 +51,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 export function meta({ data }: Route.MetaArgs) {
   if (!data) return [{ title: "Not found | Solvelt" }, { name: "robots", content: "noindex" }];
   const { node, query, origin, data: page } = data;
-  const plain = hasFilters(query) || !!query.q || !!query.sort;
+  const plain = hasFilters(query, ["category"]) || !!query.q || !!query.sort;
   const base = origin + categoryPath(node.slug);
   const canonical = !plain && query.page > 1 ? `${base}?page=${query.page}` : base;
   return [

@@ -140,8 +140,9 @@ export function centsAddress(url: URL): URL | null {
   return next;
 }
 
-export const hasFilters = (q: ListingQuery): boolean =>
-  !!(q.type || q.brand || q.seller || q.priceMin !== undefined || q.priceMax !== undefined || q.available || q.kosher.length || q.delivery.length || q.attr.length);
+/** Is any filter active? `ignore` names what the page's path already fixes (a brand page's brand is not a filter). */
+export const hasFilters = (q: ListingQuery, ignore: ReadonlyArray<"brand" | "seller" | "category"> = []): boolean =>
+  !!(q.type || (q.brand && !ignore.includes("brand")) || (q.seller && !ignore.includes("seller")) || (q.category && !ignore.includes("category")) || q.priceMin !== undefined || q.priceMax !== undefined || q.available || q.kosher.length || q.delivery.length || q.attr.length);
 
 /** The same query with one change; a change to any filter or the sort goes back to page 1. */
 export function withChange(q: ListingQuery, change: Partial<ListingQuery>): ListingQuery {
@@ -247,4 +248,34 @@ export function activeFilters(q: ListingQuery, facets: Facets | null, money: (ce
   for (const v of q.delivery) chips.push({ key: `delivery:${v}`, label: DELIVERY_LABELS[v] ?? v, without: drop({ delivery: q.delivery.filter((x) => x !== v) }) });
   for (const a of q.attr) chips.push({ key: `attr:${a}`, label: a.replace(":", ": "), without: drop({ attr: q.attr.filter((x) => x !== a) }) });
   return chips;
+}
+
+// ---------- brand and seller storefronts ----------
+export interface BrandCardData { id: string; slug: string; name: string; logoImageId: string | null; listingCount: number; seller: { id: string; displayName: string } }
+export interface BrandStorefront extends BrandCardData { categories: CategoryNode[] }
+export interface SellerStorefront { id: string; displayName: string; listingCount: number; brands: BrandCardData[]; categories: CategoryNode[] }
+
+function parseBrandCard(v: unknown): BrandCardData | null {
+  const o = obj(v);
+  const id = o ? str(o.id, 64) : null, slug = o ? str(o.slug, 160) : null, name = o ? str(o.name, 400) : null, n = o ? int(o.listingCount) : null;
+  const seller = o ? obj(o.seller) : null;
+  const sId = seller ? str(seller.id, 64) : null, sName = seller ? str(seller.displayName, 400) : null;
+  if (!o || !id || !slug || !name || n === null || !sId || sName === null) return null;
+  return { id, slug, name, listingCount: n, logoImageId: str(o.logoImageId, 64), seller: { id: sId, displayName: sName } };
+}
+
+export function parseBrandStorefront(json: unknown): BrandStorefront | null {
+  const card = parseBrandCard(json);
+  const categories = parseCategoryTree(obj(json)?.categories ?? []);
+  return card && categories ? { ...card, categories } : null;
+}
+
+export function parseSellerStorefront(json: unknown): SellerStorefront | null {
+  const o = obj(json);
+  const id = o ? str(o.id, 64) : null, name = o ? str(o.displayName, 400) : null, n = o ? int(o.listingCount) : null;
+  if (!o || !id || name === null || n === null || !Array.isArray(o.brands)) return null;
+  const brands: BrandCardData[] = [];
+  for (const b of o.brands) { const c = parseBrandCard(b); if (!c) return null; brands.push(c); }
+  const categories = parseCategoryTree(o.categories ?? []);
+  return categories ? { id, displayName: name, listingCount: n, brands, categories } : null;
 }

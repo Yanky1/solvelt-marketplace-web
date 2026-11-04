@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeFilters, centsAddress, cleanQuery, defaultSort, effectiveSort, emptyQuery, parseListingPage, parseListingQuery, toApiParams, toSearchParams, withChange, type ListingQuery } from "./search";
+import { hasFilters, activeFilters, centsAddress, cleanQuery, defaultSort, effectiveSort, emptyQuery, parseBrandStorefront, parseListingPage, parseListingQuery, parseSellerStorefront, toApiParams, toSearchParams, withChange, type ListingQuery } from "./search";
 
 const parse = (qs: string, fixed = {}) => parseListingQuery(new URLSearchParams(qs), fixed);
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
@@ -145,5 +145,32 @@ describe("activeFilters", () => {
     expect(kosher.without.kosher).toEqual(["Star-K"]);
     expect(kosher.without.page).toBe(1);
     expect(chips.find((c) => c.key === "price")!.without.priceMin).toBeUndefined();
+  });
+});
+
+describe("storefront parsers", () => {
+  const brand = (over: Record<string, unknown> = {}) => ({ id: "b1", slug: "challah-corner", name: "Challah Corner", logoImageId: null, listingCount: 3, seller: { id: "s1", displayName: "Mazel" }, categories: [{ id: "c", slug: "bakery", name: "Bakery", listingCount: 3, children: [] }], ...over });
+  it("reads a brand and a seller with their category trees and brands", () => {
+    expect(parseBrandStorefront(brand())?.categories[0]?.slug).toBe("bakery");
+    const seller = parseSellerStorefront({ id: "s1", displayName: "Mazel", listingCount: 5, brands: [brand()], categories: [] });
+    expect([seller?.brands.length, seller?.brands[0]?.slug, seller?.listingCount]).toEqual([1, "challah-corner", 5]);
+  });
+  it("keeps a logo id and tolerates none", () => {
+    expect(parseBrandStorefront(brand({ logoImageId: "img1" }))?.logoImageId).toBe("img1");
+    expect(parseBrandStorefront(brand())?.logoImageId).toBeNull();
+  });
+  it("refuses a malformed answer", () => {
+    for (const bad of [null, "x", {}, brand({ listingCount: -1 }), brand({ seller: null }), brand({ categories: "no" }), brand({ slug: undefined })]) expect(parseBrandStorefront(bad)).toBeNull();
+    for (const bad of [null, {}, { id: "s", displayName: "x", listingCount: 1, brands: "no" }, { id: "s", displayName: "x", listingCount: 1, brands: [{}] }, { id: "s", displayName: "x", listingCount: 1, brands: [], categories: "no" }]) expect(parseSellerStorefront(bad)).toBeNull();
+  });
+});
+
+describe("hasFilters", () => {
+  it("does not count what the page's path already fixes", () => {
+    expect(hasFilters({ ...emptyQuery(), brand: "b" })).toBe(true);
+    expect(hasFilters({ ...emptyQuery(), brand: "b" }, ["brand"])).toBe(false);
+    expect(hasFilters({ ...emptyQuery(), seller: "s", brand: "b" }, ["seller"])).toBe(true);        // a brand inside a seller page is a real filter
+    expect(hasFilters({ ...emptyQuery(), category: "c" }, ["category"])).toBe(false);
+    expect(hasFilters({ ...emptyQuery(), available: true }, ["brand", "seller", "category"])).toBe(true);
   });
 });
