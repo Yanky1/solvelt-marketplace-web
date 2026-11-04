@@ -169,3 +169,5 @@ export function imageInfo(id) {
   for (const l of list) for (const im of l.images) if (im.id === id) return { width: im.width, height: im.height, title: l.title };
   return null;
 }
+/** Test helper for the cart mock: the listing and variant behind a variant id (or null). */
+export const variantInfo = (id) => { for (const l of list) for (const v of l.variants) if (v.id === id) return { listing: l, variant: v }; return null; };

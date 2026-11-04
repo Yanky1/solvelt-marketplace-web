@@ -32,12 +32,14 @@ test.describe("product page", () => {
     await expect(page.getByText("certified by OU")).toBeVisible();
   });
 
-  test("the add-to-cart slot is an explained, disabled button until the cart exists", async ({ page }) => {
+  test("the add-to-cart slot is a real form with a quantity and the CSRF token (the cart exists now, decision M3W-01)", async ({ page }) => {
     await page.goto(CHALLAH);
     const slot = page.getByTestId("add-to-cart-slot");
-    await expect(slot.getByRole("button", { name: "Add to cart" })).toBeDisabled();
-    await expect(slot).toContainText("The cart opens soon");
-    await expect(slot.locator("form")).toHaveCount(0);
+    await expect(slot.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ })).toBeEnabled();
+    await expect(slot.getByLabel("Quantity")).toHaveValue("1");
+    await expect(slot).toHaveAttribute("action", "/cart/items");
+    await expect(slot.locator('input[name="csrf"]')).toHaveCount(1);
+    await expect(slot).not.toContainText("The cart opens soon");
   });
 
   test("has a title, description, canonical, Open Graph and Twitter tags, and is indexable", async ({ page, baseURL }) => {

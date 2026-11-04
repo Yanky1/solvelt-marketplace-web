@@ -21,7 +21,7 @@ export interface AddToCartProps {
 }
 
 /** Flip to true (and set `action`) when the cart action lands. */
-export const CART_ACTION: { ready: boolean; action: string } = { ready: false, action: "/cart/items" };
+export const CART_ACTION: { ready: boolean; action: string } = { ready: true, action: "/cart/items" };
 
 export function AddToCart({ listingId, variantId, title, variantName }: AddToCartProps) {
   if (!CART_ACTION.ready) {

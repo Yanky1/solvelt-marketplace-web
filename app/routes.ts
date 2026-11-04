@@ -40,6 +40,8 @@ export default [
   route("c/:slug", "routes/category.tsx"),
   route("b/:slug", "routes/brand.tsx"),
   route("s/:id", "routes/seller.tsx"),
+  route("cart", "routes/cart.tsx"),
+  route("cart/items", "routes/cart.items.ts"),
   route("img/:id", "routes/img.ts"),
   route("styleguide", "routes/styleguide.tsx"),
   route("*", "routes/not-found.tsx"),

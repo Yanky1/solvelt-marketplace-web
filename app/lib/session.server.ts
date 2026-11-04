@@ -17,6 +17,10 @@ export interface SessionData {
   pk?: PasskeyBinding;
   /** Wrong passwords entered on the confirm page in this session. At MAX_CONFIRM_FAILURES the session is ended. */
   rf?: number;
+  /** The guest cart's token (decision M3W-01): only here, sealed and HttpOnly, never in loader data, HTML, JS or storage. Dropped once the cart is merged into an account at sign-in. */
+  cart?: string;
+  /** How many items the cart held when the server last saw it: the header shows it without an API call on every page. */
+  cn?: number;
 }
 
 export interface PasskeyBinding {
@@ -51,6 +55,8 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.token !== undefined && typeof d.token !== "string") return null;
     if (d.authAt !== undefined && typeof d.authAt !== "number") return null;
     if (d.rf !== undefined && (typeof d.rf !== "number" || !Number.isInteger(d.rf) || d.rf < 0 || d.rf > 1000)) return null;
+    if (d.cart !== undefined && (typeof d.cart !== "string" || d.cart.length === 0 || d.cart.length > 100)) return null;
+    if (d.cn !== undefined && (typeof d.cn !== "number" || !Number.isInteger(d.cn) || d.cn < 0 || d.cn > 100_000)) return null;
     const pk = d.pk;
     if (pk !== undefined && (typeof pk !== "object" || pk === null || typeof pk.cid !== "string" || typeof pk.exp !== "number" || (pk.kind !== "create" && pk.kind !== "get"))) return null;
     if (now - d.iat > MAX_AGE_SECONDS) return null;
@@ -59,6 +65,8 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.authAt !== undefined) out.authAt = d.authAt;
     if (pk !== undefined) out.pk = { cid: pk.cid, kind: pk.kind, exp: pk.exp };
     if (d.rf !== undefined) out.rf = d.rf;
+    if (d.cart !== undefined) out.cart = d.cart;
+    if (d.cn !== undefined) out.cn = d.cn;
     return out;
   } catch {
     return null;

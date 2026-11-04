@@ -86,12 +86,19 @@ describe("VariantPicker", () => {
 
 describe("AddToCart slot", () => {
   const props = { listingId: "l1", variantId: "v1", title: "Challah", variantName: "Small", priceCents: 650, currency: "USD" };
-  it("is a disabled, explained button until the cart action exists", () => {
-    withRouter(<AddToCart {...props} />);
-    const button = screen.getByRole("button", { name: "Add to cart" });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(/cart opens soon/i);
-    expect(screen.getByTestId("add-to-cart-slot").querySelector("form")).toBeNull();     // no form that goes nowhere
+  it("is a disabled, explained button while the switch is off (the cart is live now, so the test turns it off)", () => {
+    const was = { ...CART_ACTION };
+    CART_ACTION.ready = false;
+    try {
+      withRouter(<AddToCart {...props} />);
+      const button = screen.getByRole("button", { name: "Add to cart" });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleDescription(/cart opens soon/i);
+      expect(screen.getByTestId("add-to-cart-slot").querySelector("form")).toBeNull();     // no form that goes nowhere
+    } finally { Object.assign(CART_ACTION, was); }
+  });
+  it("ships with the switch ON and posting to /cart/items (decision M3W-01)", () => {
+    expect(CART_ACTION).toEqual({ ready: true, action: "/cart/items" });
   });
   it("is the contract form once the cart is ready: listingId, variantId, qty, csrf, posted to the cart action", () => {
     const was = { ...CART_ACTION };

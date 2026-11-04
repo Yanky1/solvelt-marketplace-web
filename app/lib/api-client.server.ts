@@ -103,6 +103,15 @@ async function raw(ctx: ApiRequestContext, path: string): Promise<Response> {
   try { return await apiFetch(getConfig(), ctx, path, { signal: AbortSignal.timeout(20000) }); } catch { throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again."); }
 }
 
+// ---- cart (M3; API repo docs/API.md "Cart") ----
+export interface CartLine { id: string; listingId: string; variantId: string; slug: string; title: string; variantName: string; imageId: string | null; quantity: number; unitPriceCents: number; compareAtCents: number | null; lineTotalCents: number; status: "ok" | "unavailable"; previousUnitPriceCents: number | null }
+export interface CartGroup { sellerId: string; sellerName: string; brandId: string; brandName: string; subtotalCents: number; lines: CartLine[] }
+/** `cartToken` is returned ONCE, when the API creates a guest cart: the BFF seals it into the session cookie and never lets it reach the browser. */
+export interface Cart { currency: string; groups: CartGroup[]; itemCount: number; subtotalCents: number; canCheckout: boolean; cartToken?: string }
+export const EMPTY_CART: Cart = { currency: "USD", groups: [], itemCount: 0, subtotalCents: 0, canCheckout: false };
+/** The guest cart token travels in a header, and only while nobody is signed in (a signed-in buyer's cart is the account's). */
+const cartHeaders = (ctx: ApiRequestContext, cartToken?: string): Record<string, string> | undefined => (!ctx.sessionToken && cartToken ? { "X-Cart-Token": cartToken } : undefined);
+
 export const api = {
   threads: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<ThreadList>(ctx, `/api/v1/messages/threads${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
@@ -111,6 +120,13 @@ export const api = {
   markThreadRead: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/messages/threads/${pid(id)}/read`, {}),
   reportMessage: (ctx: ApiRequestContext, id: string, b: { reason: string; note?: string }) => call<{ reported: boolean }>(ctx, `/api/v1/messages/${pid(id)}/report`, b),
   messageAttachment: (ctx: ApiRequestContext, id: string) => raw(ctx, `/api/v1/messages/attachments/${pid(id)}`),
+  cart: (ctx: ApiRequestContext, cartToken?: string) => call<Cart>(ctx, "/api/v1/cart", undefined, undefined, cartHeaders(ctx, cartToken)),
+  cartAdd: (ctx: ApiRequestContext, cartToken: string | undefined, b: { variantId: string; quantity: number }) => call<Cart>(ctx, "/api/v1/cart/lines", b, undefined, cartHeaders(ctx, cartToken)),
+  cartSetQuantity: (ctx: ApiRequestContext, cartToken: string | undefined, lineId: string, quantity: number) => call<Cart>(ctx, `/api/v1/cart/lines/${pid(lineId)}`, { quantity }, "PATCH", cartHeaders(ctx, cartToken)),
+  cartRemove: (ctx: ApiRequestContext, cartToken: string | undefined, lineId: string) => call<Cart>(ctx, `/api/v1/cart/lines/${pid(lineId)}`, undefined, "DELETE", cartHeaders(ctx, cartToken)),
+  /** At sign-in: moves the guest cart into the signed-in buyer's cart (the request carries the NEW Bearer). */
+  cartMerge: (ctx: ApiRequestContext, guestToken: string) => call<Cart>(ctx, "/api/v1/cart/merge", { guestToken }),
+
   notifications: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<NotificationList>(ctx, `/api/v1/notifications${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
   markNotificationRead: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/notifications/${pid(id)}/read`, {}),

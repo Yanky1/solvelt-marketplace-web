@@ -5,6 +5,7 @@ import { AuthPage, ErrorSummary, FormMessage } from "~/components/AuthForm";
 import { CsrfField, useRootData } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
+import { afterSignIn } from "~/lib/cart.server";
 import { apiCtx, assertCsrf, currentUser, formError, revokePreviousSession, rotatedCookie } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
 import { safeNext } from "~/lib/csrf.server";
@@ -51,7 +52,8 @@ export async function action({ request, context }: Route.ActionArgs) {
       const credential: unknown = JSON.parse(str(form, "credential"));
       const { token } = await api.passkeySignIn(apiCtx(request, context, null), { challengeId: str(form, "challengeId"), credential });
       await revokePreviousSession(request, context);
-      return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": rotatedCookie(token), "Cache-Control": "private, no-store" } });
+      const cart = await afterSignIn(request, context, token);
+      return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": rotatedCookie(token, undefined, cart), "Cache-Control": "private, no-store" } });
     } catch (e) {
       return generic(e instanceof ApiError && e.status === 429 ? 429 : 401);
     }
@@ -69,7 +71,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     const { token } = await api.signIn(apiCtx(request, context, null), { email, password });
     await revokePreviousSession(request, context);
     // New session id on every sign-in (no fixation); the token lives only in the sealed HttpOnly cookie.
-    return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": rotatedCookie(token), "Cache-Control": "private, no-store" } });
+    const cart = await afterSignIn(request, context, token);
+    return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": rotatedCookie(token, undefined, cart), "Cache-Control": "private, no-store" } });
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 403 && e.code === "email_not_verified") return formError({ fieldErrors: NONE, message: "Please verify your email address first. Check your inbox for the link.", email, unverified: true }, 403);

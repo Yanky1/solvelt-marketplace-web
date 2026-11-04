@@ -115,3 +115,18 @@ describe("recent sign-in", () => {
     expect(hasRecentAuth({ ...s, authAt: 2000 }, 1500)).toBe(false); // from the future
   });
 });
+
+describe("the cart in the sealed session (decision M3W-01)", () => {
+  it("round-trips the guest cart token and the item count, sealed (not readable in the cookie)", () => {
+    const d = { ...newVisitor(), cart: "cart_secret_guest_token_0123456789", cn: 3 };
+    const sealed = seal(d, SECRET);
+    expect(Buffer.from(sealed, "base64url").toString("latin1")).not.toContain("cart_secret_guest_token");
+    expect(open(sealed, SECRET)).toEqual(d);
+  });
+  it("refuses a cart token or count of the wrong kind or size", () => {
+    const v = newVisitor();
+    for (const bad of [{ cart: 5 }, { cart: "" }, { cart: "x".repeat(101) }, { cn: -1 }, { cn: 1.5 }, { cn: "3" }, { cn: 1_000_000 }]) {
+      expect(open(seal({ ...v, ...bad } as never, SECRET), SECRET), JSON.stringify(bad)).toBeNull();
+    }
+  });
+});

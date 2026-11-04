@@ -64,11 +64,12 @@ export function assertCsrf(request: Request, form: FormData): SessionData {
 }
 
 /** New session id after sign-in or sign-out (prevents session fixation); optionally carries the API token. */
-export function rotatedCookie(token?: string, now = Date.now() / 1000): string {
+export function rotatedCookie(token?: string, now = Date.now() / 1000, extra?: Pick<SessionData, "cn">): string {
   const cfg = getConfig();
   const fresh = newVisitor(now);
   // A token means a fresh sign-in just happened: remember when (for "recent sign-in" checks).
-  return sessionCookie(token ? { ...fresh, token, authAt: Math.floor(now) } : fresh, cfg);
+  const base = extra?.cn !== undefined ? { ...fresh, cn: extra.cn } : fresh;
+  return sessionCookie(token ? { ...base, token, authAt: Math.floor(now) } : base, cfg);
 }
 
 /** Redirect to sign-in for pages that need an account, keeping a safe return path. */
