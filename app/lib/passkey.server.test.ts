@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeId, optionsRpIdOk, rpIdAllowed, rpIdOf } from "./passkey.server";
+import { isSafeId, rpIdAllowed, sanitizePasskeyOptions } from "./passkey.server";
 
 describe("rpIdAllowed", () => {
   it.each([
@@ -22,21 +22,48 @@ describe("rpIdAllowed", () => {
   it("fails closed on a bad origin", () => { expect(rpIdAllowed("example.com", "not a url")).toBe(false); });
 });
 
-describe("optionsRpIdOk", () => {
+describe("sanitizePasskeyOptions", () => {
   const O = "https://shop.example.com";
-  it("reads rp.id (creation) and rpId (request)", () => {
-    expect(rpIdOf({ rp: { id: "a.com" } })).toBe("a.com");
-    expect(rpIdOf({ rpId: "b.com" })).toBe("b.com");
-    expect(rpIdOf({})).toBeUndefined();
-    expect(rpIdOf({ rpId: 5 })).toBeNull();
+  const create = (o: Record<string, unknown>) => sanitizePasskeyOptions("create", o, O);
+  const get = (o: Record<string, unknown>) => sanitizePasskeyOptions("get", o, O);
+
+  it("checks rp.id for registration and rpId for sign-in", () => {
+    expect(create({ rp: { id: "example.com", name: "x" }, challenge: "c" })).toEqual({ rp: { id: "example.com", name: "x" }, challenge: "c" });
+    expect(get({ rpId: "shop.example.com", challenge: "c" })).toEqual({ rpId: "shop.example.com", challenge: "c" });
+    expect(create({ rp: { id: "evil.com" } })).toBeNull();
+    expect(get({ rpId: "evil.com" })).toBeNull();
   });
-  it("accepts matching ids and an absent id, rejects mismatches and non-strings", () => {
-    expect(optionsRpIdOk({ rp: { id: "example.com", name: "x" } }, O)).toBe(true);
-    expect(optionsRpIdOk({ rpId: "shop.example.com" }, O)).toBe(true);
-    expect(optionsRpIdOk({ challenge: "x" }, O)).toBe(true);
-    expect(optionsRpIdOk({ rp: { id: "evil.com" } }, O)).toBe(false);
-    expect(optionsRpIdOk({ rpId: "evil.com" }, O)).toBe(false);
-    expect(optionsRpIdOk({ rpId: 5 }, O)).toBe(false);
+  it("accepts an absent id (the browser then uses the page's host)", () => {
+    expect(create({ rp: { name: "x" } })).toEqual({ rp: { name: "x" } });
+    expect(get({ challenge: "c" })).toEqual({ challenge: "c" });
+  });
+  it("refuses when BOTH ids are present and differ, whichever one is hostile (the bypass: rp.id good, rpId evil)", () => {
+    expect(get({ rp: { id: "example.com" }, rpId: "evil.example" })).toBeNull();
+    expect(create({ rp: { id: "example.com" }, rpId: "evil.example" })).toBeNull();
+    expect(get({ rp: { id: "evil.example" }, rpId: "example.com" })).toBeNull();
+    expect(create({ rp: { id: "evil.example" }, rpId: "example.com" })).toBeNull();
+  });
+  it("when both are present and equal, forwards only the field the ceremony uses", () => {
+    const both = { rp: { id: "example.com", name: "x" }, rpId: "example.com", challenge: "c" };
+    expect(create(both)).toEqual({ rp: { id: "example.com", name: "x" }, challenge: "c" });
+    expect(get(both)).toEqual({ rpId: "example.com", challenge: "c" });
+  });
+  it("drops the unused field even when it is the only one present", () => {
+    expect(get({ rp: { id: "evil.example", name: "x" }, challenge: "c" })).toEqual({ challenge: "c" }); // browser ignores rp for sign-in
+    expect(create({ rpId: "evil.example", rp: { name: "x" } })).toEqual({ rp: { name: "x" } });
+  });
+  it("refuses non-string ids and malformed shapes", () => {
+    expect(get({ rpId: 5 })).toBeNull();
+    expect(create({ rp: { id: 5 } })).toBeNull();
+    expect(create({ rp: "x" } as never)).toBeNull();
+    expect(create({ rp: null } as never)).toBeNull();
+    expect(get(null as never)).toBeNull();
+    expect(get([] as never)).toBeNull();
+  });
+  it("does not mutate its input", () => {
+    const input = { rp: { id: "example.com" }, rpId: "example.com" };
+    get(input);
+    expect(input).toEqual({ rp: { id: "example.com" }, rpId: "example.com" });
   });
 });
 

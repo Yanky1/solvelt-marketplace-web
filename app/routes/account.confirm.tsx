@@ -5,7 +5,9 @@ import { CsrfField } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount, revokePreviousSession, rotatedCookie } from "~/lib/auth.server";
+import { getConfig } from "~/lib/config.server";
 import { safeNext } from "~/lib/csrf.server";
+import { MAX_CONFIRM_FAILURES, sessionCookie } from "~/lib/session.server";
 import { str } from "~/lib/validation";
 
 export function meta() {
@@ -23,8 +25,9 @@ export function loader({ request, context }: Route.LoaderArgs) {
 /** Re-authentication for sensitive changes (O-11): the password is checked by the API, which issues a fresh session. */
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
-  assertCsrf(request, form);
+  const session = assertCsrf(request, form);
   const { ctx } = requireAccount(request, context);
+  const cfg = getConfig();
   const password = str(form, "password");
   if (!password) return formError({ message: null, error: "Enter your password." });
   try {
@@ -35,7 +38,16 @@ export async function action({ request, context }: Route.ActionArgs) {
     return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": rotatedCookie(token), ...privateHeaders } });
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
-      if (e.code === "invalid_credentials") return formError({ message: null, error: "That password is not correct." }, 401);
+      if (e.code === "invalid_credentials") {
+        const failures = (session.rf ?? 0) + 1;
+        if (failures >= MAX_CONFIRM_FAILURES) {
+          // Too many wrong passwords from this session: end it (API session revoked, cookie replaced) and go to sign-in.
+          try { await api.signOut(ctx); } catch { /* the cookie is replaced regardless */ }
+          return redirect("/sign-in?notice=confirm-locked", { headers: { "Set-Cookie": rotatedCookie(), ...privateHeaders } });
+        }
+        // The counter lives in the sealed cookie, so the client cannot reset it without losing the session.
+        return formError({ message: null, error: "That password is not correct." }, 401, { "Set-Cookie": sessionCookie({ ...session, rf: failures }, cfg) });
+      }
       return failAccount(e, request); // the session itself is dead
     }
     if (e instanceof ApiError && e.status === 429) return formError({ message: "Too many attempts. Please wait a moment and try again.", error: null }, 429);

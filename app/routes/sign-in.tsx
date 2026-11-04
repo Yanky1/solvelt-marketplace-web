@@ -17,6 +17,7 @@ const NONE: FieldErrors = {};
 const NOTICES = {
   "signout-failed": "You were signed out on this device, but we could not confirm it with the server. If this is a shared computer, sign in and sign out again.",
   "signout-all-failed": "You were signed out on this device, but we could not sign out your other devices. Sign in and choose \u201cSign out everywhere\u201d again.",
+  "confirm-locked": "Too many incorrect passwords were entered, so you were signed out for your security. Sign in again to continue.",
 } as const;
 
 export function meta() {
@@ -29,7 +30,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (user) throw redirect(safeNext(url.searchParams.get("next"), "/account"));
   // Only known notice keys map to (fixed) text; nothing from the query string is ever rendered.
   const key = url.searchParams.get("notice");
-  const notice: keyof typeof NOTICES | null = key === "signout-failed" || key === "signout-all-failed" ? key : null;
+  const notice: keyof typeof NOTICES | null = key === "signout-failed" || key === "signout-all-failed" || key === "confirm-locked" ? key : null;
   return { notice };
 }
 
@@ -40,7 +41,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     // The challenge must have been issued to THIS browser session, for sign-in, and still be fresh. It is single use:
     // whatever happens next, the binding is dropped from the cookie.
     const dropBinding = { "Set-Cookie": sessionCookie(withoutPasskeyChallenge(session), getConfig()) };
-    const generic = (status: number) => formError({ fieldErrors: NONE, message: status === 429 ? "Too many attempts. Please wait a moment and try again." : "We could not verify that passkey. Try again, or sign in with your password.", email: "" }, status, dropBinding);
+    const generic = (status: number) => session.token
+      // Already signed in: the sign-in loader would turn this response into a redirect and lose the Set-Cookie. Redirect
+      // ourselves, with the cookie that drops the challenge binding.
+      ? redirect(safeNext(str(form, "next"), "/account"), { headers: { ...dropBinding, "Cache-Control": "private, no-store" } })
+      : formError({ fieldErrors: NONE, message: status === 429 ? "Too many attempts. Please wait a moment and try again." : "We could not verify that passkey. Try again, or sign in with your password.", email: "" }, status, dropBinding);
     if (!checkPasskeyChallenge(session, str(form, "challengeId"), "get").ok) return generic(401);
     try {
       const credential: unknown = JSON.parse(str(form, "credential"));

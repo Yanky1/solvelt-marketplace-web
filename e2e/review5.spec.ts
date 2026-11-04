@@ -53,9 +53,8 @@ test.describe("passkey challenges are bound to the browser session", () => {
       // redirect, but no new login happens either way: the API session list never changes.
       const [issuedToken] = await tokensOf(page.request, email);
       expect((await submit(sessionZ, await csrfFor(sessionZ))).status()).toBe(401);
-      const replay = await submit(sessionX, await csrfFor(sessionX, "/account"));
-      expect(replay.headers()["set-cookie"]).toBeUndefined();
-      expect(await tokensOf(page.request, email)).toEqual([issuedToken]);
+      await submit(sessionX, await csrfFor(sessionX, "/account"));
+      expect(await tokensOf(page.request, email)).toEqual([issuedToken]); // no new API session, whatever the response looks like
     } finally {
       await Promise.all([sessionX.dispose(), sessionY.dispose(), sessionZ.dispose()]);
     }
@@ -63,16 +62,17 @@ test.describe("passkey challenges are bound to the browser session", () => {
 
   test("a sign-in challenge cannot complete a registration, and a failed attempt burns the challenge", async ({ page, baseURL }) => {
     await addVirtualAuthenticator(page);
-    await signedIn(page, "kind");
+    const email = await signedIn(page, "kind");
     await registerPasskey(page, "Key one");
+    const [tokenBefore] = await tokensOf(page.request, email);
     const csrf = await csrfFor(page.request, "/account/passkeys");
     const issued = (await (await optionsFor(page.request, "/passkeys/sign-in-options", csrf, baseURL!)).json()) as { challengeId: string; options: Record<string, unknown> };
     const credential = JSON.stringify(await getAssertion(page, issued.options));
     const wrong = await page.request.post("/account/passkeys", { form: { csrf, intent: "register", challengeId: issued.challengeId, credential, name: "x" }, headers: { origin: baseURL! }, maxRedirects: 0 });
     expect(wrong.status()).toBe(400); // wrong ceremony for the bound challenge
     // The binding was dropped by that attempt: the same challenge no longer works for sign-in either (no new API session).
-    const again = await page.request.post("/sign-in", { form: { csrf, intent: "passkey", challengeId: issued.challengeId, credential, next: "" }, headers: { origin: baseURL! }, maxRedirects: 0 });
-    expect(again.headers()["set-cookie"]).toBeUndefined(); // a successful sign-in would have rotated the session cookie
+    await page.request.post("/sign-in", { form: { csrf, intent: "passkey", challengeId: issued.challengeId, credential, next: "" }, headers: { origin: baseURL! }, maxRedirects: 0 });
+    expect(await tokensOf(page.request, email)).toEqual([tokenBefore]); // a successful sign-in would have replaced the API session
   });
 
   test("passkey sign-in over an existing session revokes the previous API token", async ({ page, baseURL }) => {

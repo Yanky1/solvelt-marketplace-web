@@ -23,11 +23,15 @@ export function validateDisplayName(v: string): string | null {
 }
 
 /**
- * Strips C0/C1 control characters and bidirectional override/isolate marks (U+202A-202E, U+2066-2069, U+200E/F, U+061C):
- * they can hide or reorder text in names and addresses shown to people or printed on labels. Use for free-text fields only.
+ * Strips characters that hide or reorder text in names and addresses shown to people or printed on labels:
+ * C0/C1 controls, bidi overrides/isolates/marks (U+202A-202E, U+2066-2069, U+200E/F, U+061C), line/paragraph separators
+ * (U+2028/9), zero-width space (U+200B), word joiner (U+2060), BOM (U+FEFF), soft hyphen (U+00AD), interlinear annotation
+ * marks (U+FFF9-FFFB) and the Unicode "tag" block (U+E0000-E007F).
+ * Deliberately KEPT: ZWJ (U+200D, emoji sequences) and ZWNJ (U+200C, Persian and others), combining marks and Hebrew
+ * niqqud, because real names need them. Use for free-text fields only, never for passwords.
  */
 // eslint-disable-next-line no-control-regex -- control characters are exactly what is being stripped
-export const cleanText = (s: string): string => s.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
+export const cleanText = (s: string): string => s.replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060\u2066-\u2069\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}]/gu, "");
 
 export const cleanField = (form: FormData, key: string): string => cleanText(str(form, key)).trim();
 

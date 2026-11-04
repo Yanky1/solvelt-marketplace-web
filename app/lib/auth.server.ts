@@ -72,9 +72,9 @@ export function rotatedCookie(token?: string, now = Date.now() / 1000): string {
 }
 
 /** Redirect to sign-in for pages that need an account, keeping a safe return path. */
-export function signInRedirect(request: Request): never {
+export function signInRedirect(request: Request, headers?: Record<string, string>): never {
   const u = new URL(request.url);
-  throw redirect(`/sign-in?next=${encodeURIComponent(u.pathname + u.search)}`);
+  throw redirect(`/sign-in?next=${encodeURIComponent(u.pathname + u.search)}`, headers ? { headers } : undefined);
 }
 
 export const privateHeaders = { "Cache-Control": "private, no-store" } as const;
@@ -91,11 +91,15 @@ export function requireAccount(request: Request, context: AppLoadContext): { ses
 }
 
 /** Maps an API failure on an account page: dead session -> sign-in, unknown/foreign resource -> 404, anything else -> 503. */
-export function failAccount(e: unknown, request: Request): never {
-  if (e instanceof Response) throw e;
-  if (e instanceof ApiError) {
-    if (e.status === 401) signInRedirect(request);
-    if (e.status === 404) throw new Response("Not found", { status: 404, headers: privateHeaders });
+export function failAccount(e: unknown, request: Request, extraHeaders: Record<string, string> = {}): never {
+  if (e instanceof Response) {
+    // A response thrown by a route (404, redirect to confirm): make sure the extra headers (cookie updates) ride along.
+    for (const [k, v] of Object.entries(extraHeaders)) if (!e.headers.has(k)) e.headers.set(k, v);
+    throw e;
   }
-  throw new Response("Service unavailable", { status: 503, headers: privateHeaders });
+  if (e instanceof ApiError) {
+    if (e.status === 401) signInRedirect(request, extraHeaders);
+    if (e.status === 404) throw new Response("Not found", { status: 404, headers: { ...privateHeaders, ...extraHeaders } });
+  }
+  throw new Response("Service unavailable", { status: 503, headers: { ...privateHeaders, ...extraHeaders } });
 }

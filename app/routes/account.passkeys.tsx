@@ -40,6 +40,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const dropBinding = { "Set-Cookie": sessionCookie(withoutPasskeyChallenge(session), cfg) };
   try {
     if (intent === "register") {
+      if (!hasRecentAuth(session, Date.now() / 1000, cfg.reauthWindowSeconds)) return redirect("/account/confirm?next=%2Faccount%2Fpasskeys", { headers: { ...privateHeaders, ...dropBinding } });
       if (!checkPasskeyChallenge(session, str(form, "challengeId"), "create").ok) return formError({ message: "That passkey request expired or does not belong to this session. Please try again." }, 400, dropBinding);
       const name = cleanText(str(form, "name")).trim().slice(0, 60) || "My passkey";
       let credential: unknown;
@@ -63,7 +64,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     throw new Response("Bad request", { status: 400 });
   } catch (e) {
     if (e instanceof ApiError && (e.status === 400 || e.status === 409 || e.status === 422)) return formError({ message: "We could not add that passkey. It may already be registered, or the request expired." }, e.status, dropBinding);
-    return failAccount(e, request);
+    return failAccount(e, request, dropBinding); // API 5xx/401 and thrown 404s must not leave the challenge bound either
   }
 }
 
@@ -81,6 +82,13 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
     setWorking(true);
     try {
       const res = await fetch("/account/passkeys/options", { method: "POST", body: new URLSearchParams({ csrf }), credentials: "same-origin" });
+      if (res.status === 403) {
+        const body = (await res.json().catch(() => null)) as { code?: string; redirectTo?: string } | null;
+        if (body?.code === "reauth_required" && typeof body.redirectTo === "string" && body.redirectTo.startsWith("/account/confirm")) {
+          window.location.assign(body.redirectTo); // ask for the password first, then come back
+          return;
+        }
+      }
       if (!res.ok) throw new Error("options");
       const { challengeId, options } = (await res.json()) as { challengeId: string; options: Record<string, unknown> };
       const credential = await createPasskey(options);

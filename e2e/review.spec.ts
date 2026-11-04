@@ -185,12 +185,16 @@ test("an unverified sign-in offers to resend the verification email", async ({ p
 
 test("a stale or foreign CSRF token shows a friendly retry page, not a bare Forbidden", async ({ page }) => {
   await page.goto("/sign-in");
-  // Tampering before hydration races with React resetting the field to its server value: wait for the explicit marker.
   await waitHydrated(page);
-  await page.locator('input[name="csrf"]').first().evaluate((el) => { (el as HTMLInputElement).value = "stale-token-from-another-tab"; });
   await page.getByLabel("Email").fill("a@example.test");
   await page.getByLabel("Password").fill("whatever");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  // Tamper and submit in ONE synchronous step: the hidden field is a controlled input, so any re-render between the two
+  // (e.g. the passkey button appearing) would put the real token back and the request would be valid.
+  await page.evaluate(() => {
+    const form = document.querySelector<HTMLFormElement>('form:has(input[name="email"])')!;
+    form.querySelector<HTMLInputElement>('input[name="csrf"]')!.value = "stale-token-from-another-tab";
+    form.requestSubmit();
+  });
   await expect(page.getByRole("heading", { name: "Please try again" })).toBeVisible();
   await expect(page.locator("body")).not.toHaveText(/^Forbidden$/);
 });

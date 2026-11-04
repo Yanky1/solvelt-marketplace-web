@@ -15,6 +15,10 @@ const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test h
 const outbox = []; // {kind, email, token}
 const seen = []; // recorded request metadata (no bodies)
 
+// Test variants are selected by the end-user IP the web server forwards (X-Solvelt-Client-Ip), so parallel tests never interfere.
+const ipOf = (req) => String(req.headers["x-solvelt-client-ip"] ?? "");
+const IP = { ANON_RPID_EVIL: "198.51.100.61", ANON_BOTH_DIFFER: "198.51.100.62", ANON_BOTH_DIFFER_REV: "198.51.100.63", ANON_RP_ONLY_EVIL: "198.51.100.64", ANON_BOTH_SAME: "198.51.100.65", REG_BOTH_DIFFER: "198.51.100.66", REG_BOTH_SAME: "198.51.100.67", REG_LENIENT: "198.51.100.68", REG_5XX: "198.51.100.69", SIGNIN_LENIENT: "198.51.100.70" };
+
 const send = (res, status, body, extra = {}) => {
   res.writeHead(status, { "Content-Type": "application/json", ...extra });
   res.end(body === undefined ? "" : JSON.stringify(body));
@@ -79,6 +83,7 @@ http.createServer(async (req, res) => {
     u.verified = true; u.verifyToken = undefined;
     return send(res, 204);
   }
+  if (path === "/api/v1/auth/sign-in" && req.method === "POST" && body.password === "trigger-429") return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "30" });
   if (path === "/api/v1/auth/sign-in" && req.method === "POST") {
     const u = users.get(String(body.email ?? "").toLowerCase());
     if (!u || u.password !== body.password) return send(res, 401, { code: "invalid_credentials", message: "Invalid" });
@@ -179,12 +184,15 @@ http.createServer(async (req, res) => {
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }], timeout: 60000, attestation: "none",
       authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
       excludeCredentials: [...passkeys.values()].filter((p) => p.userId === u.id).map((p) => ({ type: "public-key", id: p.credentialId })),
+      ...(ipOf(req) === IP.REG_BOTH_DIFFER ? { rpId: "evil.example" } : ipOf(req) === IP.REG_BOTH_SAME ? { rpId: "localhost" } : {}),
     } });
   }
   if (path === "/api/v1/account/passkeys" && (req.method === "GET" || req.method === "POST")) {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
     if (req.method === "GET") return send(res, 200, [...passkeys.values()].filter((p) => p.userId === u.id).map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt })));
+    if (ipOf(req) === IP.REG_5XX) return send(res, 503, { code: "unavailable", message: "Down" });
+    if (ipOf(req) === IP.REG_LENIENT) return send(res, 201, { id: "lenient", name: String(body.name || "Passkey"), createdAt: new Date().toISOString() }); // accepts ANY ceremony: only the web-side check can refuse
     const cred = { ...body.credential, __challengeId: body.challengeId };
     const ch = checkClientData(cred, "webauthn.create");
     if (!ch || ch.userId !== u.id) return send(res, 400, { code: "invalid_challenge", message: "Invalid or expired" });
@@ -207,9 +215,27 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/auth/passkey/options" && req.method === "POST") {
     const challenge = b64u(randomBytes(32)), challengeId = randomBytes(8).toString("hex");
     challenges.set(challengeId, { challenge, kind: "get" });
-    return send(res, 200, { challengeId, options: { challenge, rpId: "localhost", timeout: 60000, userVerification: "preferred" } });
+    const base = { challenge, timeout: 60000, userVerification: "preferred" };
+    const v = ipOf(req);
+    const options =
+      v === IP.ANON_RPID_EVIL ? { ...base, rpId: "evil.example" }
+      : v === IP.ANON_BOTH_DIFFER ? { ...base, rp: { id: "localhost" }, rpId: "evil.example" }
+      : v === IP.ANON_BOTH_DIFFER_REV ? { ...base, rp: { id: "evil.example" }, rpId: "localhost" }
+      : v === IP.ANON_RP_ONLY_EVIL ? { ...base, rp: { id: "evil.example", name: "Evil" } }
+      : v === IP.ANON_BOTH_SAME ? { ...base, rp: { id: "localhost", name: "Solvelt" }, rpId: "localhost" }
+      : { ...base, rpId: "localhost" };
+    return send(res, 200, { challengeId, options });
   }
   if (path === "/api/v1/auth/passkey/sign-in" && req.method === "POST") {
+    if (ipOf(req) === IP.SIGNIN_LENIENT) {
+      // Accepts a known credential regardless of challenge, ceremony and single use: only the web-side binding can refuse.
+      const lp = passkeys.get(String(body.credential?.id));
+      const lu = lp && [...users.values()].find((x) => x.id === lp.userId);
+      if (!lu) return send(res, 401, { code: "invalid_credentials", message: "Invalid" });
+      const t = `tok_${randomBytes(24).toString("hex")}`;
+      sessions.set(t, lu.id);
+      return send(res, 200, { token: t, user: { id: lu.id, displayName: lu.displayName } });
+    }
     const cred = { ...body.credential, __challengeId: body.challengeId };
     const ch = checkClientData(cred, "webauthn.get");
     challenges.delete(String(body.challengeId));

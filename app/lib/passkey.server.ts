@@ -1,13 +1,5 @@
 import { isIP } from "node:net";
 
-/** WebAuthn options as the API sends them: creation options carry `rp.id`, request options `rpId`. */
-export function rpIdOf(options: Record<string, unknown>): string | undefined | null {
-  const rp = options.rp as { id?: unknown } | undefined;
-  const raw = rp && typeof rp === "object" && "id" in rp ? rp.id : options.rpId;
-  if (raw === undefined) return undefined;
-  return typeof raw === "string" ? raw : null; // null = present but not a string
-}
-
 /**
  * The relying-party id must be the site's own hostname or a parent domain of it (that is what browsers allow).
  * We never forward options whose rp id points elsewhere: a mismatch means a misconfigured or hostile API.
@@ -23,11 +15,29 @@ export function rpIdAllowed(rpId: string, publicOrigin: string): boolean {
   return rp.includes(".") && /^[a-z0-9.-]+$/.test(rp) && host.endsWith(`.${rp}`);
 }
 
-/** True when the options may be forwarded to the browser. An absent id is fine (the browser then uses the page's host). */
-export function optionsRpIdOk(options: Record<string, unknown>, publicOrigin: string): boolean {
-  const id = rpIdOf(options);
-  if (id === undefined) return true;
-  return id !== null && rpIdAllowed(id, publicOrigin);
+export type Ceremony = "create" | "get";
+
+/**
+ * Checks and normalises WebAuthn options before they are forwarded to the browser.
+ * The browser reads `rp.id` for registration (creation options) and `rpId` for sign-in (request options), so the
+ * check applies to the field the ceremony actually uses. If BOTH are present and differ the options are refused,
+ * and the field the ceremony does not use is removed, so nothing unchecked reaches the browser.
+ * Returns null (refuse) when the used id is not our own hostname or a parent domain of it. An absent id is fine
+ * (the browser then uses the page's host).
+ */
+export function sanitizePasskeyOptions(kind: Ceremony, options: Record<string, unknown>, publicOrigin: string): Record<string, unknown> | null {
+  if (typeof options !== "object" || options === null || Array.isArray(options)) return null;
+  const rp = options.rp;
+  if (rp !== undefined && (typeof rp !== "object" || rp === null || Array.isArray(rp))) return null;
+  const creationId = rp === undefined ? undefined : (rp as { id?: unknown }).id;
+  const requestId = options.rpId;
+  if (creationId !== undefined && requestId !== undefined && creationId !== requestId) return null;
+  const used = kind === "create" ? creationId : requestId;
+  if (used !== undefined && (typeof used !== "string" || !rpIdAllowed(used, publicOrigin))) return null;
+  const out: Record<string, unknown> = { ...options };
+  if (kind === "create") delete out.rpId;
+  else delete out.rp;
+  return out;
 }
 
 /** Only ids shaped like our API's opaque ids ever reach an API path (".." and "." would be normalised by fetch). */

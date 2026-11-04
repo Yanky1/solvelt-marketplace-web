@@ -15,6 +15,8 @@ export interface SessionData {
   authAt?: number;
   /** The one passkey challenge this session may complete: binds the API's challenge to this browser session. */
   pk?: PasskeyBinding;
+  /** Wrong passwords entered on the confirm page in this session. At MAX_CONFIRM_FAILURES the session is ended. */
+  rf?: number;
 }
 
 export interface PasskeyBinding {
@@ -48,6 +50,7 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (typeof d.sid !== "string" || d.sid.length < 16 || typeof d.iat !== "number") return null;
     if (d.token !== undefined && typeof d.token !== "string") return null;
     if (d.authAt !== undefined && typeof d.authAt !== "number") return null;
+    if (d.rf !== undefined && (typeof d.rf !== "number" || !Number.isInteger(d.rf) || d.rf < 0 || d.rf > 1000)) return null;
     const pk = d.pk;
     if (pk !== undefined && (typeof pk !== "object" || pk === null || typeof pk.cid !== "string" || typeof pk.exp !== "number" || (pk.kind !== "create" && pk.kind !== "get"))) return null;
     if (now - d.iat > MAX_AGE_SECONDS) return null;
@@ -55,6 +58,7 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.token !== undefined) out.token = d.token;
     if (d.authAt !== undefined) out.authAt = d.authAt;
     if (pk !== undefined) out.pk = { cid: pk.cid, kind: pk.kind, exp: pk.exp };
+    if (d.rf !== undefined) out.rf = d.rf;
     return out;
   } catch {
     return null;
@@ -123,3 +127,6 @@ export const withoutPasskeyChallenge = (session: SessionData): SessionData => {
 export const RECENT_AUTH_SECONDS = 600;
 export const hasRecentAuth = (session: SessionData, now = Date.now() / 1000, windowSeconds = RECENT_AUTH_SECONDS): boolean =>
   !!session.token && typeof session.authAt === "number" && now - session.authAt >= 0 && now - session.authAt < windowSeconds;
+
+/** Wrong passwords tolerated on the confirm page before the session is ended (the API also limits per account). */
+export const MAX_CONFIRM_FAILURES = 5;

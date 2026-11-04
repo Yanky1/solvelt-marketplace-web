@@ -60,3 +60,21 @@ describe("cleanText", () => {
     expect(a.country).toBe("IL");
   });
 });
+
+describe("cleanText: what is stripped and what must survive", () => {
+  const strip = ["\u0000", "\u0007", "\u001f", "\u007f", "\u0085", "\u009f", "\u00ad", "\u061c", "\u200b", "\u200e", "\u200f", "\u2028", "\u2029", "\u202a", "\u202e", "\u2060", "\u2066", "\u2069", "\ufeff", "\ufff9", "\ufffb", "\u{e0000}", "\u{e0041}", "\u{e007f}"];
+  it.each(strip)("removes U+%#x", (ch) => { expect(cleanText(`a${ch}b`)).toBe("ab"); });
+
+  it("keeps ZWJ emoji sequences byte-exact", () => {
+    const family = "\u{1f468}\u200d\u{1f469}\u200d\u{1f467}"; // man, ZWJ, woman, ZWJ, girl
+    expect(cleanText(family)).toBe(family);
+    expect(cleanText("\u{1f3f3}\ufe0f\u200d\u{1f308}")).toBe("\u{1f3f3}\ufe0f\u200d\u{1f308}"); // rainbow flag keeps VS16 and ZWJ
+  });
+  it("keeps ZWNJ (Persian) and Hebrew niqqud and combining marks", () => {
+    expect(cleanText("\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645")).toBe("\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"); // ZWNJ between letters
+    expect(cleanText("\u05e9\u05c1\u05b8\u05dc\u05d5\u05b9\u05dd")).toBe("\u05e9\u05c1\u05b8\u05dc\u05d5\u05b9\u05dd"); // shalom with niqqud
+    expect(cleanText("e\u0301 n\u0303 a\u030a")).toBe("e\u0301 n\u0303 a\u030a");
+    expect(cleanText("\u00c9mile Z\u00f6e \u5c71\u7530")).toBe("\u00c9mile Z\u00f6e \u5c71\u7530");
+  });
+  it("keeps ordinary punctuation and the plain space", () => { expect(cleanText("O'Brien-Smith, Jr. (Apt 4/B)")).toBe("O'Brien-Smith, Jr. (Apt 4/B)"); });
+});
