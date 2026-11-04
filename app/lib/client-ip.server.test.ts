@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, FORWARDED_CLIENT_IP_HEADER } from "./api.server";
+import { apiFetch, FORWARDED_CLIENT_IP_HEADER, FORWARDED_CLIENT_SIGNATURE_HEADER, FORWARDED_CLIENT_TIMESTAMP_HEADER, signClientIp } from "./api.server";
+import { DEV_FORWARDING_KEY } from "./config.server";
 import { isTrusted, resolveClientIp } from "./client-ip.server";
 
 const T = ["10.0.0.5", "172.16.0.0/12"];
@@ -40,7 +41,7 @@ describe("apiFetch", () => {
   afterEach(() => vi.restoreAllMocks());
   const call = async (headers: Record<string, string>, socketAddress: string, trusted: string[]) => {
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
-    await apiFetch({ apiBaseUrl: "http://api", trustedProxies: trusted }, { request: new Request("http://web/x", { headers }), socketAddress, sessionToken: "tok" }, "/api/v1/ping");
+    await apiFetch({ apiBaseUrl: "http://api", trustedProxies: trusted, webForwardingKey: DEV_FORWARDING_KEY }, { request: new Request("http://web/x", { headers }), socketAddress, sessionToken: "tok" }, "/api/v1/ping", { now: () => 1700000000.9 });
     return new Headers((spy.mock.calls[0]![1] as RequestInit).headers);
   };
   it("sets the forwarded IP from the socket and never passes a client-supplied header through", async () => {
@@ -52,5 +53,22 @@ describe("apiFetch", () => {
     const h = await call({ "x-forwarded-for": "198.51.100.7" }, "10.0.0.5", ["10.0.0.5"]);
     expect(h.get(FORWARDED_CLIENT_IP_HEADER)).toBe("198.51.100.7");
     expect(h.get("authorization")).toBe("Bearer tok");
+  });
+  it("sends all three signed headers (timestamp floored, signature over the resolved IP)", async () => {
+    const h = await call({ "x-forwarded-for": "6.6.6.6" }, "203.0.113.9", []);
+    expect(h.get(FORWARDED_CLIENT_TIMESTAMP_HEADER)).toBe("1700000000");
+    expect(h.get(FORWARDED_CLIENT_SIGNATURE_HEADER)).toBe(signClientIp(DEV_FORWARDING_KEY, 1700000000, "203.0.113.9"));
+  });
+});
+
+describe("signClientIp", () => {
+  it("matches the fixed vector (also recorded in docs/DESIGN.md W1-14)", () => {
+    expect(signClientIp("dev-only-web-forwarding-key-not-for-production", 1700000000, "203.0.113.9")).toBe("v1=eaf9dade01862226a6cb91574596e068996969fe53eb32f05d4ec102df81a4e8");
+  });
+  it("changes with key, timestamp and ip", () => {
+    const base = signClientIp("k".repeat(32), 1700000000, "203.0.113.9");
+    expect(signClientIp("j".repeat(32), 1700000000, "203.0.113.9")).not.toBe(base);
+    expect(signClientIp("k".repeat(32), 1700000001, "203.0.113.9")).not.toBe(base);
+    expect(signClientIp("k".repeat(32), 1700000000, "203.0.113.10")).not.toBe(base);
   });
 });

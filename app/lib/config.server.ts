@@ -4,10 +4,13 @@ export interface AppConfig {
   publicOrigin: string;
   /** IPs/IPv4 CIDRs of our own reverse proxies; X-Forwarded-For is honoured only from these. */
   trustedProxies: string[];
+  /** Shared with the API (Web__ForwardingKey): signs the forwarded client IP. Distinct from the session secret. */
+  webForwardingKey: string;
   production: boolean;
 }
 
 const DEV_SECRET = "dev-only-secret-dev-only-secret-0000";
+export const DEV_FORWARDING_KEY = "dev-only-web-forwarding-key-not-for-production";
 
 /** Pure validation, exported for tests. Throws listing every problem (never the secret values). */
 export function loadConfig(env: Record<string, string | undefined>): AppConfig {
@@ -16,6 +19,12 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const apiBaseUrl = (env.API_BASE_URL ?? (production ? "" : "http://localhost:5080")).replace(/\/+$/, "");
   const publicOrigin = (env.PUBLIC_ORIGIN ?? (production ? "" : "http://localhost:3000")).replace(/\/+$/, "");
   const secret = env.SESSION_COOKIE_SECRET ?? (production ? "" : DEV_SECRET);
+
+  const fwdKey = env.WEB_FORWARDING_KEY ?? (production ? "" : DEV_FORWARDING_KEY);
+  if (!fwdKey) problems.push("WEB_FORWARDING_KEY is required");
+  else if (fwdKey.length < 32) problems.push("WEB_FORWARDING_KEY must be at least 32 characters");
+  else if (production && fwdKey === DEV_FORWARDING_KEY) problems.push("WEB_FORWARDING_KEY must not be the development default");
+  else if (fwdKey === secret) problems.push("WEB_FORWARDING_KEY must differ from SESSION_COOKIE_SECRET");
 
   if (!apiBaseUrl) problems.push("API_BASE_URL is required");
   else if (!/^https?:\/\//.test(apiBaseUrl)) problems.push("API_BASE_URL must be an http(s) URL");
@@ -30,7 +39,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
 
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
   const trustedProxies = (env.TRUSTED_PROXIES ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, production };
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, production };
 }
 
 let cached: AppConfig | undefined;

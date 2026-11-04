@@ -1,11 +1,16 @@
+import { createHmac } from "node:crypto";
 import { resolveClientIp } from "./client-ip.server";
 import type { AppConfig } from "./config.server";
 
-/**
- * PLACEHOLDER header name until M1 documents the real one in the API repo's docs/API.md (see DESIGN W1-13).
- * The API must authenticate it (e.g. only accept it together with a server credential).
- */
+/** Contract: API repo docs/API.md (M1, API main 3b48083). All three headers are always sent together. */
 export const FORWARDED_CLIENT_IP_HEADER = "X-Solvelt-Client-Ip";
+export const FORWARDED_CLIENT_TIMESTAMP_HEADER = "X-Solvelt-Client-Timestamp";
+export const FORWARDED_CLIENT_SIGNATURE_HEADER = "X-Solvelt-Client-Signature";
+
+/** `v1=` + lower-hex HMAC-SHA256(key, "<unix seconds>\n<ip>"). */
+export function signClientIp(key: string, timestamp: number, ip: string): string {
+  return `v1=${createHmac("sha256", key).update(`${timestamp}\n${ip}`).digest("hex")}`;
+}
 
 export interface ApiRequestContext {
   /** Remote address of the TCP peer, from the server's load context. */
@@ -20,15 +25,22 @@ export interface ApiCallOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  /** Unix-seconds clock, injectable for tests. */
+  now?: () => number;
 }
 
 /** The ONLY function that talks to the marketplace API. Client-supplied forwarding headers are never passed through. */
-export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxies">, ctx: ApiRequestContext, path: string, opts: ApiCallOptions = {}): Promise<Response> {
+export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxies" | "webForwardingKey">, ctx: ApiRequestContext, path: string, opts: ApiCallOptions = {}): Promise<Response> {
   const headers = new Headers({ Accept: "application/json" });
   if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (ctx.sessionToken) headers.set("Authorization", `Bearer ${ctx.sessionToken}`);
   const ip = resolveClientIp(ctx.socketAddress, ctx.request.headers.get("x-forwarded-for"), cfg.trustedProxies);
-  if (ip) headers.set(FORWARDED_CLIENT_IP_HEADER, ip);
+  if (ip) {
+    const ts = Math.floor((opts.now ?? (() => Date.now() / 1000))());
+    headers.set(FORWARDED_CLIENT_IP_HEADER, ip);
+    headers.set(FORWARDED_CLIENT_TIMESTAMP_HEADER, String(ts));
+    headers.set(FORWARDED_CLIENT_SIGNATURE_HEADER, signClientIp(cfg.webForwardingKey, ts, ip));
+  }
   const init: RequestInit = { method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"), headers };
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
   if (opts.signal) init.signal = opts.signal;

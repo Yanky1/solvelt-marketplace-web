@@ -29,6 +29,7 @@ export default defineConfig({
         API_BASE_URL: "http://localhost:5080",
         PUBLIC_ORIGIN: `http://localhost:${PORT}`,
         SESSION_COOKIE_SECRET: "e2e-secret-e2e-secret-e2e-secret-0000",
+        WEB_FORWARDING_KEY: "e2e-forwarding-e2e-forwarding-key-0000",
       },
     },
   ],

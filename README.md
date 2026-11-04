@@ -20,6 +20,7 @@ npm run build && npm start   # production SSR server on :3000
 |---|---|---|
 | `API_BASE_URL` | yes | Marketplace API base URL |
 | `SESSION_COOKIE_SECRET` | yes (>= 32 chars) | Signs session cookie and CSRF tokens |
+| `WEB_FORWARDING_KEY` | yes (>= 32 chars) | Same secret as the API's `Web__ForwardingKey`; signs the forwarded client IP. Must differ from `SESSION_COOKIE_SECRET` |
 | `PUBLIC_ORIGIN` | yes (https) | Public origin: canonical URLs, sitemap, Origin checks |
 | `TRUSTED_PROXIES` | no | Comma-separated IPs/IPv4 CIDRs of your reverse proxies; `X-Forwarded-For` is trusted only from these |
 | `PORT` | no | Server port (default 3000) |

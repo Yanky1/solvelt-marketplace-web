@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "./config.server";
+import { DEV_FORWARDING_KEY, loadConfig } from "./config.server";
 
-const good = { NODE_ENV: "production", API_BASE_URL: "https://api.example.com/", SESSION_COOKIE_SECRET: "x".repeat(40), PUBLIC_ORIGIN: "https://shop.example.com" };
+const good = { NODE_ENV: "production", API_BASE_URL: "https://api.example.com/", SESSION_COOKIE_SECRET: "x".repeat(40), WEB_FORWARDING_KEY: "y".repeat(40), PUBLIC_ORIGIN: "https://shop.example.com" };
 
 describe("loadConfig", () => {
   it("accepts a complete production config and trims trailing slashes", () => {
@@ -29,4 +29,18 @@ describe("loadConfig", () => {
     const dev = loadConfig({}).sessionCookieSecret;
     expect(() => loadConfig({ ...good, SESSION_COOKIE_SECRET: dev })).toThrow(/development default/);
   });
+  it("requires WEB_FORWARDING_KEY in production, long enough and not the dev default", () => {
+    expect(() => loadConfig({ ...good, WEB_FORWARDING_KEY: undefined })).toThrow(/WEB_FORWARDING_KEY is required/);
+    expect(() => loadConfig({ ...good, WEB_FORWARDING_KEY: "short" })).toThrow(/WEB_FORWARDING_KEY must be at least 32/);
+    expect(() => loadConfig({ ...good, WEB_FORWARDING_KEY: DEV_FORWARDING_KEY })).toThrow(/development default/);
+  });
+  it("rejects a forwarding key equal to the session secret, without echoing it", () => {
+    const same = "z".repeat(40);
+    expect.assertions(2);
+    try { loadConfig({ ...good, SESSION_COOKIE_SECRET: same, WEB_FORWARDING_KEY: same }); } catch (e) {
+      expect(String(e)).toMatch(/must differ from SESSION_COOKIE_SECRET/);
+      expect(String(e)).not.toContain(same);
+    }
+  });
+  it("uses the dev forwarding key outside production", () => { expect(loadConfig({}).webForwardingKey).toBe(DEV_FORWARDING_KEY); });
 });
