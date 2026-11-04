@@ -279,3 +279,21 @@ export function parseSellerStorefront(json: unknown): SellerStorefront | null {
   const categories = parseCategoryTree(o.categories ?? []);
   return categories ? { id, displayName: name, listingCount: n, brands, categories } : null;
 }
+
+// ---------- autocomplete ----------
+export interface Suggestion { kind: "listing" | "brand" | "category"; text: string; slug: string }
+/** Fewest characters (after cleaning) that are worth asking the API about. */
+export const SUGGEST_MIN = 2;
+
+export function parseSuggestions(json: unknown): Suggestion[] | null {
+  const o = obj(json);
+  if (!o || !Array.isArray(o.suggestions)) return null;
+  const out: Suggestion[] = [];
+  for (const raw of o.suggestions.slice(0, 20)) {
+    const e = obj(raw);
+    const kind = e?.kind, text = e ? str(e.text, 400) : null, slug = e ? str(e.slug, 160) : null;
+    if ((kind !== "listing" && kind !== "brand" && kind !== "category") || !text || !slug || !CATALOG_KEY.test(slug)) continue;   // one bad entry is left out, not the list
+    out.push({ kind, text, slug });
+  }
+  return out;
+}

@@ -121,6 +121,18 @@ export function catalogResponse(path, url) {
     }
     return ok(body);
   }
+  if (path === "/api/v1/catalog/suggest") {
+    const words = (url.searchParams.get("q") ?? "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const last = words.at(-1) ?? "";
+    if (last.length < 2) return ok({ query: url.searchParams.get("q") ?? "", suggestions: [] });
+    const starts = (name) => name.toLowerCase().split(/[^a-z0-9]+/).some((w) => w.startsWith(last));
+    const suggestions = [
+      ...list.filter((l) => words.every((w) => l.title.toLowerCase().split(/[^a-z0-9]+/).some((t) => t.startsWith(w)))).slice(0, 5).map((l) => ({ kind: "listing", text: l.title, slug: l.slug })),
+      ...brands.filter((b) => starts(b.name) && list.some((l) => l.brand.slug === b.slug)).slice(0, 3).map((b) => ({ kind: "brand", text: b.name, slug: b.slug })),
+      ...categories.filter((c) => starts(c.name)).slice(0, 3).map((c) => ({ kind: "category", text: c.name, slug: c.slug })),
+    ];
+    return ok({ query: url.searchParams.get("q") ?? "", suggestions });
+  }
   let sm;
   if ((sm = /^\/api\/v1\/catalog\/brands\/([^/]+)$/.exec(path))) {
     const key = decodeURIComponent(sm[1]);

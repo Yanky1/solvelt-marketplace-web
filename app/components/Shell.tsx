@@ -1,3 +1,4 @@
+import { SearchBox } from "./SearchBox";
 import { useState } from "react";
 import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
 import { Logo } from "./Logo";
@@ -44,11 +45,7 @@ export function Header() {
       <div className="container topbar-inner">
         <Button className="nav-mobile-toggle" variant="ghost" aria-label="Open menu" onClick={() => setOpen(true)}>☰</Button>
         <Logo />
-        <form className="search" role="search" action="/search" method="get">
-          <label htmlFor="site-search" className="sr-only">Search Solvelt</label>
-          <input id="site-search" name="q" type="search" className="input" placeholder="Search products and services" autoComplete="off" />
-          <Button type="submit" variant="primary">Search</Button>
-        </form>
+        <SearchBox />
         <nav className="nav-desktop" aria-label="Main">
           {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
         </nav>
