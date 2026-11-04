@@ -11,9 +11,9 @@ type Fixed = "category" | "brand" | "seller";
  * The results layout shared by search, category, brand and seller pages: heading and count, active filters, sort, the filter form beside the grid, and
  * pagination. All state is in the address, so every view is a link and nothing here needs a script to work.
  */
-export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixed = [], categories, categoriesTitle = "Categories", emptyHint }: {
+export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixed = [], categories, categoriesTitle = "Categories", emptyHint, extra }: {
   title: string; intro?: string | undefined; crumbs?: Crumb[]; data: ListingPageData; query: ListingQuery; basePath: string; fixed?: Fixed[];
-  categories?: CategoryNode[]; categoriesTitle?: string; emptyHint?: string;
+  categories?: CategoryNode[]; categoriesTitle?: string; emptyHint?: string; /** Shown between the heading and the results (a seller's brands, say). */ extra?: React.ReactNode;
 }) {
   const href = (q: ListingQuery) => { const p = toSearchParams(q, fixed).toString(); return p ? `${basePath}?${p}` : basePath; };
   const chips = activeFilters(query, data.facets, (c) => formatMoney(c));
@@ -38,6 +38,7 @@ export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixe
         <h1>{title}</h1>
         {intro && <p className="listings-intro">{intro}</p>}
       </header>
+      {extra}
       <div className="listings-layout">
         <aside className="listings-side" aria-label="Refine results">
           {categories && categories.length > 0 && (
@@ -46,7 +47,7 @@ export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixe
               <CategoryLinks nodes={categories} hrefFor={(slug) => (fixed.includes("category") ? categoryPath(slug) : href(withChange(query, { category: slug })))} current={query.category} />
             </nav>
           )}
-          <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} />
+          <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} />
         </aside>
         <section className="listings-main" aria-labelledby="results-heading">
           <div className="listings-toolbar">
