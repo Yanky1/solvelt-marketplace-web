@@ -262,8 +262,14 @@ http.createServer(async (req, res) => {
     const list = notifs.get(u.id) ?? [];
     if (nm[1] === "preferences") {
       const p = prefs.get(u.id) ?? Object.fromEntries(CATEGORIES.map((c) => [c, true]));
-      if (req.method === "PUT") { for (const [k, v] of Object.entries(body.email ?? {})) if (CATEGORIES.includes(k)) p[k] = v === true; prefs.set(u.id, p); }
-      return send(res, 200, { email: p });
+      const ALWAYS = ["refunds", "cancellations", "delivery_problems", "returns", "booking_changes"];   // required mail (API O-21): false is a 422 and nothing changes
+      if (req.method === "PUT") {
+        const e = Object.entries(body.email ?? {});
+        if (e.some(([k, v]) => ALWAYS.includes(k) && v !== true) || e.some(([k]) => !CATEGORIES.includes(k) && !ALWAYS.includes(k))) return send(res, 422, { code: "validation_failed", message: "Required for your orders and account", fieldErrors: { email: "Required for your orders and account" } });
+        for (const [k, v] of e) if (CATEGORIES.includes(k)) p[k] = v === true;
+        prefs.set(u.id, p);
+      }
+      return send(res, 200, { email: p, alwaysOn: ALWAYS });
     }
     if (nm[1] === "read-all") { list.forEach((n) => (n.read = true)); return send(res, 204); }
     if (nm[2]) { const n = list.find((x) => x.id === nm[2]); if (!n) return send(res, 404, { code: "not_found" }); n.read = true; return send(res, 204); }

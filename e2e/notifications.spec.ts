@@ -39,10 +39,11 @@ test("the centre lists notifications, opens one (marks it read and goes to its o
 test("email settings: all on by default, saved per category", async ({ page }) => {
   const email = await signedIn(page, "nprefs");
   await page.goto("/account/notifications/preferences");
-  for (const label of ["Order updates", "Shipped", "Out for delivery", "Delivered", "Messages", "Bookings"]) await expect(page.getByLabel(new RegExp(`^${label}`))).toBeChecked();
+  for (const label of ["Order accepted", "Shipped", "Out for delivery", "Delivered", "Messages", "Booking reminders"]) await expect(page.getByLabel(new RegExp(`^${label}`))).toBeChecked();
   await page.getByLabel(/^Shipped/).uncheck();
-  await expect(page.getByLabel(/^Refunds/)).toHaveCount(0);                                  // not switchable (API M5-20)
-  await expect(page.getByText(/always email you about a refund/)).toBeVisible();
+  // the mandatory mail (O-21) is shown as always on and cannot be edited, and a save never carries it
+  for (const label of ["Refunds", "Cancellations", "Delivery problems", "Returns", "Booking changes"]) { const box = page.getByLabel(new RegExp(`^${label}`)); await expect(box).toBeChecked(); await expect(box).toBeDisabled(); }
+  await expect(page.getByText("Required for your orders and account.")).toBeVisible();
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Settings saved." })).toBeVisible();
   await expect(page.getByLabel(/^Shipped/)).not.toBeChecked();

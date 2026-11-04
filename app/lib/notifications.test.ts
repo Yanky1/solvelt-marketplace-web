@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NotificationItem } from "./api-client.server";
-import { CATEGORY_KEYS, notificationLink, notificationText } from "./notifications";
+import { CATEGORY_KEYS, REQUIRED_CATEGORIES, notificationLink, notificationText } from "./notifications";
 
 const n = (over: Partial<NotificationItem>): NotificationItem => ({ id: "n1", kind: "order_shipped", category: "shipped", orderNumber: "MP-1", sellerOrderNumber: null, parameters: { sellerName: "Challah Corner" }, createdAt: "2026-11-04T10:00:00Z", read: false, ...over });
 
@@ -30,5 +30,7 @@ describe("notification text and links", () => {
 
   it("lists the six switchable email categories of the API (refunds, cancellations and failed deliveries are always emailed)", () => {
     expect(CATEGORY_KEYS).toEqual(["order_updates", "shipped", "out_for_delivery", "delivered", "messages", "bookings"]);
+    expect(REQUIRED_CATEGORIES.map((c) => c.key)).toEqual(["refunds", "cancellations", "delivery_problems", "returns", "booking_changes"]);
+    expect(CATEGORY_KEYS.filter((k) => REQUIRED_CATEGORIES.some((r) => r.key === k))).toEqual([]);   // a save can never carry a required category
   });
 });
