@@ -77,14 +77,20 @@ export function attributeValues(listing: Pick<ListingDetail, "attributes">, key:
   return listing.attributes.filter((a) => a.key === key).map((a) => a.value);
 }
 
-const DELIVERY_LABELS: Record<string, string> = { ships: "Ships to you", local: "Local delivery", "at-home": "Comes to you", online: "Online" };
+const DELIVERY_LABELS: Record<string, string> = { ships: "Ships to you", local: "Local delivery", "at-home": "Comes to you", "at-seller": "At the provider", online: "Online" };
 export function deliveryLabels(listing: Pick<ListingDetail, "attributes">): string[] {
   return attributeValues(listing, "delivery").map((v) => DELIVERY_LABELS[v]).filter((v): v is string => !!v);
 }
 
+/** Where a service is offered, from the listing's `delivery` attribute (online, at-home, at-seller), in that order. */
+export function serviceLocations(listing: Pick<ListingDetail, "attributes">): ("online" | "at-home" | "at-seller")[] {
+  const have = attributeValues(listing, "delivery");
+  return (["online", "at-home", "at-seller"] as const).filter((l) => have.includes(l));
+}
+
 const KNOWN_LABELS: Record<string, string> = {
   "kosher-certification": "Kosher certification", "kosher-status": "Kosher status", "kosher-for-passover": "Kosher for Passover",
-  "service-area": "Service area", duration: "Duration", location: "Location",
+  "service-area": "Service area", duration: "Duration", location: "Location", "booking-mode": "Booking", "pricing-model": "Pricing",
 };
 /** Human label for an attribute key ("burn-time" gives "Burn time"). */
 export function attributeLabel(key: string): string {

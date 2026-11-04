@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isCatalogKey } from "./catalog.server";
-import { attributeLabel, deliveryLabels, parseListingDetail, pickVariant, specAttributes } from "./catalog";
+import { attributeLabel, deliveryLabels, parseListingDetail, pickVariant, serviceLocations, specAttributes } from "./catalog";
 
 const good = () => ({
   id: "11111111-1111-1111-1111-111111111111", slug: "classic-braided-challah", type: "product", title: "Classic Braided Challah", summary: "Fresh.", description: "A challah.\n\nTwo paragraphs.",
@@ -61,6 +61,12 @@ describe("attributes", () => {
   it("labels delivery options and leaves them out of the spec rows", () => {
     expect(deliveryLabels(l)).toEqual(["Ships to you", "Local delivery"]);
     expect(specAttributes(l).map((a) => a.key)).toEqual(["kosher-certification"]);
+  });
+  it("lists where a service is offered in a fixed order, and labels the provider's own place", () => {
+    const attrs = [["delivery", "at-seller"], ["delivery", "online"], ["delivery", "ships"], ["delivery", "at-home"]].map(([key, value]) => ({ key: key!, value: value! }));
+    expect(serviceLocations({ attributes: attrs })).toEqual(["online", "at-home", "at-seller"]);
+    expect(serviceLocations({ attributes: [] })).toEqual([]);
+    expect(deliveryLabels({ attributes: [{ key: "delivery", value: "at-seller" }] })).toEqual(["At the provider"]);
   });
   it("ignores delivery values it does not know", () => expect(deliveryLabels({ attributes: [{ key: "delivery", value: "teleport" }] })).toEqual([]));
   it("makes a readable label from a key", () => {
