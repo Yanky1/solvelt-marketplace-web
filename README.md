@@ -25,17 +25,22 @@ npm run build && npm start   # production SSR server on :3000
 | `TRUSTED_PROXIES` | no | Comma-separated IPs or CIDRs (IPv4 or IPv6) of your reverse proxies; `X-Forwarded-For` is trusted only from these. Invalid entries stop start-up. Keep server clocks in NTP sync (the API accepts the signed timestamp for a short window) |
 | `PORT` | no | Server port (default 3000) |
 
-The server refuses to start in production when a required value is missing or invalid (the error never prints secret values).
+The server refuses to start in production when a required value is missing or invalid (the error never prints secret values). Anything except `NODE_ENV=development` or `test` counts as production, including an unset `NODE_ENV`. Secrets must be random (at least 12 distinct characters, no placeholders such as `change-me`).
 
 ## Sessions and auth
 
-The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..51), including the API auth contract this site currently assumes.
+The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..54), including the API auth contract this site currently assumes.
+
+## Pages
+
+Home, sign-up, sign-in (password or passkey), verify and resend-verification, forgot and reset password, `/account` (overview, profile, addresses, passkeys), `/styleguide` (every component, `noindex`), error and 404 pages, `robots.txt`, `sitemap.xml` (placeholder). Catalog, search and image routes belong to the M2 worker (see `docs/DESIGN.md` W1-53).
 
 ## Test
 
 ```bash
-npm run lint && npm run typecheck && npm test      # lint, types, Vitest + Testing Library
-npm run build && npm run e2e                        # Playwright against the built server + mock API, axe in light/dark
+npm run lint && npm run typecheck && npm test      # lint, types, Vitest + Testing Library (all of app/**)
+npm run build && npm run e2e                        # Playwright against the built server + mock API, axe in light/dark, desktop and mobile
+CI=true npx playwright test --workers=1             # exactly what CI runs
 ```
 
 If your machine's Chromium does not match Playwright's expected build, set `PW_CHROMIUM_PATH` to a Chromium binary (CI installs its own).

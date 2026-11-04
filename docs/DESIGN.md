@@ -20,8 +20,8 @@ Ids `W1-nn`. Newest last.
 ## Theming
 Tokens are CSS custom properties in `app/styles/tokens.css` (from the Solvelt portal). Dark values apply under `@media (prefers-color-scheme: dark)` for `:root:not([data-theme='light'])` and for `:root[data-theme='dark']`. Bright images use `filter: brightness(var(--img-dim))`.
 
-## Components (slice 1)
-`app/components/ui`: Button, LinkButton, Input/Field (label, hint, error), Select, Checkbox, Card, Badge, Price, RatingStars, Skeleton, EmptyState, Breadcrumb, Pagination, Modal/Drawer, Toast. Shell: Logo, Header (search, nav, account, cart placeholder, mobile drawer), Footer (theme switch), skip link, error/404 pages. `/styleguide` (noindex) shows them all and is covered by axe in light and dark.
+## Components
+`app/components/ui`: Button, LinkButton, Input/Field (label, hint, error), Select, Checkbox, Card, Badge, Price, RatingStars, Skeleton, EmptyState, Breadcrumb, Pagination, Modal/Drawer, Toast. Shell: Logo, Header (search, nav, account, cart placeholder, mobile drawer), Footer (theme switch), skip link, error/404/403 pages. Auth and account: `AuthPage`, `ErrorSummary`, `FormMessage`, `AccountNav`, `AddressForm`, `CsrfField`. `/styleguide` (noindex) shows them all and is covered by axe in light and dark.
 
 ## Status
 Done: skeleton, tokens, shell, CI and E2E, BFF auth (sign-up/in/out, verify, forgot/reset, resend), profile, addresses, passkeys, three rounds of review fixes. Catalog pages, SEO helpers, sitemap content and the image resize route moved to the M2 worker (W1-53).
