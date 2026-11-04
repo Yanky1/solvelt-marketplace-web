@@ -2,6 +2,7 @@
 // Test-only hooks live under /__test and are not part of the contract.
 import { createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
+import { catalogResponse } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
@@ -435,6 +436,11 @@ http.createServer(async (req, res) => {
     const token = `tok_${randomBytes(24).toString("hex")}`;
     sessions.set(token, u.id);
     return send(res, 200, { token, user: { id: u.id, displayName: u.displayName } });
+  }
+
+  if (req.method === "GET" && path.startsWith("/api/v1/catalog/")) {
+    const c = catalogResponse(path, url);
+    if (c) return send(res, c.status, c.body, c.headers);
   }
 
   send(res, 404, { code: "not_found", message: "Not found" });

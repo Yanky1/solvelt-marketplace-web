@@ -10,4 +10,5 @@ export const PAGES = [
   "/reset-password",
   "/verify-email?sent=1",
   "/verify-email?token=abc",
+  "/p/classic-braided-challah",
 ];
