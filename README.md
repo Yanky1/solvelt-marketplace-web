@@ -21,6 +21,7 @@ npm run build && npm start   # production SSR server on :3000
 | `API_BASE_URL` | yes | Marketplace API base URL |
 | `SESSION_COOKIE_SECRET` | yes (>= 32 chars) | Signs session cookie and CSRF tokens |
 | `PUBLIC_ORIGIN` | yes (https) | Public origin: canonical URLs, sitemap, Origin checks |
+| `TRUSTED_PROXIES` | no | Comma-separated IPs/IPv4 CIDRs of your reverse proxies; `X-Forwarded-For` is trusted only from these |
 | `PORT` | no | Server port (default 3000) |
 
 The server refuses to start in production when a required value is missing or invalid (the error never prints secret values).

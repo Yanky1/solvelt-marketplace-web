@@ -2,6 +2,8 @@ export interface AppConfig {
   apiBaseUrl: string;
   sessionCookieSecret: string;
   publicOrigin: string;
+  /** IPs/IPv4 CIDRs of our own reverse proxies; X-Forwarded-For is honoured only from these. */
+  trustedProxies: string[];
   production: boolean;
 }
 
@@ -27,7 +29,8 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   }
 
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, production };
+  const trustedProxies = (env.TRUSTED_PROXIES ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, production };
 }
 
 let cached: AppConfig | undefined;

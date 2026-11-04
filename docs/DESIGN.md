@@ -25,3 +25,8 @@ Tokens are CSS custom properties in `app/styles/tokens.css` (from the Solvelt po
 
 ## Status
 Slice 1 (skeleton, tokens, shell, CI): done. Next: auth (BFF), then catalog pages, SEO, images.
+
+## Additions after slice 1
+| Id | Date | Decision | Why |
+|---|---|---|---|
+| W1-13 | 2026-11-04 | All API calls go through `apiFetch` (`app/lib/api.server.ts`). It sets the client IP header from the socket peer; `X-Forwarded-For` is honoured only when the peer matches `TRUSTED_PROXIES` (IPs or IPv4 CIDRs, comma separated), walking the chain right to left past trusted hops, ignoring malformed chains. A client-supplied copy of the header is never forwarded. Header name is the placeholder `X-Solvelt-Client-Ip` (`FORWARDED_CLIENT_IP_HEADER`) until M1 documents the real name and how the API authenticates it in its `docs/API.md`. Express `trust proxy` is off. | Orchestrator addition to brief item 4: the API rate-limits per end-user IP but all traffic arrives from this server. |
