@@ -2,7 +2,7 @@
 // Test-only hooks live under /__test and are not part of the contract.
 import { createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
-import { catalogResponse } from "./mock-catalog.mjs";
+import { catalogResponse, variantInfo } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
@@ -22,10 +22,32 @@ const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
 const unsubCalls = new Map(); // token -> number of calls (the specs run in parallel on one mock)
 const seen = []; // recorded request metadata (no bodies)
+const carts = new Map(); // owner key ("u:<userId>" or "g:<token>") -> [{id, variantId, quantity, seenPrice}]
+const cartKeyOf = (req) => { const t = bearer(req); const uid = t ? sessions.get(t) : undefined; if (t && !uid) return null; return uid ? `u:${uid}` : (req.headers["x-cart-token"] ? `g:${req.headers["x-cart-token"]}` : undefined); };
+function cartView(key, token) {
+  const lines = carts.get(key) ?? [];
+  const groups = new Map();
+  let items = 0, subtotal = 0, canCheckout = lines.length > 0;
+  for (const l of lines) {
+    const info = variantInfo(l.variantId);
+    const ok = !!info && info.variant.available;
+    if (!ok) canCheckout = false;
+    const unit = ok ? info.variant.priceCents : 0;
+    const gk = info ? `${info.listing.seller.id}:${info.listing.brand.id}` : "gone";
+    if (!groups.has(gk)) groups.set(gk, { sellerId: info?.listing.seller.id ?? "", sellerName: info?.listing.seller.displayName ?? "", brandId: info?.listing.brand.id ?? "", brandName: info?.listing.brand.name ?? "", subtotalCents: 0, lines: [] });
+    const g = groups.get(gk);
+    g.lines.push({ id: l.id, listingId: info?.listing.id ?? "", variantId: l.variantId, slug: info?.listing.slug ?? "", title: info?.listing.title ?? "Unavailable item", variantName: info?.variant.name ?? "", imageId: null, quantity: l.quantity, unitPriceCents: unit, compareAtCents: ok ? info.variant.compareAtCents : null, lineTotalCents: unit * l.quantity, status: ok ? "ok" : "unavailable", previousUnitPriceCents: ok && unit !== l.seenPrice ? l.seenPrice : null });
+    g.subtotalCents += unit * l.quantity;
+    if (ok) { items += l.quantity; subtotal += unit * l.quantity; }
+  }
+  return { currency: "USD", groups: [...groups.values()], itemCount: items, subtotalCents: subtotal, canCheckout, ...(token ? { cartToken: token } : {}) };
+}
 
 // Test variants are selected by the end-user IP the web server forwards (X-Solvelt-Client-Ip), so parallel tests never interfere.
 const ipOf = (req) => String(req.headers["x-solvelt-client-ip"] ?? "");
 const IP = { ANON_RPID_EVIL: "198.51.100.61", ANON_BOTH_DIFFER: "198.51.100.62", ANON_BOTH_DIFFER_REV: "198.51.100.63", ANON_RP_ONLY_EVIL: "198.51.100.64", ANON_BOTH_SAME: "198.51.100.65", REG_BOTH_DIFFER: "198.51.100.66", REG_BOTH_SAME: "198.51.100.67", REG_LENIENT: "198.51.100.68", REG_5XX: "198.51.100.69", SIGNIN_LENIENT: "198.51.100.70" };
+
+const gidLine = () => `ln_${randomBytes(6).toString("hex")}`;
 
 const send = (res, status, body, extra = {}) => {
   res.writeHead(status, { "Content-Type": "application/json", ...extra });
@@ -95,7 +117,7 @@ http.createServer(async (req, res) => {
       return send(res, 200, { id: n.id });
     }
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { carts.clear(); notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -370,6 +392,44 @@ http.createServer(async (req, res) => {
     const token = `tok_${randomBytes(24).toString("hex")}`;
     sessions.set(token, u.id);
     return send(res, 200, { token, user: { id: u.id, displayName: u.displayName } });
+  }
+
+  if (path === "/api/v1/cart" && req.method === "GET") { const key = cartKeyOf(req); if (key === null) return send(res, 401, { code: "unauthorized" }); return send(res, 200, cartView(key ?? "none")); }
+  if (path === "/api/v1/cart/lines" && req.method === "POST") {
+    let key = cartKeyOf(req);
+    if (key === null) return send(res, 401, { code: "unauthorized" });
+    let token;
+    if (key === undefined || (key.startsWith("g:") && !carts.has(key))) { token = `cart_${randomBytes(24).toString("hex")}`; key = `g:${token}`; carts.set(key, []); }
+    const info = variantInfo(String(body.variantId));
+    if (!info) return send(res, 404, { code: "not_found", message: "Not found" });
+    if (!info.variant.available) return send(res, 422, { code: "not_purchasable", message: "Not available" });
+    const q = Number(body.quantity);
+    if (!Number.isInteger(q) || q < 1 || q > 20) return send(res, 422, { code: "quantity_limit", message: "Too many" });
+    const lines = carts.get(key) ?? [];
+    const have = lines.find((l) => l.variantId === body.variantId);
+    if (!have && lines.length >= 50) return send(res, 422, { code: "cart_full", message: "Full" });
+    if (have) have.quantity = Math.min(20, have.quantity + q); else lines.push({ id: gidLine(), variantId: body.variantId, quantity: q, seenPrice: info.variant.priceCents });
+    carts.set(key, lines);
+    return send(res, 200, cartView(key, token));
+  }
+  const cl = /^\/api\/v1\/cart\/lines\/([A-Za-z0-9_-]+)$/.exec(path);
+  if (cl && (req.method === "PATCH" || req.method === "DELETE")) {
+    const key = cartKeyOf(req);
+    const lines = key ? carts.get(key) : undefined;
+    const line = lines?.find((l) => l.id === cl[1]);
+    if (!key || !lines || !line) return send(res, key === null ? 401 : 404, { code: key === null ? "unauthorized" : "not_found" });
+    if (req.method === "DELETE") carts.set(key, lines.filter((l) => l !== line));
+    else { const q = Number(body.quantity); if (!Number.isInteger(q) || q < 1 || q > 20) return send(res, 422, { code: "quantity_limit" }); line.quantity = q; const info = variantInfo(line.variantId); if (info) line.seenPrice = info.variant.priceCents; }
+    return send(res, 200, cartView(key));
+  }
+  if (path === "/api/v1/cart/merge" && req.method === "POST") {
+    const key = cartKeyOf(req);
+    if (!key || key.startsWith("g:")) return send(res, 401, { code: "unauthorized" });
+    const gk = `g:${body.guestToken}`;
+    const mine = carts.get(key) ?? [];
+    for (const l of carts.get(gk) ?? []) { const h = mine.find((x) => x.variantId === l.variantId); if (h) h.quantity = Math.min(20, h.quantity + l.quantity); else mine.push(l); }
+    carts.delete(gk); carts.set(key, mine);
+    return send(res, 200, cartView(key));
   }
 
   if (req.method === "GET" && path.startsWith("/api/v1/catalog/")) {

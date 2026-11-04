@@ -39,6 +39,7 @@ function ThemeSwitch({ theme }: { theme: ThemePref }) {
 export function Header() {
   const [open, setOpen] = useState(false);
   const user = useRootData()?.user;
+  const cartCount = useRootData()?.cartCount ?? 0;
   return (
     <header className="topbar">
       <div className="container topbar-inner">
@@ -55,7 +56,7 @@ export function Header() {
         {user
           ? <Link to="/account" className="btn btn-ghost" aria-label={`Account of ${user.displayName}`}>{user.displayName.split(" ")[0]}</Link>
           : <Link to="/sign-in" className="btn btn-ghost">Sign in</Link>}
-        <Link to="/cart" className="btn btn-secondary" aria-label="Cart, 0 items">Cart <span aria-hidden="true">0</span></Link>
+        <Link to="/cart" className="btn btn-secondary" aria-label={`Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}>Cart <span aria-hidden="true" data-testid="cart-count">{cartCount}</span></Link>
       </div>
       <Modal open={open} onClose={() => setOpen(false)} title="Menu" variant="drawer">
         <nav aria-label="Mobile" className="stack" style={{ marginTop: "var(--s2)" }}>

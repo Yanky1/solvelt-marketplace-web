@@ -27,6 +27,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       // Theme is a cookie, so SSR can emit data-theme and there is no flash of the wrong theme.
       theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref,
       csrf: visitor.csrf,
+      // The item count the cart last reported (kept in the sealed session cookie, so no API call per page); never the guest cart token.
+      cartCount: visitor.session.cn ?? 0,
       // Only what the header needs; never the token, email or addresses.
       // Opaque id (not secret) lets the browser notice a different or vanished user and clear user-scoped storage.
       user: user ? { id: user.id, displayName: user.displayName } : null,

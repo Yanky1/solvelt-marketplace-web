@@ -90,3 +90,6 @@ export function catalogResponse(path, url) {
   if (path === "/api/v1/catalog/brands") return ok(brands.map((b) => ({ id: gid(`b:${b.slug}`), slug: b.slug, name: b.name, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] }, logoImageId: null, listingCount: list.filter((l) => l.brand.slug === b.slug).length })).filter((b) => b.listingCount > 0));
   return null;
 }
+
+/** Test helper for the cart mock: the listing and variant behind a variant id (or null). */
+export const variantInfo = (id) => { for (const l of list) for (const v of l.variants) if (v.id === id) return { listing: l, variant: v }; return null; };
