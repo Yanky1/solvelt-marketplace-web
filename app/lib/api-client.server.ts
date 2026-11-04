@@ -28,10 +28,10 @@ function pid(id: string): string {
   return encodeURIComponent(id);
 }
 
-async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string): Promise<T> {
+async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string, headers?: Record<string, string>): Promise<T> {
   let res: Response;
   try {
-    res = await apiFetch(getConfig(), ctx, path, { ...(body !== undefined ? { body } : {}), ...(method ? { method } : {}), signal: AbortSignal.timeout(8000) });
+    res = await apiFetch(getConfig(), ctx, path, { ...(body !== undefined ? { body } : {}), ...(method ? { method } : {}), ...(headers ? { headers } : {}), signal: AbortSignal.timeout(8000) });
   } catch {
     throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again.");
   }
@@ -47,7 +47,52 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
   return json as T;
 }
 
+// ---- buyer orders (M5; API repo docs/API.md "Buyer orders") ----
+export interface OrderListGroup { sellerOrderNumber: string | null; sellerName: string; brandName: string; status: string; itemCount: number; firstItem: string | null }
+export interface OrderListItem { number: string; createdAt: string; currency: string; totalCents: number; refundedCents: number; groups: OrderListGroup[] }
+export interface OrderList { orders: OrderListItem[]; next: { before: string; beforeId: string } | null }
+export interface OrderLineView { lineId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number; shippedQty: number; cancelledQty: number; returnedQty: number; refundedQty: number; returnableQty: number }
+export interface TimelineEvent { status: string | null; detail: string | null; location: string | null; at: string | null }
+export interface ShipmentView {
+  id: string; method: string; carrier: string | null; service: string | null; trackingNumber: string | null; trackingUrl: string | null; shippedAt: string | null; deliveredAt: string | null; voided: boolean;
+  trackingStatus: string | null; trackingStatusDetail: string | null; eta: string | null; etaWindowStart: string | null; etaWindowEnd: string | null; driverFirstName: string | null; placement: string | null;
+  timeline: TimelineEvent[] | null; position: { lat: number; lng: number; at: string } | null; proofCount: number; lines: { lineId: string; quantity: number }[];
+}
+export interface ReturnView {
+  returnId: string; status: string; reason: string; decisionNote: string | null; createdAt: string; lines: { lineId: string; quantity: number }[];
+  label: { url: string; expiresAt: string; carrier: string | null; trackingNumber: string | null; trackingUrl: string | null } | null; canRefreshLabel: boolean;
+}
+export interface RefundView { amountCents: number; shippingCents: number; status: string; reason: string; createdAt: string }
+export interface OrderGroupView {
+  sellerOrderNumber: string | null; sellerName: string; brandName: string; status: string; deliveryKind: string; shippingSpeed: string | null; localDate: string | null;
+  itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; refundedCents: number; oversold: boolean;
+  acceptedAt: string | null; shippedAt: string | null; deliveredAt: string | null; deliveredBy: string | null; cancelledAt: string | null;
+  deliveryAttemptsFailed: number; lastAttemptFailedReason: string | null; buyerConfirmedAt: string | null;
+  canCancel: boolean; canConfirmDelivery: boolean; canReturn: boolean;
+  cancelRequest: { status: string; reason: string; decisionNote: string | null; createdAt: string } | null;
+  lines: OrderLineView[]; shipments: ShipmentView[]; returns: ReturnView[]; refunds: RefundView[];
+}
+export interface OrderDetail {
+  number: string; status: string; createdAt: string; paidAt: string | null; currency: string; itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; refundedCents: number;
+  shipTo: { name: string; line1: string; line2: string | null; city: string; region: string | null; postalCode: string; country: string }; giftMessage: string | null; groups: OrderGroupView[];
+}
+export interface ReturnInput { sellerOrderNumber: string; reason: string; comment: string; lines: { lineId: string; quantity: number }[] }
+
+/** Raw GET for binary answers (proof images, message files): the caller streams it to the browser with its own safe headers. */
+async function raw(ctx: ApiRequestContext, path: string): Promise<Response> {
+  try { return await apiFetch(getConfig(), ctx, path, { signal: AbortSignal.timeout(20000) }); } catch { throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again."); }
+}
+
 export const api = {
+  orders: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
+    call<OrderList>(ctx, `/api/v1/orders${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
+  order: (ctx: ApiRequestContext, number: string) => call<OrderDetail>(ctx, `/api/v1/orders/${pid(number)}`),
+  requestCancel: (ctx: ApiRequestContext, number: string, b: { sellerOrderNumber: string; reason: string; note: string }) => call<{ requestId: string; status: string }>(ctx, `/api/v1/orders/${pid(number)}/cancel-requests`, b),
+  requestReturn: (ctx: ApiRequestContext, number: string, b: ReturnInput, idempotencyKey: string) =>
+    call<{ returnId: string; status: string }>(ctx, `/api/v1/orders/${pid(number)}/return-requests`, b, undefined, { "Idempotency-Key": idempotencyKey }),
+  confirmDelivery: (ctx: ApiRequestContext, number: string, sellerOrderNumber: string) => call<{ status: string }>(ctx, `/api/v1/orders/${pid(number)}/delivery-confirmations`, { sellerOrderNumber }),
+  refreshReturnLabel: (ctx: ApiRequestContext, number: string, returnId: string) => call<{ labelUrl: string; labelUrlExpiresAt: string }>(ctx, `/api/v1/orders/${pid(number)}/returns/${pid(returnId)}/label-link`, {}),
+  proofImage: (ctx: ApiRequestContext, number: string, shipmentId: string, index: number) => raw(ctx, `/api/v1/orders/${pid(number)}/shipments/${pid(shipmentId)}/proof/${Math.trunc(index)}`),
   signUp: (ctx: ApiRequestContext, b: { email: string; password: string; displayName: string }) => call<void>(ctx, "/api/v1/auth/sign-up", b),
   resendVerification: (ctx: ApiRequestContext, email: string) => call<void>(ctx, "/api/v1/auth/resend-verification", { email }),
   /** O-16: verifying also needs the password chosen at sign-up (a wrong one answers the same generic 400 and leaves the link valid). */

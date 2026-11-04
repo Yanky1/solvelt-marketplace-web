@@ -14,6 +14,7 @@ const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const authAt = new Map(); // session token -> ms of the last successful step-up (the API-side O-11 clock)
+const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
 const seen = []; // recorded request metadata (no bodies)
 
@@ -57,7 +58,28 @@ http.createServer(async (req, res) => {
       return send(res, 200, [...sessions].filter(([, id]) => !email || id === uid).map(([t]) => t));
     }
     if (path === "/__test/seen") return send(res, 200, seen);
-    if (path === "/__test/reset") { addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/seed-order") {
+      // Orders as the API reports them (API docs "Buyer orders"). status: new | shipped | delivered.
+      const email = (url.searchParams.get("email") ?? "").toLowerCase();
+      const status = url.searchParams.get("status") ?? "new";
+      const u = users.get(email);
+      if (!u) return send(res, 404, { code: "not_found" });
+      const number = `MP-E2E-${randomBytes(4).toString("hex").toUpperCase()}`;
+      const shipped = status !== "new";
+      orders.set(number, { userId: u.id, createdAt: new Date().toISOString(), group: {
+        sellerOrderNumber: `SO-${randomBytes(3).toString("hex").toUpperCase()}`, sellerName: "Challah Corner", brandName: "Challah Corner", status, deliveryKind: "carrier", shippingSpeed: "standard", localDate: null,
+        itemsCents: 1300, shippingCents: 500, taxCents: 100, totalCents: 1900, refundedCents: 0, oversold: false, acceptedAt: null, shippedAt: shipped ? new Date().toISOString() : null,
+        deliveredAt: status === "delivered" ? new Date().toISOString() : null, deliveredBy: null, cancelledAt: null, deliveryAttemptsFailed: 0, lastAttemptFailedReason: null, buyerConfirmedAt: null,
+        cancelRequest: null, returns: [], refunds: [],
+        lines: [{ lineId: `${number}-1`, title: "Classic challah", variantName: "Large", quantity: 2, unitPriceCents: 650, lineTotalCents: 1300, taxCents: 100, shippedQty: shipped ? 2 : 0, cancelledQty: 0, returnedQty: 0, refundedQty: 0, returnableQty: shipped ? 2 : 0 }],
+        shipments: shipped ? [{ id: `sh-${number}`, method: "carrier", carrier: "USPS", service: "Priority", trackingNumber: "9400111", trackingUrl: "https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111", shippedAt: new Date().toISOString(),
+          deliveredAt: status === "delivered" ? new Date().toISOString() : null, voided: false, trackingStatus: status === "delivered" ? "delivered" : "in_transit", trackingStatusDetail: status === "delivered" ? "Delivered" : "Departed facility",
+          eta: null, etaWindowStart: null, etaWindowEnd: null, driverFirstName: null, placement: status === "delivered" ? "front_door" : null,
+          timeline: [{ status: "in_transit", detail: "Departed facility", location: "Brooklyn, NY", at: new Date().toISOString() }], position: null, proofCount: status === "delivered" ? 1 : 0, lines: [{ lineId: `${number}-1`, quantity: 2 }] }] : [],
+      } });
+      return send(res, 200, { number, sellerOrderNumber: orders.get(number).group.sellerOrderNumber });
+    }
+    if (path === "/__test/reset") { orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -147,6 +169,46 @@ http.createServer(async (req, res) => {
       u.displayName = String(b.displayName).trim(); u.phone = String(b.phone ?? "");
     }
     return send(res, 200, { id: u.id, displayName: u.displayName, email: u.email, phone: u.phone ?? "" });
+  }
+
+  // ---- buyer orders (another buyer's order is a 404) ----
+  const om = /^\/api\/v1\/orders(?:\/([^/]+)(?:\/(cancel-requests|return-requests|delivery-confirmations)|\/returns\/([^/]+)\/label-link|\/shipments\/([^/]+)\/proof\/(\d+))?)?$/.exec(path);
+  if (om) {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const view = (number, o) => {
+      const g = o.group;
+      const canCancel = ["new", "accepted"].includes(g.status) && !g.cancelRequest;
+      const canConfirm = g.status === "shipped" && !g.buyerConfirmedAt;
+      const canReturn = ["shipped", "delivered"].includes(g.status) && g.lines.some((l) => l.returnableQty > 0);
+      return { number, status: "placed", createdAt: o.createdAt, paidAt: o.createdAt, currency: "USD", itemsCents: 1300, shippingCents: 500, taxCents: 100, totalCents: 1900, refundedCents: 0,
+        shipTo: { name: "Dana Levi", line1: "1 Main St", line2: null, city: "Brooklyn", region: "NY", postalCode: "11201", country: "US" }, giftMessage: null,
+        groups: [{ ...g, canCancel, canConfirmDelivery: canConfirm, canReturn }] };
+    };
+    const number = om[1];
+    if (!number) {
+      const mine = [...orders.entries()].filter(([, o]) => o.userId === u.id);
+      return send(res, 200, { orders: mine.map(([n, o]) => ({ number: n, createdAt: o.createdAt, currency: "USD", totalCents: 1900, refundedCents: 0, groups: [{ sellerOrderNumber: o.group.sellerOrderNumber, sellerName: o.group.sellerName, brandName: o.group.brandName, status: o.group.status, itemCount: 2, firstItem: "Classic challah" }] })), next: null });
+    }
+    const o = orders.get(number);
+    if (!o || o.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found" });
+    seen.push({ method: req.method, path, idem: req.headers["idempotency-key"] ?? null });
+    if (!om[2] && !om[3] && !om[4]) return send(res, 200, view(number, o));
+    if (om[4] !== undefined) {
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+      res.writeHead(200, { "Content-Type": "image/png", "Content-Length": png.length }); return res.end(png);
+    }
+    const g = o.group;
+    if (om[2] === "cancel-requests") { g.cancelRequest = { status: "requested", reason: String(body.reason ?? ""), decisionNote: null, createdAt: new Date().toISOString() }; return send(res, 202, { requestId: "CR-1", status: "pending" }); }
+    if (om[2] === "delivery-confirmations") { g.buyerConfirmedAt = new Date().toISOString(); return send(res, 202, { status: "confirming" }); }
+    if (om[2] === "return-requests") {
+      const lines = Array.isArray(body.lines) ? body.lines : [];
+      for (const l of lines) { const line = g.lines.find((x) => x.lineId === l.lineId); if (!line || l.quantity > line.returnableQty) return send(res, 422, { code: "quantity_exceeded", message: "Too many", errors: { lines: "Too many" } }); }
+      for (const l of lines) g.lines.find((x) => x.lineId === l.lineId).returnableQty -= l.quantity;
+      g.returns.push({ returnId: `RT-${g.returns.length + 1}`, status: "approved", reason: body.reason, decisionNote: null, createdAt: new Date().toISOString(), lines, label: null, canRefreshLabel: true });
+      return send(res, 202, { returnId: `RT-${g.returns.length}`, status: "pending" });
+    }
+    if (om[3]) { const r = g.returns.find((x) => x.returnId === om[3]); if (!r) return send(res, 404, { code: "not_found" }); r.label = { url: "https://portal.example/api/v1/shipping/public/labels/L1?exp=9999999999&sig=x", expiresAt: new Date(Date.now() + 86400000).toISOString(), carrier: "USPS", trackingNumber: "RT1", trackingUrl: null }; return send(res, 200, { labelUrl: r.label.url, labelUrlExpiresAt: r.label.expiresAt }); }
   }
 
   // ---- account: addresses (another user's address is a 404, never 403) ----

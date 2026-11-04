@@ -43,6 +43,7 @@ for (const [form, device] of [["desktop", devices["Desktop Chrome"]], ["mobile",
     await page.waitForURL(/verify-email/);
     const outbox = await (await fetch(`${MOCK}/__test/outbox`)).json();
     await page.goto(`${BASE}/verify-email?token=${outbox.filter((m) => m.email === email).at(-1).token}`);
+    await page.getByLabel("Password").fill("correct horse battery staple");   // O-16: verifying needs the password chosen at sign-up
     await page.getByRole("button", { name: "Verify email" }).click();
     await page.getByRole("heading", { name: "Email verified" }).waitFor();
     await page.goto(`${BASE}/sign-in`);
@@ -62,6 +63,16 @@ for (const [form, device] of [["desktop", devices["Desktop Chrome"]], ["mobile",
     await page.waitForURL(/\/account\/addresses$/);
     for (const [name, path] of [["addresses", "/account/addresses"], ["profile", "/account/profile"], ["passkeys", "/account/passkeys"]]) {
       await page.goto(BASE + path, { waitUntil: "networkidle" });
+      await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
+    }
+    // Orders (M5): seeded through the mock's test hook; the detail page with its forms open.
+    const seeded = {};
+    for (const st of ["delivered", "shipped", "new"]) seeded[st] = await (await fetch(`${MOCK}/__test/seed-order?email=${encodeURIComponent(email)}&status=${st}`)).json();
+    await page.goto(`${BASE}/account/orders`, { waitUntil: "networkidle" });
+    await page.screenshot({ path: `docs/screenshots/orders-${form}-${theme}.png`, fullPage: true });
+    for (const [st, name] of [["delivered", "order-delivered"], ["shipped", "order-shipped"], ["new", "order-new"]]) {
+      await page.goto(`${BASE}/account/orders/${seeded[st].number}`, { waitUntil: "networkidle" });
+      for (const d of await page.locator("details").all()) await d.evaluate((el) => { el.open = true; });
       await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
     }
     await context.close();

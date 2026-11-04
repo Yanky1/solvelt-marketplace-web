@@ -25,6 +25,8 @@ export interface ApiCallOptions {
   method?: string;
   body?: unknown;
   signal?: AbortSignal;
+  /** Extra request headers (for example an idempotency key). Never a client-forwarding or Authorization header: those are set here only. */
+  headers?: Record<string, string>;
   /** Unix-seconds clock, injectable for tests. */
   now?: () => number;
 }
@@ -32,6 +34,7 @@ export interface ApiCallOptions {
 /** The ONLY function that talks to the marketplace API. Client-supplied forwarding headers are never passed through. */
 export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxies" | "webForwardingKey" | "production">, ctx: ApiRequestContext, path: string, opts: ApiCallOptions = {}): Promise<Response> {
   const headers = new Headers({ Accept: "application/json" });
+  for (const [k, v] of Object.entries(opts.headers ?? {})) if (/^idempotency-key$/i.test(k)) headers.set(k, v);   // an allow-list: nothing else can be injected
   if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (ctx.sessionToken) headers.set("Authorization", `Bearer ${ctx.sessionToken}`);
   if (!ctx.socketAddress && !cfg.production) {
