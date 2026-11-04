@@ -36,7 +36,7 @@ describe("parseListingQuery", () => {
   });
 
   it("cleans the search text: no control characters, one space between words, at most 100 whole characters", () => {
-    expect(cleanQuery("  a\u0000b\t\tc  d  ")).toBe("a b c d");
+    expect(cleanQuery("  a\u0000b\t\tc \u2028d  ")).toBe("a b c d");
     expect(cleanQuery("😀".repeat(150))).toBe("😀".repeat(100));      // never cut inside a surrogate pair
     expect(parse("q=" + encodeURIComponent("x".repeat(300))).q).toHaveLength(100);
   });
