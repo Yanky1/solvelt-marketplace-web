@@ -8,6 +8,7 @@ import { VariantPicker } from "./VariantPicker";
 import { AddToCart, CART_ACTION } from "./AddToCart";
 import { BOOKING_ACTION, BookingSlot } from "./BookingSlot";
 import { JsonLd } from "./JsonLd";
+import { Logo } from "./Logo";
 
 const withRouter = (ui: React.ReactElement, path = "/") => render(<RouterProvider router={createMemoryRouter([{ path: "*", element: ui }], { initialEntries: [path] })} />);
 
@@ -139,6 +140,18 @@ describe("BookingSlot (M4's boundary)", () => {
       form = screen.getByTestId("booking-slot") as HTMLFormElement;
       expect(form.querySelector("[name=location]")).toBeNull();
     } finally { Object.assign(BOOKING_ACTION, was); }
+  });
+});
+
+describe("Logo", () => {
+  it("has an accessible name that contains the words the eye reads (WCAG 2.5.3), plus 'home'", () => {
+    withRouter(<Logo />);
+    const link = screen.getByRole("link", { name: "Solvelt Market, home" });
+    expect(link).toHaveAttribute("href", "/");
+    expect(link).not.toHaveAttribute("aria-label");                                      // an aria-label would replace the visible words
+    const visible = Array.from(link.querySelectorAll(".logo-word")).map((e) => (e.cloneNode(true) as HTMLElement)).map((e) => { e.querySelector(".sr-only")?.remove(); return e.textContent; }).join("");
+    expect(visible.replace(/\s+/g, " ").trim()).toBe("Solvelt Market");
+    expect(link.textContent!.replace(/\s+/g, " ")).toContain("Solvelt Market, home");
   });
 });
 

@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { CategoryLinks, FacetForm, SortForm } from "./Facets";
 import { ListingCard } from "./ListingCard";
 import { Breadcrumb, EmptyState, Pagination, formatMoney, type Crumb } from "./ui/display";
-import { activeFilters, toSearchParams, withChange, type CategoryNode, type ListingPageData, type ListingQuery } from "~/lib/search";
+import { activeFilters, hasFilters, toSearchParams, withChange, type CategoryNode, type ListingPageData, type ListingQuery } from "~/lib/search";
 import { categoryPath } from "~/lib/urls";
 
 type Fixed = "category" | "brand" | "seller";
@@ -47,7 +47,15 @@ export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixe
               <CategoryLinks nodes={categories} hrefFor={(slug) => (fixed.includes("category") ? categoryPath(slug) : href(withChange(query, { category: slug })))} current={query.category} />
             </nav>
           )}
-          <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} />
+          {/* The same form twice, so the layout needs no script: a closed <details> on a phone, an open panel on a wide screen. CSS shows exactly one (the other is not in the accessibility tree). */}
+          <details className="facets facets-mobile">
+            <summary className="facets-summary">Filters{hasFilters(query, fixed) ? " (active)" : ""}</summary>
+            <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} label="Filter results (menu)" />
+          </details>
+          <div className="facets facets-desktop">
+            <h2 className="facets-title">Filters</h2>
+            <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} />
+          </div>
         </aside>
         <section className="listings-main" aria-labelledby="results-heading">
           <div className="listings-toolbar">

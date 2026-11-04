@@ -5,7 +5,7 @@ test("results fit a phone: filters are folded away until asked for, no sideways 
   await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
-  const facets = page.locator("details.facets");
+  const facets = page.locator("details.facets-mobile");
   await expect(facets).not.toHaveAttribute("open", "");
   await expect(page.getByRole("checkbox", { name: /In stock only/ })).toBeHidden();
   await facets.locator("summary").click();

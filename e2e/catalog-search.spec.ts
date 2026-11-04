@@ -6,8 +6,8 @@ const cards = (page: P) => page.locator(".listing-grid > li");
 /** Filters are folded away on a phone (open on a wide screen): open them when they are closed. */
 async function openFilters(page: P) {
   await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true");      // on a phone the script folds the panel away: wait for that before looking
-  const d = page.locator("details.facets");
-  if ((await d.getAttribute("open")) === null) await d.locator("summary").click();
+  const d = page.locator("details.facets-mobile");                                     // only shown on a phone; on a wide screen the panel is already there
+  if ((await d.isVisible()) && (await d.getAttribute("open")) === null) await d.locator("summary").click();
 }
 
 test.describe("search", () => {
@@ -98,6 +98,14 @@ test.describe("search", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Results for “חלה מתוקה”");
   });
 
+  test("the phone filter menu is closed in the page itself, so nothing jumps after it loads (layout shift 0.34 before this)", async ({ request }) => {
+    const html = await (await request.get("/c/gifts")).text();
+    const menu = /<details class="facets facets-mobile"[^>]*>/.exec(html)?.[0];
+    expect(menu).toBeTruthy();
+    expect(menu).not.toMatch(/\bopen\b/);                                                 // not opened in the markup and then closed by a script
+    expect(html).toContain('class="facets facets-desktop"');                              // the wide-screen panel is in the markup too: CSS shows one of the two
+  });
+
   test("hostile addresses never break the page", async ({ page }) => {
     for (const qs of ["priceMin=-1&priceMax=abc", "page=99999999999", "kosher=" + "x,".repeat(500), "attr=a&attr=:b&attr=%00:%00", "sort=%00", "type[]=product", "brand=../../api/admin"]) {
       const res = await page.goto("/search?" + qs);
@@ -109,8 +117,10 @@ test.describe("search", () => {
     const ctx = await browser.newContext({ javaScriptEnabled: false, baseURL });
     const page = await ctx.newPage();
     await page.goto("/search?q=challah");
+    const menu = page.locator("details.facets-mobile");                                      // on a phone the menu starts closed; opening a <details> needs no script
+    if (await menu.isVisible()) await menu.locator("summary").click();
     await page.getByRole("checkbox", { name: /In stock only/ }).check();
-    await page.getByRole("form", { name: "Filter results" }).getByRole("button", { name: "Apply filters" }).click();
+    await page.getByRole("form", { name: /Filter results/ }).getByRole("button", { name: "Apply filters" }).click();
     await expect(page).toHaveURL(/available=true/);
     await expect(page.locator("#results-heading")).toHaveText("1 result");
     await page.getByRole("combobox", { name: /Sort by/ }).selectOption("title");

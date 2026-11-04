@@ -5,8 +5,8 @@ const MAZEL = gid("s:mazel");
 type P = import("@playwright/test").Page;
 async function openFilters(page: P) {
   await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true");
-  const d = page.locator("details.facets");
-  if ((await d.getAttribute("open")) === null) await d.locator("summary").click();
+  const d = page.locator("details.facets-mobile");                                     // only shown on a phone; on a wide screen the panel is already there
+  if ((await d.isVisible()) && (await d.getAttribute("open")) === null) await d.locator("summary").click();
 }
 
 test.describe("brand page", () => {
