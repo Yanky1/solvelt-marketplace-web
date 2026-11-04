@@ -1,6 +1,7 @@
 // Production Node server: serves the React Router SSR build.
 import { randomBytes } from "node:crypto";
 import { createRequestHandler } from "@react-router/express";
+import compression from "compression";
 import express from "express";
 
 // Importing the build runs start-up config validation (fails fast in production).
@@ -39,7 +40,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
+// Compression is for the built static files only (JavaScript and CSS under /assets): they hold no secret and nothing a visitor typed. HTML and data responses are NOT
+// compressed: they can carry a CSRF token next to reflected text (a search box value), which is the shape the BREACH attack needs (decision W2-21).
+app.use("/assets", compression(), express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
 app.use(express.static("build/client", { maxAge: "1h" }));
 app.use(createRequestHandler({
   build,

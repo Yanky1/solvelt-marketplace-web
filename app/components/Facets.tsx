@@ -1,28 +1,23 @@
-import { useEffect, useRef } from "react";
 import { Form, Link, useSubmit } from "react-router";
 import { Button } from "./ui/form";
 import { formatMoney } from "./ui/display";
-import { DELIVERY_LABELS, SORTS, SORT_LABELS, effectiveSort, hasFilters, type CategoryNode, type Facets as FacetData, type ListingQuery } from "~/lib/search";
+import { DELIVERY_LABELS, SORTS, SORT_LABELS, effectiveSort, type CategoryNode, type Facets as FacetData, type ListingQuery } from "~/lib/search";
 
 const dollars = (cents: number | undefined) => (cents === undefined ? "" : (cents / 100).toFixed(cents % 100 === 0 ? 0 : 2));
 
 /**
  * The filter form: a plain GET form (it works without JavaScript, and every choice is an address you can share). Checkboxes and radios apply as soon as they
- * change; the price fields and the button apply on submit. On a narrow screen it sits in a closed `<details>`; on a wide one it is simply open.
+ * change; the price fields and the button apply on submit. The page renders it twice (see ListingsPage): a plain panel for wide screens and a closed `<details>` for phones; CSS shows one, so nothing moves after the page loads.
  */
-export function FacetForm({ action, query, facets, fixedHidden, hideBrand = false }: { action: string; query: ListingQuery; facets: FacetData | null; fixedHidden: Record<string, string>; hideBrand?: boolean }) {
+export function FacetForm({ action, query, facets, fixedHidden, hideBrand = false, label = "Filter results" }: { action: string; query: ListingQuery; facets: FacetData | null; fixedHidden: Record<string, string>; hideBrand?: boolean; label?: string }) {
   const submit = useSubmit();
-  const details = useRef<HTMLDetailsElement>(null);
-  useEffect(() => { if (window.matchMedia?.("(max-width: 899px)").matches && details.current) details.current.open = false; }, []);   // closed on a phone, open everywhere else (and without JS)
   const kosher = facets?.attributes["kosher-certification"] ?? [];
   const delivery = (facets?.attributes["delivery"] ?? []).filter((d) => d.value in DELIVERY_LABELS);
   const brands = hideBrand ? [] : (facets?.brands ?? []);
   const types = facets?.types ?? [];
   const onChange = (e: React.ChangeEvent<HTMLFormElement>) => { const t = e.target as unknown as HTMLInputElement; if (t.type === "checkbox" || t.type === "radio") submit(e.currentTarget, { preventScrollReset: true }); };
   return (
-    <details className="facets" ref={details} open>
-      <summary className="facets-summary">Filters{hasFilters(query) ? " (active)" : ""}</summary>
-      <Form method="get" action={action} onChange={onChange} className="facets-form" aria-label="Filter results">
+    <Form method="get" action={action} onChange={onChange} className="facets-form" aria-label={label}>
         {Object.entries(fixedHidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         {query.q && <input type="hidden" name="q" value={query.q} />}
         {query.sort && <input type="hidden" name="sort" value={query.sort} />}
@@ -67,7 +62,6 @@ export function FacetForm({ action, query, facets, fixedHidden, hideBrand = fals
         {query.attr.map((a) => <input key={a} type="hidden" name="attr" value={a} />)}
         <Button type="submit">Apply filters</Button>
       </Form>
-    </details>
   );
 }
 

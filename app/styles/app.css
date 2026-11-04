@@ -146,7 +146,9 @@ dialog.drawer { margin: 0; inset: 0 auto 0 0; height: 100%; max-height: 100%; wi
 .category-links a[aria-current='true'] { font-weight: 700; text-decoration: underline; }
 .facets { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .facets-summary { cursor: pointer; min-height: var(--target); display: flex; align-items: center; padding: 0 var(--s2); font-weight: 700; }
-@media (min-width: 900px) { .facets-summary { pointer-events: none; list-style: none; } .facets-summary::-webkit-details-marker { display: none; } }
+.facets-title { font-size: var(--fs-base); margin: 0; padding: var(--s2) var(--s2) var(--s1); }
+.facets-desktop { display: none; }
+@media (min-width: 900px) { .facets-mobile { display: none; } .facets-desktop { display: block; } }
 .facets-form { display: grid; gap: var(--s2); padding: 0 var(--s2) var(--s2); }
 .facets-form fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 2px; }
 .facets-form legend { font-weight: 700; padding: 0; margin-bottom: var(--s1); }

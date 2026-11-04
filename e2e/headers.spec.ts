@@ -110,3 +110,16 @@ test("crawlers get complete HTML (bot user agents take the onAllReady path)", as
     expect(await res.text()).toContain("Create your account");
   }
 });
+
+test("built JavaScript and CSS are compressed, HTML and data responses are not (BREACH: a CSRF token next to reflected text)", async ({ request }) => {
+  const home = await (await request.get("/")).text();
+  const asset = /\/assets\/[^"']+\.js/.exec(home)?.[0];
+  expect(asset).toBeTruthy();
+  const js = await request.get(asset!, { headers: { "Accept-Encoding": "gzip" } });
+  expect(js.headers()["content-encoding"]).toBe("gzip");
+  expect(js.headers()["vary"]).toMatch(/Accept-Encoding/i);
+  for (const path of ["/", "/search?q=challah", "/p/classic-braided-challah", "/_root.data"]) {
+    const res = await request.get(path, { headers: { "Accept-Encoding": "gzip, br" } });
+    expect(res.headers()["content-encoding"], path).toBeUndefined();
+  }
+});

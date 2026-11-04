@@ -55,6 +55,22 @@ describe("ListingsPage", () => {
     expect(screen.getByRole("form", { name: "Filter results" })).toBeInTheDocument();
   });
 
+  it("renders the filters for both layouts, so the page needs no script to lay itself out: a closed menu for phones and a panel for wide screens", () => {
+    const { container } = withRouter(<ListingsPage title="T" data={data()} query={q({ available: true })} basePath="/search" />);
+    const menu = container.querySelector("details.facets-mobile") as HTMLDetailsElement;
+    expect(menu).not.toBeNull();
+    expect(menu.open).toBe(false);                                                        // closed in the markup itself, not by a script afterwards
+    expect(menu.querySelector("summary")).toHaveTextContent("Filters (active)");
+    expect(menu.querySelector("form")).toHaveAttribute("aria-label", "Filter results (menu)");
+    const panel = container.querySelector(".facets-desktop") as HTMLElement;
+    expect(panel.querySelector("h2")).toHaveTextContent("Filters");
+    expect(panel.querySelector("form")).toHaveAttribute("aria-label", "Filter results");
+    // both forms carry the same state
+    for (const form of [menu.querySelector("form")!, panel.querySelector("form")!]) {
+      expect((form.querySelector('input[name="available"]') as HTMLInputElement).checked).toBe(true);
+    }
+  });
+
   it("says 'result' for one", () => {
     withRouter(<ListingsPage title="T" data={data({ total: 1 })} query={q()} basePath="/search" />);
     expect(screen.getByRole("status")).toHaveTextContent("1 result");
