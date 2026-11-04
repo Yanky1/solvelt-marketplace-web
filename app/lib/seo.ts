@@ -52,3 +52,15 @@ export function breadcrumbJsonLd(origin: string, crumbs: Crumb[]) {
     itemListElement: crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: origin + c.path })),
   };
 }
+
+/** The site as a thing crawlers can search: a WebSite with a SearchAction pointing at our own search address. */
+export function websiteJsonLd(origin: string) {
+  return {
+    "@context": "https://schema.org", "@type": "WebSite", name: "Solvelt Market", url: origin + "/",
+    potentialAction: { "@type": "SearchAction", target: { "@type": "EntryPoint", urlTemplate: `${origin}/search?q={search_term_string}` }, "query-input": "required name=search_term_string" },
+  };
+}
+
+export function organizationJsonLd(origin: string) {
+  return { "@context": "https://schema.org", "@type": "Organization", name: "Solvelt Market", url: origin + "/" };
+}

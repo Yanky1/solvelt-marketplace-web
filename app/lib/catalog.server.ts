@@ -2,6 +2,7 @@ import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
 import { ApiError } from "./api-client.server";
 import { parseListingDetail, type ListingDetail } from "./catalog";
+import { parseSitemapPage, SITEMAP_KINDS, type SitemapKind, type SitemapPageData } from "./sitemap";
 import { cleanQuery, parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, parseSuggestions, SUGGEST_MIN, toApiParams, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront, type Suggestion } from "./search";
 
 /**
@@ -40,6 +41,17 @@ export const catalog = {
     const page = parseListingPage(json);
     if (!page) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
     return page;
+  },
+
+  /** One page of the public sitemap entries of a kind (slug and last-modified). Null when the kind or page cannot exist. */
+  async sitemap(ctx: ApiRequestContext, kind: string, page: number, pageSize: number): Promise<SitemapPageData | null> {
+    if (!(SITEMAP_KINDS as readonly string[]).includes(kind) || !Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) return null;
+    const { status, json } = await getJson(ctx, `/api/v1/catalog/sitemap/${kind}?page=${page}&pageSize=${pageSize}`);
+    if (status === 404) return null;
+    if (status !== 200) throw failure(status);
+    const data = parseSitemapPage(json, kind as SitemapKind);
+    if (!data) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
+    return data;
   },
 
   /** Autocomplete for the header search box. Text under the minimum is answered with nothing and never reaches the API; the text is cleaned like a search. */

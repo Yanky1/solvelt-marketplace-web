@@ -133,6 +133,13 @@ export function catalogResponse(path, url) {
     ];
     return ok({ query: url.searchParams.get("q") ?? "", suggestions });
   }
+  if ((m = /^\/api\/v1\/catalog\/sitemap\/(listings|categories|brands)$/.exec(path))) {
+    const kind = m[1], page = Number(url.searchParams.get("page") ?? 1), size = Number(url.searchParams.get("pageSize") ?? 1000);
+    const all = kind === "listings" ? list.map((l) => ({ key: l.slug, lastModified: l.updatedAt }))
+      : kind === "categories" ? categories.filter((c) => list.some((l) => l.categoryPath.some((p) => p.slug === c.slug))).map((c) => ({ key: c.slug, lastModified: "2026-09-10T00:00:00+00:00" }))
+      : brands.filter((b) => list.some((l) => l.brand.slug === b.slug)).map((b) => ({ key: b.slug, lastModified: "2026-09-11T00:00:00+00:00" }));
+    return ok({ kind, page, pageSize: size, total: all.length, totalPages: Math.ceil(all.length / size), items: all.slice((page - 1) * size, page * size) });
+  }
   let sm;
   if ((sm = /^\/api\/v1\/catalog\/brands\/([^/]+)$/.exec(path))) {
     const key = decodeURIComponent(sm[1]);
