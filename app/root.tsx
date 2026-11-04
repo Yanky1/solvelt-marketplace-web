@@ -3,6 +3,7 @@ import type { Route } from "./+types/root";
 import { Footer, Header } from "~/components/Shell";
 import { ToastProvider } from "~/components/ui/overlay";
 import { LinkButton } from "~/components/ui/form";
+import { useNonce } from "~/lib/nonce";
 import { parseTheme, type ThemePref } from "~/lib/theme.server";
 import "~/styles/app.css";
 
@@ -14,6 +15,7 @@ export function loader({ request }: Route.LoaderArgs) {
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData<typeof loader>("root");
   const theme = data?.theme ?? "system";
+  const nonce = useNonce();
   return (
     <html lang="en" data-theme={theme === "system" ? undefined : theme}>
       <head>
@@ -30,8 +32,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <main id="main" tabIndex={-1} className="container">{children}</main>
           <Footer theme={theme} />
         </ToastProvider>
-        <ScrollRestoration />
-        <Scripts />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );

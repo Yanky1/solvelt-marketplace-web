@@ -7,8 +7,6 @@ export function loader() {
     "Disallow: /account",
     "Disallow: /cart",
     "Disallow: /checkout",
-    "Disallow: /styleguide",
-    "Disallow: /img/",
     "Allow: /",
     `Sitemap: ${publicOrigin}/sitemap.xml`,
     "",

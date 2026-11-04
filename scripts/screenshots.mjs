@@ -7,7 +7,7 @@ import { chromium, devices } from "@playwright/test";
 const PORT = 3200;
 const BASE = `http://localhost:${PORT}`;
 const PAGES = { home: "/", styleguide: "/styleguide", "not-found": "/does-not-exist" };
-const env = { ...process.env, NODE_ENV: "production", PORT: String(PORT), API_BASE_URL: "http://localhost:5081", MOCK_API_PORT: "5081", PUBLIC_ORIGIN: BASE, SESSION_COOKIE_SECRET: "screens-secret-screens-secret-0000000", WEB_FORWARDING_KEY: "screens-forwarding-screens-forwarding-0" };
+const env = { ...process.env, NODE_ENV: "production", PORT: String(PORT), API_BASE_URL: "http://localhost:5081", MOCK_API_PORT: "5081", PUBLIC_ORIGIN: BASE, SESSION_COOKIE_SECRET: "Ud6Ky2Hm8Wb4Tn0Vc3Zs7Jq1Lf5Rg9XpA2e", WEB_FORWARDING_KEY: "Bz5Ne9Wt3Kd7Hs1Vq6Mc2Xj8Pf4Lg0RyT3a" };
 const procs = [spawn("node", ["e2e/mock-api.mjs"], { env, stdio: "ignore" }), spawn("node", ["server.js"], { env, stdio: "inherit" })];
 const stop = () => procs.forEach((p) => p.kill());
 process.on("exit", stop);

@@ -6,7 +6,7 @@ export default defineConfig({
   testMatch: /.*\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  retries: 0, // no retries anywhere: flakiness must show up
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: `http://localhost:${PORT}`,
@@ -28,8 +28,8 @@ export default defineConfig({
         PORT: String(PORT),
         API_BASE_URL: "http://localhost:5080",
         PUBLIC_ORIGIN: `http://localhost:${PORT}`,
-        SESSION_COOKIE_SECRET: "e2e-secret-e2e-secret-e2e-secret-0000",
-        WEB_FORWARDING_KEY: "e2e-forwarding-e2e-forwarding-key-0000",
+        SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u",
+        WEB_FORWARDING_KEY: "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o",
       },
     },
   ],

@@ -17,8 +17,8 @@ describe("assertSameOrigin", () => {
 });
 
 describe("safeNext", () => {
-  it.each(["/", "/account/orders?x=1"])("keeps %s", (p) => { expect(safeNext(p)).toBe(p); });
-  it.each(["//evil.com", "https://evil.com", "/\\evil.com", "javascript:alert(1)", "", null, undefined, "/a\r\nSet-Cookie: x=1"])("rejects %j", (p) => {
+  it.each(["/", "/account/orders?x=1", "/a#frag", "/p%20q", "/%2F%2Fevil.example"])("keeps %s", (p) => { expect(safeNext(p)).toBe(p); });
+  it.each(["//evil.com", "https://evil.com", "/\\evil.com", "javascript:alert(1)", "", null, undefined, "/a\r\nSet-Cookie: x=1", "/\t/evil.example/x", "/\n/evil.example", "/ /evil.example", "/\u0000/evil.example", "https:", "https:evil.example", "/\u00a0/evil.example", "/%09/evil.example".replace("%09", decodeURIComponent("%09"))])("rejects %j", (p) => {
     expect(safeNext(p as string | null | undefined)).toBe("/");
   });
 });

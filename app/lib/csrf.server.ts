@@ -21,10 +21,23 @@ export function assertSameOrigin(request: Request, publicOrigin: string): void {
   }
 }
 
-/** Only relative, same-site paths are allowed as `?next=` targets. */
+const SAFE_BASE = "http://safe-next.invalid";
+
+/**
+ * Only same-site, relative paths are allowed as `?next=` / `redirectTo` targets.
+ * Rejects any control character, space or backslash anywhere (browsers strip tabs/newlines and treat `\` as `/`,
+ * so "/\t/evil.example" would become "//evil.example"), and double-checks by resolving the value:
+ * it must stay on the same origin and is returned as pathname+search+hash.
+ */
 export function safeNext(next: string | null | undefined, fallback = "/"): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\") || /[\r\n\\]/.test(next)) {
+  // eslint-disable-next-line no-control-regex -- matching control characters is the point of this check
+  if (!next || !next.startsWith("/") || next.startsWith("//") || /[\u0000-\u0020\u007f-\u00a0\\]|\s/.test(next)) return fallback;
+  try {
+    const u = new URL(next, SAFE_BASE);
+    if (u.origin !== SAFE_BASE) return fallback;
+    const out = u.pathname + u.search + u.hash;
+    return out.startsWith("//") ? fallback : out;
+  } catch {
     return fallback;
   }
-  return next;
 }
