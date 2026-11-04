@@ -63,7 +63,7 @@ describe("cleanText", () => {
 
 describe("cleanText: what is stripped and what must survive", () => {
   const strip = ["\u0000", "\u0007", "\u001f", "\u007f", "\u0085", "\u009f", "\u00ad", "\u061c", "\u200b", "\u200e", "\u200f", "\u2028", "\u2029", "\u202a", "\u202e", "\u2060", "\u2066", "\u2069", "\ufeff", "\ufff9", "\ufffb", "\u{e0000}", "\u{e0041}", "\u{e007f}"];
-  it.each(strip)("removes U+%#x", (ch) => { expect(cleanText(`a${ch}b`)).toBe("ab"); });
+  it.each(strip.map((ch) => [ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0"), ch] as const))("removes U+%s", (_code, ch) => { expect(cleanText(`a${ch}b`)).toBe("ab"); });
 
   it("keeps ZWJ emoji sequences byte-exact", () => {
     const family = "\u{1f468}\u200d\u{1f469}\u200d\u{1f467}"; // man, ZWJ, woman, ZWJ, girl

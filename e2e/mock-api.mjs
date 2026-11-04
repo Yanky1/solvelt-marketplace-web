@@ -11,6 +11,7 @@ const sessions = new Map(); // token -> userId
 const addresses = new Map(); // addressId -> {userId, ...address}
 const passkeys = new Map(); // credentialId -> {id, userId, name, createdAt, lastUsedAt}
 const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
+const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const outbox = []; // {kind, email, token}
 const seen = []; // recorded request metadata (no bodies)
@@ -45,6 +46,7 @@ http.createServer(async (req, res) => {
 
   if (path.startsWith("/__test/")) {
     if (path === "/__test/outbox") return send(res, 200, outbox);
+    if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
     if (path === "/__test/tokens") {
@@ -86,12 +88,16 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/auth/sign-in" && req.method === "POST" && body.password === "trigger-429") return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "30" });
   if (path === "/api/v1/auth/sign-in" && req.method === "POST") {
     const u = users.get(String(body.email ?? "").toLowerCase());
-    if (!u || u.password !== body.password) return send(res, 401, { code: "invalid_credentials", message: "Invalid" });
+    // Progressive per-address limit (decision O-17 on the API side): after 8 wrong passwords the address is answered with
+    // 429, whoever asks and whatever session or cookie they hold; even the right password waits. Not reset by a success.
+    if (u && (u.wrongPasswords ?? 0) >= 8) return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "60" });
+    if (!u || u.password !== body.password) { if (u) u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 401, { code: "invalid_credentials", message: "Invalid" }); }
     if (!u.verified) return send(res, 403, { code: "email_not_verified", message: "Verify first" });
     const token = `tok_${randomBytes(24).toString("hex")}`;
     sessions.set(token, u.id);
     return send(res, 200, { token, user: { id: u.id, displayName: u.displayName } });
   }
+  if ((path === "/api/v1/auth/sign-out" || path === "/api/v1/auth/sign-out-all") && req.method === "POST" && failSignOutOnce.delete(bearer(req) ?? "")) return send(res, 503, { code: "unavailable", message: "Blip" });
   if ((path === "/api/v1/auth/sign-out" || path === "/api/v1/auth/sign-out-all") && req.method === "POST" && failSignOut.has(bearer(req) ?? "")) return send(res, 503, { code: "unavailable", message: "Down" });
   if (path === "/api/v1/auth/sign-out" && req.method === "POST") { sessions.delete(bearer(req) ?? ""); return send(res, 204); }
   if (path === "/api/v1/auth/sign-out-all" && req.method === "POST") {

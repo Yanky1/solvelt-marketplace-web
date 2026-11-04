@@ -22,12 +22,38 @@ export function loader({ request, context }: Route.LoaderArgs) {
   return null;
 }
 
-/** Re-authentication for sensitive changes (O-11): the password is checked by the API, which issues a fresh session. */
+const LOCKED_MESSAGE = "Too many incorrect passwords. We could not end your session on the server, so confirmation is locked. Please try again later.";
+
+/**
+ * Re-authentication for sensitive changes (O-11): the password is checked by the API, which issues a fresh session.
+ *
+ * Wrong passwords are also counted in the sealed cookie (`rf`) and, at MAX_CONFIRM_FAILURES, the session is ended. That
+ * counter is a UX measure only: a client can keep an older cookie and replay it, which resets the count, and this tier has
+ * no server-side state to prevent that. The real limit is the API's per-address delay on the sign-in endpoint this page
+ * calls (decision O-17); its 429 is surfaced here as "too many attempts".
+ */
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   const session = assertCsrf(request, form);
   const { ctx } = requireAccount(request, context);
   const cfg = getConfig();
+
+  // Ends the API session (one retry). A dead token (401) counts as ended; anything else means it is still live.
+  const endSession = async (): Promise<boolean> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { await api.signOut(ctx); return true; } catch (e) { if (e instanceof ApiError && e.status === 401) return true; }
+    }
+    return false;
+  };
+  // Lock: end the session and send the user to sign-in. If the server could not confirm the sign-out we do NOT pretend:
+  // the user stays on this page, which stays locked (the cookie keeps the full count) and never checks a password.
+  const lock = async () =>
+    (await endSession())
+      ? redirect("/sign-in?notice=confirm-locked", { headers: { "Set-Cookie": rotatedCookie(), ...privateHeaders } })
+      : formError({ message: LOCKED_MESSAGE, error: null }, 429, { "Set-Cookie": sessionCookie({ ...session, rf: MAX_CONFIRM_FAILURES }, cfg) });
+
+  if ((session.rf ?? 0) >= MAX_CONFIRM_FAILURES) return lock();
+
   const password = str(form, "password");
   if (!password) return formError({ message: null, error: "Enter your password." });
   try {
@@ -40,12 +66,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (e instanceof ApiError && e.status === 401) {
       if (e.code === "invalid_credentials") {
         const failures = (session.rf ?? 0) + 1;
-        if (failures >= MAX_CONFIRM_FAILURES) {
-          // Too many wrong passwords from this session: end it (API session revoked, cookie replaced) and go to sign-in.
-          try { await api.signOut(ctx); } catch { /* the cookie is replaced regardless */ }
-          return redirect("/sign-in?notice=confirm-locked", { headers: { "Set-Cookie": rotatedCookie(), ...privateHeaders } });
-        }
-        // The counter lives in the sealed cookie, so the client cannot reset it without losing the session.
+        if (failures >= MAX_CONFIRM_FAILURES) return lock();
         return formError({ message: null, error: "That password is not correct." }, 401, { "Set-Cookie": sessionCookie({ ...session, rf: failures }, cfg) });
       }
       return failAccount(e, request); // the session itself is dead

@@ -31,12 +31,19 @@ export function sanitizePasskeyOptions(kind: Ceremony, options: Record<string, u
   if (rp !== undefined && (typeof rp !== "object" || rp === null || Array.isArray(rp))) return null;
   const creationId = rp === undefined ? undefined : (rp as { id?: unknown }).id;
   const requestId = options.rpId;
-  if (creationId !== undefined && requestId !== undefined && creationId !== requestId) return null;
+  const lower = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
+  // Host names are case-insensitive: compare in lower case, and forward the lower-case form.
+  if (creationId !== undefined && requestId !== undefined && lower(creationId) !== lower(requestId)) return null;
   const used = kind === "create" ? creationId : requestId;
   if (used !== undefined && (typeof used !== "string" || !rpIdAllowed(used, publicOrigin))) return null;
   const out: Record<string, unknown> = { ...options };
-  if (kind === "create") delete out.rpId;
-  else delete out.rp;
+  if (kind === "create") {
+    delete out.rpId;
+    if (typeof used === "string") out.rp = { ...(rp as object), id: used.toLowerCase() };
+  } else {
+    delete out.rp;
+    if (typeof used === "string") out.rpId = used.toLowerCase();
+  }
   return out;
 }
 

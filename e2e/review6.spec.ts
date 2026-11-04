@@ -64,7 +64,7 @@ test.describe("the confirm page limits wrong passwords per session", () => {
   const wrong = (page: Page, csrf: string, baseURL: string) =>
     page.request.post("/account/confirm", { form: { csrf, password: "definitely not it", next: "/account/passkeys" }, headers: { origin: baseURL }, maxRedirects: 0 });
 
-  test("5 wrong passwords end the session; the counter cannot be reset by the client", async ({ page, request, baseURL }) => {
+  test("5 wrong passwords in a row end the session (a UX limit: the API does the real limiting)", async ({ page, request, baseURL }) => {
     const email = await signedIn(page, "lock");
     expect(await tokensOf(request, email)).toHaveLength(1);
     const csrf = await csrfFor(page.request, "/account/confirm");
@@ -91,6 +91,60 @@ test.describe("the confirm page limits wrong passwords per session", () => {
     for (let i = 0; i < 4; i++) expect((await wrong(page, csrf, baseURL!)).status(), `after reset, attempt ${i + 1}`).toBe(401);
   });
 
+  test("an older cookie replayed after failures resets the WEB counter, but the API's own limit is still surfaced", async ({ page, context, baseURL }) => {
+    await signedIn(page, "rollback");
+    const csrf = await csrfFor(page.request, "/account/confirm");
+    const before = await context.cookies(); // saved before any failure
+    const statuses: number[] = [];
+    for (let round = 0; round < 3; round++) {
+      await context.clearCookies();
+      await context.addCookies(before); // the client rolls the cookie back: the web-side count starts again from 0
+      for (let i = 0; i < 4; i++) statuses.push((await wrong(page, csrf, baseURL!)).status());
+    }
+    // The web counter never reached 5, so it never locked or signed out (that is the known limit of a stateless tier) ...
+    expect(statuses).not.toContain(302);
+    // ... but after 8 wrong passwords for this address the API answers 429, and that is what the user sees.
+    expect(statuses.slice(0, 8)).toEqual(Array(8).fill(401));
+    expect(statuses.slice(8)).toEqual(Array(4).fill(429));
+    await context.clearCookies();
+    await context.addCookies(before);
+    const right = await page.request.post("/account/confirm", { form: { csrf, password: PASSWORD, next: "/account/passkeys" }, headers: { origin: baseURL! }, maxRedirects: 0 });
+    expect(right.status()).toBe(429); // even the right password waits: the delay belongs to the address, not to the cookie
+    await page.goto("/account/confirm");
+    await waitHydrated(page);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Confirm" }).click();
+    await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("Too many attempts");
+  });
+
+  test("if the server cannot confirm the sign-out, the user stays on a locked page (no pretending)", async ({ page, request, baseURL }) => {
+    const email = await signedIn(page, "locksofail");
+    const [token] = await tokensOf(request, email);
+    await request.get(`${MOCK}/__test/fail-signout?token=${token}`);
+    const csrf = await csrfFor(page.request, "/account/confirm");
+    for (let i = 1; i <= 4; i++) expect((await wrong(page, csrf, baseURL!)).status(), `attempt ${i}`).toBe(401);
+    const fifth = await wrong(page, csrf, baseURL!);
+    expect(fifth.status()).toBe(429); // no redirect to sign-in: the API session is still live
+    expect(await fifth.text()).toContain("could not end your session on the server");
+    expect(await tokensOf(request, email)).toEqual([token]);
+    // Locked from now on: not even the right password is checked, and the cookie still holds the session.
+    const right = await page.request.post("/account/confirm", { form: { csrf, password: PASSWORD, next: "/account/passkeys" }, headers: { origin: baseURL! }, maxRedirects: 0 });
+    expect(right.status()).toBe(429);
+    expect(await tokensOf(request, email)).toEqual([token]); // no new API session from a password check that never happened
+  });
+
+  test("a single failed sign-out call is retried once, so a blip does not leave the user stuck", async ({ page, request, baseURL }) => {
+    const email = await signedIn(page, "lockretry");
+    const [token] = await tokensOf(request, email);
+    await request.get(`${MOCK}/__test/fail-signout-once?token=${token}`);
+    const csrf = await csrfFor(page.request, "/account/confirm");
+    for (let i = 1; i <= 4; i++) expect((await wrong(page, csrf, baseURL!)).status()).toBe(401);
+    const fifth = await wrong(page, csrf, baseURL!);
+    expect(fifth.status()).toBe(302);
+    expect(fifth.headers()["location"]).toBe("/sign-in?notice=confirm-locked");
+    expect(await tokensOf(request, email)).toEqual([]); // the retry succeeded and the API session is gone
+  });
+
   test("in the browser: the lockout lands on sign-in with an explanation", async ({ page }) => {
     await signedIn(page, "lockui");
     await page.goto("/account/confirm");
@@ -113,7 +167,7 @@ test.describe("adding a passkey needs a recent sign-in as well (O-11)", () => {
     const origin = `http://localhost:${port}`;
     const child = spawn("node", ["server.js"], {
       env: {
-        PATH: process.env.PATH!, NODE_ENV: "production", PORT: String(port), API_BASE_URL: MOCK, PUBLIC_ORIGIN: origin, REAUTH_WINDOW_SECONDS: "2",
+        PATH: process.env.PATH!, NODE_ENV: "production", PORT: String(port), API_BASE_URL: MOCK, PUBLIC_ORIGIN: origin, REAUTH_WINDOW_SECONDS: "5",
         SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u", WEB_FORWARDING_KEY: "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o",
       },
       stdio: "ignore",
@@ -124,7 +178,7 @@ test.describe("adding a passkey needs a recent sign-in as well (O-11)", () => {
       for (let i = 0; i < 60; i++) { try { if ((await fetch(`${origin}/healthz`)).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 250)); }
       await addVirtualAuthenticator(page);
       await signedIn(page, "addreauth");
-      await page.waitForTimeout(2500); // longer than the 2 s window
+      await page.waitForTimeout(5500); // longer than the 5 s window
       const csrf = await csrfFor(page.request, "/account/passkeys");
 
       const options = await page.request.post("/account/passkeys/options", { form: { csrf }, headers: { origin } });

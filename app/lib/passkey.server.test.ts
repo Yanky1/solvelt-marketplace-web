@@ -60,6 +60,12 @@ describe("sanitizePasskeyOptions", () => {
     expect(get(null as never)).toBeNull();
     expect(get([] as never)).toBeNull();
   });
+  it("compares and forwards the id in lower case (host names are case-insensitive)", () => {
+    expect(get({ rpId: "SHOP.Example.com" })).toEqual({ rpId: "shop.example.com" });
+    expect(create({ rp: { id: "Example.COM", name: "x" } })).toEqual({ rp: { id: "example.com", name: "x" } });
+    expect(get({ rp: { id: "EXAMPLE.com" }, rpId: "example.COM" })).toEqual({ rpId: "example.com" }); // same id, different case: not a mismatch
+    expect(get({ rp: { id: "other.com" }, rpId: "example.com" })).toBeNull();
+  });
   it("does not mutate its input", () => {
     const input = { rp: { id: "example.com" }, rpId: "example.com" };
     get(input);

@@ -30,7 +30,7 @@ The server refuses to start in production when a required value is missing or in
 
 ## Sessions and auth
 
-The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..69), including the API auth contract this site currently assumes.
+The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..73), including the API auth contract this site currently assumes.
 
 ## Pages
 

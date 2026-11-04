@@ -128,18 +128,22 @@ test.describe("passkey challenges are bound to the browser session", () => {
 });
 
 test.describe("removing a passkey needs a recent sign-in", () => {
-  test("after the window, Remove asks for the password first; then it works", async ({ browser }, testInfo) => {
+  test("after the window, Remove asks for the password first; then it works", async ({ browser, baseURL }, testInfo) => {
     const port = 3195 + testInfo.parallelIndex;
     const origin = `http://localhost:${port}`;
     const child = spawn("node", ["server.js"], {
       env: {
-        PATH: process.env.PATH!, NODE_ENV: "production", PORT: String(port), API_BASE_URL: MOCK, PUBLIC_ORIGIN: origin, REAUTH_WINDOW_SECONDS: "2",
+        PATH: process.env.PATH!, NODE_ENV: "production", PORT: String(port), API_BASE_URL: MOCK, PUBLIC_ORIGIN: origin, REAUTH_WINDOW_SECONDS: "5",
         SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u", WEB_FORWARDING_KEY: "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o",
       },
       stdio: "ignore",
     });
-    const context = await browser.newContext({ baseURL: origin });
+    // The setup (sign in, register a passkey) runs on the MAIN test server, whose window is 10 minutes, so it can never be
+    // pushed past a short window by a slow machine. Cookies are per host, and both servers share the session secret, so the
+    // same session then works on the short-window server for the part under test.
+    const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
+    const at = (path: string) => `${origin}${path}`;
     try {
       for (let i = 0; i < 60; i++) { try { if ((await fetch(`${origin}/healthz`)).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 250)); }
       await addVirtualAuthenticator(page);
@@ -147,22 +151,22 @@ test.describe("removing a passkey needs a recent sign-in", () => {
       await registerPasskey(page, "Fresh key");
       const [first] = await tokensOf(page.request, email);
 
-      await page.waitForTimeout(2500); // longer than the 2 s window
-      await page.goto("/account/passkeys");
+      await page.waitForTimeout(5500); // longer than the 5 s window of the second server
+      await page.goto(at("/account/passkeys"));
       await waitHydrated(page);
       await passkeyRow(page, "Fresh key").getByRole("button", { name: /Remove passkey/ }).click();
-      await expect(page).toHaveURL(/\/account\/confirm\?next=%2Faccount%2Fpasskeys$/);
-      await page.goto("/account/passkeys");
+      await expect(page).toHaveURL(new RegExp(`${port}/account/confirm\\?next=%2Faccount%2Fpasskeys$`));
+      await page.goto(at("/account/passkeys"));
       await expect(passkeyRow(page, "Fresh key")).toBeVisible(); // nothing was removed by the redirect
 
-      await page.goto("/account/confirm?next=%2Faccount%2Fpasskeys");
+      await page.goto(at("/account/confirm?next=%2Faccount%2Fpasskeys"));
       await waitHydrated(page);
       await page.getByLabel("Password").fill("not the password at all");
       await page.getByRole("button", { name: "Confirm" }).click();
       await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("That password is not correct.");
       await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Confirm" }).click();
-      await expect(page).toHaveURL(/\/account\/passkeys$/);
+      await expect(page).toHaveURL(new RegExp(`${port}/account/passkeys$`));
       const after = await tokensOf(page.request, email);
       expect(after).toHaveLength(1);
       expect(after[0]).not.toBe(first); // confirming issued a fresh API session and revoked the old one
