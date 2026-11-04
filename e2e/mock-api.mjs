@@ -1,6 +1,6 @@
 // Stateful mock of the marketplace API for E2E. The auth shapes are the ASSUMED contract (docs/DESIGN.md W1-21).
 // Test-only hooks live under /__test and are not part of the contract.
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import sharp from "sharp";
 import { catalogResponse, IMAGE_BAD, IMAGE_DOWN, imageInfo, variantInfo } from "./mock-catalog.mjs";
@@ -25,6 +25,7 @@ const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
 const unsubCalls = new Map(); // token -> number of calls (the specs run in parallel on one mock)
 const seen = []; // recorded request metadata (no bodies)
+const checkoutOrders = new Map(); // number -> {key, userId, guestEmail, token, status, lines, totalCents, createdAt}
 const carts = new Map(); // owner key ("u:<userId>" or "g:<token>") -> [{id, variantId, quantity, seenPrice}]
 const cartKeyOf = (req) => { const t = bearer(req); const uid = t ? sessions.get(t) : undefined; if (t && !uid) return null; return uid ? `u:${uid}` : (req.headers["x-cart-token"] ? `g:${req.headers["x-cart-token"]}` : undefined); };
 function cartView(key, token) {
@@ -49,6 +50,32 @@ function cartView(key, token) {
 // Test variants are selected by the end-user IP the web server forwards (X-Solvelt-Client-Ip), so parallel tests never interfere.
 const ipOf = (req) => String(req.headers["x-solvelt-client-ip"] ?? "");
 const IP = { ANON_RPID_EVIL: "198.51.100.61", ANON_BOTH_DIFFER: "198.51.100.62", ANON_BOTH_DIFFER_REV: "198.51.100.63", ANON_RP_ONLY_EVIL: "198.51.100.64", ANON_BOTH_SAME: "198.51.100.65", REG_BOTH_DIFFER: "198.51.100.66", REG_BOTH_SAME: "198.51.100.67", REG_LENIENT: "198.51.100.68", REG_5XX: "198.51.100.69", SIGNIN_LENIENT: "198.51.100.70" };
+
+
+// ---- checkout (assumed shapes follow the API repo docs/API.md "Checkout"; the mock prices flat: standard 500, overnight 1800, free over 5000, no tax) ----
+function quoteFor(key, body) {
+  const a = body.address ?? {};
+  const view = cartView(key);
+  const picks = new Map((body.selections ?? []).map((x) => [`${x.sellerId}:${x.brandId}`, x]));
+  const us = String(a.country).toUpperCase() === "US";
+  const groups = view.groups.map((g) => {
+    const free = g.subtotalCents >= 5000;
+    const options = us || String(a.country).toUpperCase() === "CA" ? [{ speed: "standard", priceCents: free ? 0 : 500, free, estimate: { earliest: "2026-11-12", latest: "2026-11-16" } }, { speed: "overnight", priceCents: free ? 0 : 1800, free, estimate: { earliest: "2026-11-06", latest: "2026-11-09" } }] : [];
+    const pick = picks.get(`${g.sellerId}:${g.brandId}`);
+    const chosen = options.find((o) => o.speed === pick?.speed) ?? [...options].sort((x, y) => x.priceCents - y.priceCents)[0];
+    const shipping = chosen?.priceCents ?? 0;
+    return { sellerId: g.sellerId, sellerName: g.sellerName, brandId: g.brandId, brandName: g.brandName, lines: g.lines.map((l) => ({ lineId: l.id, listingId: l.listingId, variantId: l.variantId, title: l.title, variantName: l.variantName, quantity: l.quantity, unitPriceCents: l.unitPriceCents, lineTotalCents: l.lineTotalCents, taxCents: 0 })),
+      itemsCents: g.subtotalCents, shippingOptions: options, unavailableSpeeds: [], local: null, selected: chosen ? { kind: "carrier", speed: chosen.speed, windowId: null, date: null, shippingCents: shipping } : null, shippingCents: shipping, shippingTaxCents: 0, taxCents: 0, totalCents: g.subtotalCents + shipping };
+  });
+  const total = groups.reduce((n, g) => n + g.totalCents, 0);
+  const sig = JSON.stringify([groups.map((g) => [g.sellerId, g.brandId, g.selected?.speed, g.totalCents, g.lines.map((l) => [l.variantId, l.quantity, l.unitPriceCents])]), a.country, a.region, a.postalCode]);
+  return { currency: "USD", groups, itemsCents: groups.reduce((n, g) => n + g.itemsCents, 0), shippingCents: groups.reduce((n, g) => n + g.shippingCents, 0), taxCents: 0, totalCents: total, canPay: groups.length > 0 && groups.every((g) => g.selected), quoteHash: `${Math.floor(Date.now() / 1000) + 900}.${createHash("sha256").update(sig).digest("hex")}`, expiresAt: new Date(Date.now() + 900_000).toISOString(), _sig: sig };
+}
+const publicQuote = (q) => {
+  const out = { ...q };
+  delete out._sig;
+  return out;
+};
 
 const gidLine = () => `ln_${randomBytes(6).toString("hex")}`;
 
@@ -77,6 +104,8 @@ http.createServer(async (req, res) => {
   if (path === "/health") return send(res, 200, { status: "ok" });
 
   if (path.startsWith("/__test/")) {
+    if (path === "/__test/pay") { const o = checkoutOrders.get(url.searchParams.get("number") ?? ""); if (!o) return send(res, 404, { code: "not_found" }); o.status = url.searchParams.get("status") ?? "placed"; if (o.status === "placed") carts.set(o.key, []); return send(res, 200, { status: o.status }); }
+    if (path === "/__test/checkout-orders") return send(res, 200, [...checkoutOrders.entries()].map(([number, o]) => ({ number, status: o.status, key: o.key.slice(0, 2), guestEmail: o.guestEmail, address: o.address, giftMessage: o.giftMessage })));
     if (path === "/__test/outbox") return send(res, 200, outbox);
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
@@ -137,6 +166,11 @@ http.createServer(async (req, res) => {
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
+  if (path === "/__stripe/v3.js") {
+    // A stand-in for Stripe.js so E2E never touches the network: a "Payment Element" with one input and a confirmPayment that sends the browser to the return_url, as Stripe does after paying.
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    return res.end(`window.Stripe = function (pk) { window.__stripePk = pk; return { elements: function (o) { window.__stripeSecret = o.clientSecret; return { create: function () { return { mount: function (sel) { var el = document.querySelector(sel); var l = document.createElement("label"); l.textContent = "Card number "; var i = document.createElement("input"); i.setAttribute("autocomplete", "cc-number"); l.appendChild(i); el.appendChild(l); } }; } }; }, confirmPayment: function (a) { return new Promise(function () { location.assign(a.confirmParams.return_url + "?redirect_status=succeeded"); }); } }; };`);
+  }
   seen.push({ method: req.method, path, forwardingOk: forwardingOk(req), hasAuth: !!req.headers.authorization, tokenTail: (bearer(req) ?? "").slice(-8), clientIp: req.headers["x-solvelt-client-ip"] ?? null, idem: req.headers["idempotency-key"] ?? null });
   const body = ["POST", "PUT", "PATCH"].includes(req.method ?? "") ? await readBody(req) : {};
 
@@ -512,6 +546,42 @@ http.createServer(async (req, res) => {
     for (const l of carts.get(gk) ?? []) { const h = mine.find((x) => x.variantId === l.variantId); if (h) h.quantity = Math.min(20, h.quantity + l.quantity); else mine.push(l); }
     carts.delete(gk); carts.set(key, mine);
     return send(res, 200, cartView(key));
+  }
+
+  if (path === "/api/v1/checkout/quote" && req.method === "POST") {
+    const key = cartKeyOf(req);
+    if (key === null) return send(res, 401, { code: "unauthorized" });
+    const a = body.address ?? {};
+    if (!a.country || !a.postalCode || (String(a.country).toUpperCase() === "US" && !/^[A-Za-z]{2}$/.test(a.region ?? ""))) return send(res, 422, { code: "validation_failed", errors: { address: "Enter a delivery country (2 letters), a postal code and, for the US, a state." } });
+    if (!key || (carts.get(key) ?? []).length === 0) return send(res, 409, { code: "cart_not_ready", message: "Your cart is empty." });
+    return send(res, 200, publicQuote(quoteFor(key, body)));
+  }
+  if (path === "/api/v1/checkout" && req.method === "POST") {
+    const key = cartKeyOf(req);
+    if (key === null || key === undefined) return send(res, 401, { code: "unauthorized" });
+    const guest = key.startsWith("g:");
+    if (guest && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(body.email ?? ""))) return send(res, 422, { code: "validation_failed", errors: { email: "Enter a valid email address." } });
+    if ((carts.get(key) ?? []).length === 0) return send(res, 409, { code: "cart_not_ready", message: "Your cart is empty." });
+    const a = body.address ?? {};
+    const fresh = quoteFor(key, { address: a, selections: body.selections });
+    if (!fresh.canPay) return send(res, 409, { code: "delivery_unavailable", message: "We can't deliver part of your cart to that address." });
+    const given = String(body.quoteHash ?? "");
+    const ok = given.slice(given.indexOf(".") + 1) === fresh.quoteHash.slice(fresh.quoteHash.indexOf(".") + 1) && Number(given.split(".")[0]) > Date.now() / 1000;
+    if (!ok) return send(res, 409, { code: "price_changed", message: "The price changed.", quote: publicQuote(fresh) });
+    const number = `MP-MOCK-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const token = guest ? `g1.${number}.${randomBytes(12).toString("hex")}` : undefined;
+    checkoutOrders.set(number, { key, guest, guestEmail: guest ? body.email : null, token, status: "pending_payment", totalCents: fresh.totalCents, createdAt: new Date().toISOString(), groups: fresh.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, lines: g.lines })), address: a, giftMessage: body.giftMessage ?? null });
+    return send(res, 200, { orderNumber: number, status: "pending_payment", quote: publicQuote(fresh), payment: { provider: "stripe", clientSecret: `pi_mock_${number}_secret_x`, publishableKey: "pk_test_mock" }, ...(token ? { guestOrderToken: token } : {}) });
+  }
+  const co = /^\/api\/v1\/checkout\/orders\/([A-Za-z0-9_-]+)$/.exec(path);
+  if (co && req.method === "GET") {
+    const o = checkoutOrders.get(co[1]);
+    const key = cartKeyOf(req);
+    const guestHdr = req.headers["x-guest-order"];
+    const allowed = !!o && ((req.headers.authorization && key && key === o.key) || (!req.headers.authorization && o.token && guestHdr === o.token));
+    if (key === null) return send(res, 401, { code: "unauthorized" });
+    if (!allowed) return send(res, !req.headers.authorization && !guestHdr ? 401 : 404, { code: "not_found" });
+    return send(res, 200, { number: co[1], status: o.status, currency: "USD", totalCents: o.totalCents, createdAt: o.createdAt, paidAt: o.status === "placed" ? o.createdAt : null, groups: o.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, deliveryKind: "carrier", shippingSpeed: "standard", localDate: null, totalCents: 0, lines: g.lines.map((l) => ({ title: l.title, variantName: l.variantName, quantity: l.quantity, lineTotalCents: l.lineTotalCents })) })) });
   }
 
   if (req.method === "GET" && path.startsWith("/api/v1/catalog/")) {

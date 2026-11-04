@@ -10,6 +10,8 @@ export interface AppConfig {
   webForwardingKey: string;
   /** How recent a sign-in must be to remove a passkey or change a sign-in method (seconds). */
   reauthWindowSeconds: number;
+  /** Stripe.js (decision M3W-06). Only the checkout page loads it. */
+  stripeJsUrl: string;
   production: boolean;
 }
 
@@ -68,8 +70,15 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const reauthWindowSeconds = reauthRaw === undefined || reauthRaw === "" ? 600 : /^[0-9]{1,4}$/.test(reauthRaw) ? Number(reauthRaw) : NaN;
   if (!Number.isInteger(reauthWindowSeconds) || reauthWindowSeconds < 1 || reauthWindowSeconds > 3600) problems.push("REAUTH_WINDOW_SECONDS must be a whole number of seconds between 1 and 3600");
 
+  const stripeJsUrl = env.STRIPE_JS_URL?.trim() || "https://js.stripe.com/v3";
+  try {
+    const u = new URL(stripeJsUrl);
+    if (u.protocol !== "https:" && !(u.protocol === "http:" && LOCAL_HOSTS.has(u.hostname)) ) problems.push("STRIPE_JS_URL must be https (http only for localhost)");
+    if (production && u.origin !== "https://js.stripe.com" && !LOCAL_HOSTS.has(hostnameOf(publicOrigin) ?? "")) problems.push("STRIPE_JS_URL must be https://js.stripe.com/... in production");
+  } catch { problems.push("STRIPE_JS_URL must be a URL"); }
+
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, production };
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, production };
 }
 
 let cached: AppConfig | undefined;

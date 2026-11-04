@@ -9,7 +9,7 @@ import { isSafeId } from "./passkey.server";
 import { safeHttps } from "./orders";
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number) {
+  constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown) {
     super(message);
   }
 }
@@ -44,7 +44,7 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
   if (!res.ok) {
     const e = (json ?? {}) as { code?: string; message?: string; errors?: Record<string, string> };
     const retry = Number(res.headers.get("retry-after"));
-    throw new ApiError(res.status, e.code ?? "error", e.message ?? "Request failed.", e.errors, Number.isFinite(retry) ? retry : undefined);
+    throw new ApiError(res.status, e.code ?? "error", e.message ?? "Request failed.", e.errors, Number.isFinite(retry) ? retry : undefined, json);
   }
   return json as T;
 }
@@ -112,6 +112,25 @@ export const EMPTY_CART: Cart = { currency: "USD", groups: [], itemCount: 0, sub
 /** The guest cart token travels in a header, and only while nobody is signed in (a signed-in buyer's cart is the account's). */
 const cartHeaders = (ctx: ApiRequestContext, cartToken?: string): Record<string, string> | undefined => (!ctx.sessionToken && cartToken ? { "X-Cart-Token": cartToken } : undefined);
 
+// ---- checkout (M3; API repo docs/API.md "Checkout") ----
+export interface ShippingOption { speed: string; priceCents: number; free: boolean; estimate: { earliest: string; latest: string } }
+export interface LocalWindow { windowId: string; date: string; start: string; end: string; remaining: number }
+export interface QuoteLine { lineId: string; listingId: string; variantId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number }
+export interface QuoteGroup {
+  sellerId: string; sellerName: string; brandId: string; brandName: string; lines: QuoteLine[]; itemsCents: number; shippingOptions: ShippingOption[]; unavailableSpeeds: { speed: string; reason: string }[];
+  local: { eligible: boolean; reason: string | null; feeCents: number | null; timeZone: string | null; windows: LocalWindow[] } | null;
+  selected: { kind: "carrier" | "local"; speed: string | null; windowId: string | null; date: string | null; shippingCents: number } | null;
+  shippingCents: number; shippingTaxCents: number; taxCents: number; totalCents: number;
+}
+/** `quoteHash` binds a checkout to exactly this quote (price, tax, delivery, destination) and expires; checkout sends it back. */
+export interface Quote { currency: string; groups: QuoteGroup[]; itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; canPay: boolean; quoteHash: string; expiresAt: string }
+export interface QuoteAddress { country: string; region?: string; postalCode: string }
+export interface GroupSelection { sellerId: string; brandId: string; speed?: string | null; localWindowId?: string | null; localDate?: string | null }
+export interface CheckoutAddress { name: string; line1: string; line2?: string; city: string; region?: string; postalCode: string; country: string; phone?: string }
+export interface Placed { orderNumber: string; status: string; quote: Quote; payment: { provider: string; clientSecret: string; publishableKey: string | null } | null; guestOrderToken?: string; guestOrderTokenExpiresAt?: string }
+export interface CheckoutOrder { number: string; status: string; currency?: string; totalCents?: number; createdAt: string; paidAt?: string | null; claimed?: boolean; groups?: { sellerName: string; brandName: string; deliveryKind: string; shippingSpeed: string | null; localDate: string | null; totalCents: number; lines: { title: string; variantName: string; quantity: number; lineTotalCents: number }[] }[] }
+const guestOrderHeader = (token?: string): Record<string, string> | undefined => (token ? { "X-Guest-Order": token } : undefined);
+
 export const api = {
   threads: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<ThreadList>(ctx, `/api/v1/messages/threads${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
@@ -120,6 +139,10 @@ export const api = {
   markThreadRead: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/messages/threads/${pid(id)}/read`, {}),
   reportMessage: (ctx: ApiRequestContext, id: string, b: { reason: string; note?: string }) => call<{ reported: boolean }>(ctx, `/api/v1/messages/${pid(id)}/report`, b),
   messageAttachment: (ctx: ApiRequestContext, id: string) => raw(ctx, `/api/v1/messages/attachments/${pid(id)}`),
+  quote: (ctx: ApiRequestContext, cartToken: string | undefined, b: { address: QuoteAddress; selections: GroupSelection[] }) => call<Quote>(ctx, "/api/v1/checkout/quote", b, undefined, cartHeaders(ctx, cartToken)),
+  placeOrder: (ctx: ApiRequestContext, cartToken: string | undefined, b: { address: CheckoutAddress; selections: GroupSelection[]; giftMessage?: string; quoteHash: string; email?: string }) => call<Placed>(ctx, "/api/v1/checkout", b, undefined, cartHeaders(ctx, cartToken)),
+  /** The buyer's own order (Bearer) or a guest's through the order-access token (never both). */
+  checkoutOrder: (ctx: ApiRequestContext, number: string, guestToken?: string) => call<CheckoutOrder>(ctx, `/api/v1/checkout/orders/${pid(number)}`, undefined, undefined, ctx.sessionToken ? undefined : guestOrderHeader(guestToken)),
   cart: (ctx: ApiRequestContext, cartToken?: string) => call<Cart>(ctx, "/api/v1/cart", undefined, undefined, cartHeaders(ctx, cartToken)),
   cartAdd: (ctx: ApiRequestContext, cartToken: string | undefined, b: { variantId: string; quantity: number }) => call<Cart>(ctx, "/api/v1/cart/lines", b, undefined, cartHeaders(ctx, cartToken)),
   cartSetQuantity: (ctx: ApiRequestContext, cartToken: string | undefined, lineId: string, quantity: number) => call<Cart>(ctx, `/api/v1/cart/lines/${pid(lineId)}`, { quantity }, "PATCH", cartHeaders(ctx, cartToken)),
