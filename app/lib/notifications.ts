@@ -3,12 +3,20 @@ import { formatMoney } from "~/components/ui/display";
 
 /** The email categories a buyer can switch (the API's names), with plain labels. */
 export const CATEGORIES: { key: string; label: string; hint: string }[] = [
-  { key: "order_updates", label: "Order updates", hint: "Accepted, returns and other changes" },
+  { key: "order_updates", label: "Order accepted", hint: "When a seller accepts your order" },
   { key: "shipped", label: "Shipped", hint: "When a seller ships your order" },
   { key: "out_for_delivery", label: "Out for delivery", hint: "On the day it reaches you" },
   { key: "delivered", label: "Delivered", hint: "When your order arrives" },
   { key: "messages", label: "Messages", hint: "When a seller writes to you" },
-  { key: "bookings", label: "Bookings", hint: "Confirmations, changes and reminders" },
+  { key: "bookings", label: "Booking reminders", hint: "Reminders before a booking and when it is completed" },
+];
+/** Mail that is required for the buyer's orders and account (API decision O-21 / M5-21): shown as always on, never editable, never sent in a save. */
+export const REQUIRED_CATEGORIES: { key: string; label: string; hint: string }[] = [
+  { key: "refunds", label: "Refunds", hint: "When a refund is on its way" },
+  { key: "cancellations", label: "Cancellations", hint: "When an order is cancelled or a cancellation is declined" },
+  { key: "delivery_problems", label: "Delivery problems", hint: "When a delivery attempt did not work" },
+  { key: "returns", label: "Returns", hint: "Approvals, declines, received returns and return labels" },
+  { key: "booking_changes", label: "Booking changes", hint: "Confirmations, new times, cancellations and extra charges" },
 ];
 export const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
 
