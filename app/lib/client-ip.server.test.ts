@@ -21,7 +21,7 @@ describe("parseIp", () => {
     ["::", "::"],
     ["1:0:0:2:0:0:0:3", "1:0:0:2::3"],
   ])("%s -> %s", (raw, out) => { expect(txt(raw)).toBe(out); });
-  it.each(["", "garbage", "1.2.3", "1.2.3.4.5", "256.1.1.1", "01.2.3.4", "1.2.3.4:99999x", "[::1", "::1::2", "2001:db8::7%", "1:2:3:4:5:6:7:8:9", "12345::", "1.2.3.4/8", "a".repeat(100)])("rejects %j", (raw) => {
+  it.each(["", "garbage", "1.2.3", "1.2.3.4.5", "256.1.1.1", "01.2.3.4", "1.2.3.4:99999x", "[::1", "::1::2", "2001:db8::7%", "1.2.3.4%eth0", "198.51.100.7%1", "1:2:3:4:5:6:7:8:9", "12345::", "1.2.3.4/8", "a".repeat(100)])("rejects %j", (raw) => {
     expect(parseIp(raw)).toBeNull();
   });
 });
@@ -118,14 +118,14 @@ describe("apiFetch", () => {
 
   describe("without a socket address (a route forgot the load context)", () => {
     const spoofed = { [FORWARDED_CLIENT_IP_HEADER]: "6.6.6.6", [FORWARDED_CLIENT_TIMESTAMP_HEADER]: "1700000000", [FORWARDED_CLIENT_SIGNATURE_HEADER]: "v1=forged", "x-forwarded-for": "7.7.7.7" };
-    it("fails loudly outside production", async () => {
+    it.each([undefined, ""])("fails loudly outside production (socketAddress %j)", async (empty) => {
       const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
-      await expect(apiFetch(cfg([]), { request: new Request("http://web/x", { headers: spoofed }), socketAddress: undefined as unknown as string }, "/p")).rejects.toThrow(/socketAddress is missing/);
+      await expect(apiFetch(cfg([]), { request: new Request("http://web/x", { headers: spoofed }), socketAddress: empty as unknown as string }, "/p")).rejects.toThrow(/socketAddress is missing/);
       expect(spy).not.toHaveBeenCalled();
     });
-    it("in production still forwards NONE of the client's X-Solvelt-Client-* headers", async () => {
+    it.each([undefined, ""])("in production still forwards NONE of the client's X-Solvelt-Client-* headers (socketAddress %j)", async (empty) => {
       const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
-      await apiFetch(cfg(["10.0.0.5"], true), { request: new Request("http://web/x", { headers: spoofed }), socketAddress: undefined as unknown as string }, "/p");
+      await apiFetch(cfg(["10.0.0.5"], true), { request: new Request("http://web/x", { headers: spoofed }), socketAddress: empty as unknown as string }, "/p");
       const h = new Headers((spy.mock.calls[0]![1] as RequestInit).headers);
       for (const name of [FORWARDED_CLIENT_IP_HEADER, FORWARDED_CLIENT_TIMESTAMP_HEADER, FORWARDED_CLIENT_SIGNATURE_HEADER, "x-forwarded-for"]) expect(h.get(name), name).toBeNull();
     });

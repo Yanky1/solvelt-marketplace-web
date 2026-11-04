@@ -53,7 +53,11 @@ export function parseIp(raw: string): Ip | null {
   if (bracket) s = bracket[1]!;
   else if (/^[^:]+:\d{1,5}$/.test(s) && s.includes(".")) s = s.slice(0, s.lastIndexOf(":")); // 1.2.3.4:5678
   const z = s.indexOf("%");
-  if (z >= 0) { if (!/^[0-9A-Za-z._~-]{1,32}$/.test(s.slice(z + 1))) return null; s = s.slice(0, z); }
+  if (z >= 0) {
+    if (!/^[0-9A-Za-z._~-]{1,32}$/.test(s.slice(z + 1))) return null;
+    s = s.slice(0, z);
+    if (!s.includes(":")) return null; // a zone id only exists on IPv6 addresses
+  }
   if (s.includes(":")) {
     if (isIP(s) !== 6) return null;
     const v = parseV6(s);

@@ -24,7 +24,7 @@ Tokens are CSS custom properties in `app/styles/tokens.css` (from the Solvelt po
 `app/components/ui`: Button, LinkButton, Input/Field (label, hint, error), Select, Checkbox, Card, Badge, Price, RatingStars, Skeleton, EmptyState, Breadcrumb, Pagination, Modal/Drawer, Toast. Shell: Logo, Header (search, nav, account, cart placeholder, mobile drawer), Footer (theme switch), skip link, error/404 pages. `/styleguide` (noindex) shows them all and is covered by axe in light and dark.
 
 ## Status
-Slice 1 (skeleton, tokens, shell, CI): done. Next: auth (BFF), then catalog pages, SEO, images.
+Done: skeleton, tokens, shell, CI and E2E, BFF auth (sign-up/in/out, verify, forgot/reset, resend), profile, addresses, passkeys, three rounds of review fixes. Catalog pages, SEO helpers, sitemap content and the image resize route moved to the M2 worker (W1-53).
 
 ## Additions after slice 1
 | Id | Date | Decision | Why |
@@ -94,3 +94,9 @@ Not in W1 yet: guest checkout entry (M3), account deletion, email change.
 | W1-50 | 2026-11-04 | A stale or foreign CSRF token (403) renders a friendly "Please try again" page. `currentUser` is memoised per request (keyed by the load context), so `/account` makes one `/account/me` call instead of two. | Review items 10. |
 | W1-51 | 2026-11-04 | Test fixes found on the way: the passkey lifecycle test was flaky (about 15% under load) because `getByText("Work laptop")` also matched the hint "For example: Work laptop", so the test moved on before the registration finished; it now asserts the list row and waits for sign-out to finish. | CI failed on 60ee268 because of it. Lesson: assert on the element, not on text that also appears in hints. |
 | W1-52 | 2026-11-04 | E2E rules learned from two CI/load flakes, fixed at the root (no retries, no skips): (1) never navigate away right after clicking a submit; wait for its visible result first, or the request is cancelled and the next step reads stale state; (2) never edit form fields before hydration (React resets controlled hidden inputs to the server value): wait for a post-hydration signal, such as the passkey button, first; (3) assert on the element, not on text that also appears in hints. The suite is verified with `CI=true --workers=1` (what CI runs) and with repeat-each under parallel load. | CI failed on 60ee268 and f98fe8a because of test races, not product bugs. |
+
+## Scope change and small review notes
+| Id | Date | Decision | Why |
+|---|---|---|---|
+| W1-53 | 2026-11-04 | **Scope change (orchestrator, 08:00Z):** the API catalog endpoints are merged (API 2994b97) and the M2 worker owns all catalog, search and listing pages, sitemap content, JSON-LD helpers and the `/img` resize route in this repo. W1 wrote no catalog code, so nothing is handed over. What exists for M2 to build on: the shell (`Header` has a search form that GETs `/search`, `NAV_LINKS` are placeholders for `/categories`, `/services`, `/brands`), `Breadcrumb`, `Pagination`, `Price`, `RatingStars`, `Badge`, `Card`, `Skeleton`, `EmptyState`, the placeholder `sitemap.xml` (`buildSitemap`, `/` only) and `robots.txt`, `apiFetch` (signed forwarding headers, per-request socket address), `app/lib/api-client.server.ts` (add catalog calls there), and the E2E mock API (`e2e/mock-api.mjs`, add catalog endpoints there). Remember: HTML is `private, no-cache` and every document sets a visitor cookie (W1-23); M2 must decide how public catalog pages are cached. | Avoids duplicate work. |
+| W1-54 | 2026-11-04 | `parseIp` rejects a zone id on an IPv4 address (`1.2.3.4%eth0`); the empty-string socket address is tested at runtime next to `undefined` (dev throws, production forwards none of the client's `X-Solvelt-Client-*`). | Orchestrator notes on review-2. |
