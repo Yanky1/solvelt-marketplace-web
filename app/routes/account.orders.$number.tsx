@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Form, useActionData, useNavigation } from "react-router";
+import { Form, Link, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/account.orders.$number";
 import { AccountNav } from "~/components/AccountNav";
 import { ErrorSummary, FormMessage } from "~/components/AuthForm";
@@ -240,6 +240,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
               <p className="muted">Refunds go back to your original payment method.</p>
             </section>
           )}
+          <p><Link className="btn btn-secondary" to={`/account/messages/new?order=${encodeURIComponent(order.number)}&seller=${encodeURIComponent(g.sellerOrderNumber ?? "")}`}>Message {g.sellerName}</Link></p>
           <ActionForms g={g} idem={idem} error={a} />
         </Card>
       ))}

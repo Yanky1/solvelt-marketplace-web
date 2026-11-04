@@ -81,6 +81,13 @@ for (const [form, device] of [["desktop", devices["Desktop Chrome"]], ["mobile",
       await page.goto(BASE + path, { waitUntil: "networkidle" });
       await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
     }
+    // Messages (M5)
+    const thread = await (await fetch(`${MOCK}/__test/seed-thread?email=${encodeURIComponent(email)}`)).json();
+    for (const [name, path] of [["messages", "/account/messages"], ["message-thread", `/account/messages/${thread.id}`], ["message-new", "/account/messages/new?order=MP-E2E-1&seller=SO-1"]]) {
+      await page.goto(BASE + path, { waitUntil: "networkidle" });
+      for (const d of await page.locator("details").all()) await d.evaluate((el) => { el.open = true; });
+      await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
+    }
     await context.close();
   }
 }

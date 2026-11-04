@@ -14,6 +14,8 @@ const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const authAt = new Map(); // session token -> ms of the last successful step-up (the API-side O-11 clock)
+const threads = new Map(); // threadId -> {userId, kind, subject, sellerName, orderNumber, listingId, messages:[]}
+const reports = []; // {messageId, reason}
 const notifs = new Map(); // userId -> [{id, kind, ...}]
 const prefs = new Map(); // userId -> {category: bool}
 const CATEGORIES = ["order_updates", "shipped", "out_for_delivery", "delivered", "refunds", "messages", "bookings"];
@@ -91,8 +93,20 @@ http.createServer(async (req, res) => {
       notifs.set(u.id, [n, ...list]);
       return send(res, 200, { id: n.id });
     }
+    if (path === "/__test/seed-thread") {
+      const u = users.get((url.searchParams.get("email") ?? "").toLowerCase());
+      if (!u) return send(res, 404, { code: "not_found" });
+      const id = randomBytes(6).toString("hex");
+      const t = { userId: u.id, kind: "order", subject: "Order MP-E2E-1", sellerName: "Challah Corner", orderNumber: "MP-E2E-1", listingId: null, messages: [] };
+      t.messages.push({ id: `${id}-1`, direction: "buyer", status: "sent", sentAt: new Date(Date.now() - 600000).toISOString(), read: false, reported: false, hidden: false, text: "Is it nut free?", attachments: [] });
+      t.messages.push({ id: `${id}-2`, direction: "seller", status: "received", sentAt: new Date(Date.now() - 300000).toISOString(), read: false, reported: false, hidden: false, text: "Yes, it is nut free. Photo attached.",
+        attachments: [{ id: `att${id}`, fileName: "ingredients.pdf", size: 52000, type: "application/pdf", available: true }, { id: `gone${id}`, fileName: "removed.png", size: 10, type: null, available: false }] });
+      threads.set(id, t);
+      return send(res, 200, { id });
+    }
+    if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -182,6 +196,51 @@ http.createServer(async (req, res) => {
       u.displayName = String(b.displayName).trim(); u.phone = String(b.phone ?? "");
     }
     return send(res, 200, { id: u.id, displayName: u.displayName, email: u.email, phone: u.phone ?? "" });
+  }
+
+  // ---- messages (another buyer's thread is a 404) ----
+  const mm = /^\/api\/v1\/messages(?:\/threads(?:\/([^/]+)(\/read)?)?|\/attachments\/([^/]+)|\/([^/]+)\/report)?$/.exec(path);
+  if (mm) {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const mine = () => [...threads.entries()].filter(([, t]) => t.userId === u.id);
+    const lastOf = (t) => t.messages[t.messages.length - 1];
+    if (path === "/api/v1/messages" && req.method === "POST") {
+      const text = String(body.text ?? "");
+      if (!text.trim()) return send(res, 422, { code: "validation_failed", errors: { text: "Write a message." } });
+      if (/@|paypal/i.test(text) && body.acknowledgeWarning !== true) return send(res, 409, { code: "contact_details_warning", message: "Keep details on Solvelt", errors: { [/@/.test(text) ? "email" : "payment_or_chat_app"]: "x" } });
+      let id = body.threadId, t = id ? threads.get(id) : undefined;
+      if (id && (!t || t.userId !== u.id)) return send(res, 404, { code: "not_found" });
+      if (!t) {
+        id = randomBytes(6).toString("hex");
+        t = { userId: u.id, kind: body.listingId ? "product" : "order", subject: body.listingId ? "Classic challah" : `Order ${body.orderNumber}`, sellerName: "Challah Corner", orderNumber: body.orderNumber ?? null, listingId: body.listingId ?? null, messages: [] };
+        threads.set(id, t);
+      }
+      t.messages.push({ id: `${id}-${t.messages.length + 1}`, direction: "buyer", status: "pending", sentAt: new Date().toISOString(), read: true, reported: false, hidden: false, text, attachments: [] });
+      return send(res, 202, { threadId: id, messageId: `${id}-m`, status: "pending" });
+    }
+    if (mm[3]) {
+      const hit = [...threads.values()].find((t) => t.userId === u.id && t.messages.some((m) => m.attachments.some((a) => a.id === mm[3] && a.available)));
+      if (!hit) return send(res, 404, { code: "not_found" });
+      const pdf = Buffer.from("%PDF-1.4\n%%EOF");
+      res.writeHead(200, { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="ingredients.pdf"', "Content-Length": pdf.length }); return res.end(pdf);
+    }
+    if (mm[4]) {
+      const hit = [...threads.values()].find((t) => t.userId === u.id && t.messages.some((m) => m.id === mm[4]));
+      if (!hit) return send(res, 404, { code: "not_found" });
+      if (!String(body.reason ?? "").trim()) return send(res, 422, { code: "validation_failed", errors: { reason: "x" } });
+      hit.messages.find((m) => m.id === mm[4]).reported = true; reports.push({ messageId: mm[4], reason: body.reason });
+      return send(res, 202, { reported: true });
+    }
+    if (!mm[1]) {
+      const list = mine().sort((a, b) => lastOf(b[1]).sentAt.localeCompare(lastOf(a[1]).sentAt));
+      const unread = (t) => t.messages.filter((m) => m.direction === "seller" && !m.read).length;
+      return send(res, 200, { unreadCount: list.reduce((n, [, t]) => n + unread(t), 0), threads: list.map(([id, t]) => ({ id, kind: t.kind, subject: t.subject, sellerName: t.sellerName, orderNumber: t.orderNumber, listingId: t.listingId, lastMessageAt: lastOf(t).sentAt, unreadCount: unread(t), preview: lastOf(t).text })), next: null });
+    }
+    const t = threads.get(mm[1]);
+    if (!t || t.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found" });
+    if (mm[2]) { t.messages.forEach((m) => { if (m.direction === "seller") m.read = true; }); return send(res, 204); }
+    return send(res, 200, { thread: { id: mm[1], kind: t.kind, subject: t.subject, sellerName: t.sellerName, listingId: t.listingId }, messages: t.messages, older: null });
   }
 
   // ---- notifications (the unsubscribe token is "U.<email>.<category|all>": the mock does not sign) ----
