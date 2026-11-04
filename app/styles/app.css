@@ -96,3 +96,38 @@ dialog.drawer { margin: 0; inset: 0 auto 0 0; height: 100%; max-height: 100%; wi
 .hero p { color: var(--brand-fg); opacity: .92; max-width: 56ch; }
 .hero :focus-visible { outline-color: var(--gold-2); } /* --ring is too dark on the green hero in light mode */
 .hero .btn-gold { background: var(--gold-2); color: var(--on-gold); }
+
+/* ---- Catalog: product page (M2) ---- */
+.lead { font-size: var(--fs-lg); color: var(--muted); }
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s1); margin: 0; padding: 0; }
+.pdp-grid { display: grid; gap: var(--s4); grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 900px) { .pdp-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
+.pdp-brand { margin-bottom: var(--s1); }
+.pdp-price .price { font-size: var(--fs-2xl); font-weight: 700; }
+.stock { margin: var(--s1) 0 0; font-weight: 600; }
+.stock-in { color: var(--ok); }
+.stock-out { color: var(--muted); }
+.gallery { display: grid; gap: var(--s2); }
+.gallery-main { display: block; width: 100%; padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: zoom-in; overflow: hidden; }
+.gallery-main img { display: block; width: 100%; height: auto; }
+.gallery-empty { display: grid; place-items: center; min-height: 16rem; border: 1px dashed var(--border-strong); border-radius: var(--r-md); color: var(--muted); }
+.gallery-thumbs { list-style: none; display: flex; gap: var(--s1); margin: 0; padding: 0; flex-wrap: wrap; }
+.gallery-thumbs button { padding: 2px; border: 2px solid var(--border); border-radius: var(--r-sm); background: var(--surface); cursor: pointer; min-width: var(--target); min-height: var(--target); display: grid; place-items: center; }
+.gallery-thumbs button[aria-pressed="true"] { border-color: var(--primary); }
+.gallery-zoom { display: block; max-width: min(92vw, 1100px); max-height: 80vh; width: auto; height: auto; margin-top: var(--s2); }
+.variants { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s2); display: grid; gap: var(--s1); margin: 0; }
+.variants legend { font-weight: 600; padding-inline: var(--s1); }
+.variant { display: grid; grid-template-columns: auto 1fr auto auto; gap: var(--s2); align-items: center; min-height: var(--target); padding: var(--s1) var(--s2); border: 1px solid var(--border-ctl); border-radius: var(--r-ctl); cursor: pointer; background: var(--surface); }
+.variant input { width: 1.25rem; height: 1.25rem; accent-color: var(--primary); }
+.variant-selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.variant-soldout { color: var(--muted); cursor: not-allowed; }
+.pdp-section { max-width: 70ch; }
+.specs { display: grid; gap: 0; margin: 0; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.spec { display: grid; grid-template-columns: minmax(9rem, 1fr) 2fr; gap: var(--s2); padding: var(--s1) var(--s2); background: var(--surface); }
+.spec + .spec { border-top: 1px solid var(--divider); }
+.spec dt { color: var(--muted); font-weight: 600; }
+.spec dd { margin: 0; }
+.faq { border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); margin-bottom: var(--s1); }
+.faq summary { cursor: pointer; font-weight: 600; padding: var(--s1) var(--s2); min-height: var(--target); display: flex; align-items: center; }
+.faq > div { padding: 0 var(--s2) var(--s1); }
+.add-to-cart { display: grid; gap: var(--s1); }
