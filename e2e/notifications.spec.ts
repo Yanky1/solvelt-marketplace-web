@@ -39,22 +39,23 @@ test("the centre lists notifications, opens one (marks it read and goes to its o
 test("email settings: all on by default, saved per category", async ({ page }) => {
   const email = await signedIn(page, "nprefs");
   await page.goto("/account/notifications/preferences");
-  for (const label of ["Order updates", "Shipped", "Out for delivery", "Delivered", "Refunds", "Messages", "Bookings"]) await expect(page.getByLabel(new RegExp(`^${label}`))).toBeChecked();
+  for (const label of ["Order updates", "Shipped", "Out for delivery", "Delivered", "Messages", "Bookings"]) await expect(page.getByLabel(new RegExp(`^${label}`))).toBeChecked();
   await page.getByLabel(/^Shipped/).uncheck();
-  await page.getByLabel(/^Refunds/).uncheck();
+  await expect(page.getByLabel(/^Refunds/)).toHaveCount(0);                                  // not switchable (API M5-20)
+  await expect(page.getByText(/always email you about a refund/)).toBeVisible();
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Settings saved." })).toBeVisible();
   await expect(page.getByLabel(/^Shipped/)).not.toBeChecked();
   await expect(page.getByLabel(/^Delivered/)).toBeChecked();
   const stored = (await (await page.request.get(`${MOCK}/__test/prefs?email=${encodeURIComponent(email)}`)).json()) as Record<string, boolean>;
   expect(stored.shipped).toBe(false);
-  expect(stored.refunds).toBe(false);
+  expect(stored.refunds).toBeUndefined();
   expect(stored.delivered).toBe(true);
 });
 
 test("an unsubscribe link needs a click to confirm, drops the token from the address, and only switches mail off", async ({ page }) => {
   const email = await signedIn(page, "nunsub");
-  const token = `U.${email}.refunds`;
+  const token = `U.${email}.delivered`;
   const posts: string[] = [];
   page.on("request", (r) => { if (r.method() === "POST") posts.push(r.url()); });
   await page.goto(`/unsubscribe?token=${encodeURIComponent(token)}`);
@@ -67,7 +68,7 @@ test("an unsubscribe link needs a click to confirm, drops the token from the add
   await expect(page).toHaveURL(/\/unsubscribe$/);                                          // the token left the address bar
   await page.getByRole("button", { name: "Stop these emails" }).click();
   await expect(page.getByRole("heading", { name: "You are unsubscribed" })).toBeVisible();
-  expect((await stored())!.refunds).toBe(false);
+  expect((await stored())!.delivered).toBe(false);
   expect((await stored())!.shipped).toBe(true);
   // a bad link says so and changes nothing
   await page.goto(`/unsubscribe?token=${encodeURIComponent("U.nobody@example.test.shipped.x")}`);

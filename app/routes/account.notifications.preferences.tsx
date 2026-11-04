@@ -56,6 +56,7 @@ export default function Preferences({ loaderData }: Route.ComponentProps) {
             <Checkbox key={c.key} name={`email:${c.key}`} defaultChecked={loaderData.prefs[c.key] !== false} label={<>{c.label}<span className="muted"> · {c.hint}</span></>} />
           ))}
         </fieldset>
+        <p className="muted">We always email you about a refund, a cancelled order and a delivery attempt that did not work. These cannot be switched off, because they involve your money or your parcel.</p>
         <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save settings"}</Button>
       </Form>
     </div>

@@ -2,11 +2,10 @@ import type { NotificationItem } from "./api-client.server";
 
 /** The email categories a buyer can switch (the API's names), with plain labels. */
 export const CATEGORIES: { key: string; label: string; hint: string }[] = [
-  { key: "order_updates", label: "Order updates", hint: "Accepted, cancelled, returns and failed deliveries" },
+  { key: "order_updates", label: "Order updates", hint: "Accepted, returns and other changes" },
   { key: "shipped", label: "Shipped", hint: "When a seller ships your order" },
   { key: "out_for_delivery", label: "Out for delivery", hint: "On the day it reaches you" },
   { key: "delivered", label: "Delivered", hint: "When your order arrives" },
-  { key: "refunds", label: "Refunds", hint: "When a refund is on its way" },
   { key: "messages", label: "Messages", hint: "When a seller writes to you" },
   { key: "bookings", label: "Bookings", hint: "Confirmations, changes and reminders" },
 ];
