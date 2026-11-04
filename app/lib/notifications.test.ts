@@ -30,7 +30,7 @@ describe("notification text and links", () => {
     expect(notificationLink(n({ kind: "booking_cancelled" }))).toBe("/account/bookings");
   });
 
-  it("lists the seven email categories of the API", () => {
-    expect(CATEGORY_KEYS).toEqual(["order_updates", "shipped", "out_for_delivery", "delivered", "refunds", "messages", "bookings"]);
+  it("lists the six switchable email categories of the API (refunds, cancellations and failed deliveries are always emailed)", () => {
+    expect(CATEGORY_KEYS).toEqual(["order_updates", "shipped", "out_for_delivery", "delivered", "messages", "bookings"]);
   });
 });
