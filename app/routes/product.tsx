@@ -1,13 +1,14 @@
 import { redirect, type ShouldRevalidateFunctionArgs } from "react-router";
 import type { Route } from "./+types/product";
 import { AddToCart } from "~/components/AddToCart";
+import { BookingSlot } from "~/components/BookingSlot";
 import { Gallery } from "~/components/Gallery";
 import { JsonLd } from "~/components/JsonLd";
 import { VariantPicker } from "~/components/VariantPicker";
 import { Badge, Breadcrumb, Price } from "~/components/ui/display";
 import { Link, useSearchParams } from "react-router";
 import { apiCtx } from "~/lib/auth.server";
-import { attributeLabel, attributeValues, deliveryLabels, pickVariant, specAttributes, type ListingDetail } from "~/lib/catalog";
+import { attributeLabel, attributeValues, deliveryLabels, pickVariant, serviceLocations, specAttributes, type ListingDetail } from "~/lib/catalog";
 import { catalog, catalogErrorResponse, GUID } from "~/lib/catalog.server";
 import { getConfig } from "~/lib/config.server";
 import { breadcrumbJsonLd, clipText, imageUrl, listingJsonLd, priceString } from "~/lib/seo";
@@ -125,7 +126,8 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
             </ul>
           )}
           {isService
-            ? <div className="add-to-cart" data-testid="booking-slot"><p className="muted">Online booking opens soon.</p></div>
+            ? <BookingSlot listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency}
+                locations={serviceLocations(listing)} bookingMode={attributeValues(listing, "booking-mode")[0]} durationLabel={attributeValues(listing, "duration")[0]} available={variant.available} />
             : variant.available
               ? <AddToCart listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency} />
               : <p className="muted">This option is sold out. {listing.variants.some((v) => v.available) ? "Choose another option." : "Please check back later."}</p>}
