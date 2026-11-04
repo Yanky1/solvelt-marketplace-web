@@ -9,8 +9,8 @@ async function signedIn(page: Page, tag: string) {
   return email;
 }
 
-async function seed(page: Page, email: string, status: "new" | "shipped" | "delivered") {
-  const r = await page.request.get(`${MOCK}/__test/seed-order?email=${encodeURIComponent(email)}&status=${status}`);
+async function seed(page: Page, email: string, status: "new" | "shipped" | "delivered", extra = "") {
+  const r = await page.request.get(`${MOCK}/__test/seed-order?email=${encodeURIComponent(email)}&status=${status}${extra}`);
   expect(r.ok()).toBeTruthy();
   return (await r.json()) as { number: string; sellerOrderNumber: string };
 }
@@ -85,6 +85,26 @@ test("a shipped order shows tracking, can be confirmed once and can be returned 
   await page.getByLabel("Reason").selectOption("damaged");
   await page.getByRole("button", { name: "Request return" }).click();
   await expect(page.getByText(/can no longer be returned in that quantity/)).toBeVisible();
+});
+
+test("the driver's coordinates never reach the browser: not in the page, not in the hydration data, not in the .data response (review W2)", async ({ page }) => {
+  const email = await signedIn(page, "opos");
+  const o = await seed(page, email, "shipped", "&position=1");
+  const res = await page.request.get(`/account/orders/${o.number}`);
+  const html = await res.text();
+  expect(html).toContain("on the way");                                                    // the sentence is still there ...
+  for (const leak of ["40.693", "-73.99", '"lat"', '"lng"', "lat\\", "lng\\"]) expect(html).not.toContain(leak);   // ... the numbers are not
+  const data = await (await page.request.get(`/account/orders/${o.number}.data`)).text();
+  for (const leak of ["40.693", "-73.99", "lat", "lng"]) expect(data).not.toContain(leak);
+});
+
+test("a return label link that is not https is not offered (review W3)", async ({ page }) => {
+  const email = await signedIn(page, "olabel");
+  const o = await seed(page, email, "delivered", "&badlabel=1");
+  await page.goto(`/account/orders/${o.number}`);
+  await expect(page.getByRole("heading", { name: `Order ${o.number}` })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Print your return label" })).toHaveCount(0);
+  expect(await page.content()).not.toContain("javascript:alert");
 });
 
 test("proof-of-delivery images are served through our own address with nosniff and no caching", async ({ page }) => {

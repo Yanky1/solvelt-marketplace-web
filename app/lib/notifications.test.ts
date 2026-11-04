@@ -8,6 +8,8 @@ describe("notification text and links", () => {
   it("says what happened from the kind and the non-personal parameters", () => {
     expect(notificationText(n({ parameters: { sellerName: "Challah Corner", carrier: "USPS" } }))).toBe("Challah Corner shipped order MP-1 with USPS.");
     expect(notificationText(n({ kind: "refund_issued", parameters: { sellerName: "Bakery", amountCents: 1234 } }))).toBe("Bakery refunded $12.34 for order MP-1.");
+    expect(notificationText(n({ kind: "refund_issued", parameters: { sellerName: "Bakery", amountCents: 1234, currency: "EUR" } }))).toBe("Bakery refunded €12.34 for order MP-1.");
+    expect(notificationText(n({ kind: "refund_issued", parameters: { sellerName: "Bakery", amountCents: 1234, currency: "<b>" } }))).toBe("Bakery refunded $12.34 for order MP-1.");
     expect(notificationText(n({ kind: "out_for_delivery" }))).toBe("Order MP-1 is out for delivery.");
     expect(notificationText(n({ kind: "message_received", parameters: { sellerName: "Bakery", subject: "Order MP-1" } }))).toBe("Bakery sent you a message about Order MP-1.");
     expect(notificationText(n({ kind: "booking_confirmed", orderNumber: null, parameters: { bookingNumber: "B-7" } }))).toBe("There is an update on your booking B-7.");

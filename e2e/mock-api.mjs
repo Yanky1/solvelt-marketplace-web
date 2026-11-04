@@ -77,12 +77,13 @@ http.createServer(async (req, res) => {
         sellerOrderNumber: `SO-${randomBytes(3).toString("hex").toUpperCase()}`, sellerName: "Challah Corner", brandName: "Challah Corner", status, deliveryKind: "carrier", shippingSpeed: "standard", localDate: null,
         itemsCents: 1300, shippingCents: 500, taxCents: 100, totalCents: 1900, refundedCents: 0, oversold: false, acceptedAt: null, shippedAt: shipped ? new Date().toISOString() : null,
         deliveredAt: status === "delivered" ? new Date().toISOString() : null, deliveredBy: null, cancelledAt: null, deliveryAttemptsFailed: 0, lastAttemptFailedReason: null, buyerConfirmedAt: null,
-        cancelRequest: null, returns: [], refunds: [],
+        cancelRequest: null, refunds: [],
+        returns: url.searchParams.get("badlabel") ? [{ returnId: "ret-1", status: "approved", reason: "damaged", decisionNote: null, createdAt: new Date().toISOString(), lines: [], canRefreshLabel: false, label: { url: "javascript:alert(1)", expiresAt: new Date(Date.now() + 3600e3).toISOString(), carrier: "USPS", trackingNumber: null, trackingUrl: null } }] : [],
         lines: [{ lineId: `${number}-1`, title: "Classic challah", variantName: "Large", quantity: 2, unitPriceCents: 650, lineTotalCents: 1300, taxCents: 100, shippedQty: shipped ? 2 : 0, cancelledQty: 0, returnedQty: 0, refundedQty: 0, returnableQty: shipped ? 2 : 0 }],
         shipments: shipped ? [{ id: `sh-${number}`, method: "carrier", carrier: "USPS", service: "Priority", trackingNumber: "9400111", trackingUrl: "https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111", shippedAt: new Date().toISOString(),
           deliveredAt: status === "delivered" ? new Date().toISOString() : null, voided: false, trackingStatus: status === "delivered" ? "delivered" : "in_transit", trackingStatusDetail: status === "delivered" ? "Delivered" : "Departed facility",
           eta: null, etaWindowStart: null, etaWindowEnd: null, driverFirstName: null, placement: status === "delivered" ? "front_door" : null,
-          timeline: [{ status: "in_transit", detail: "Departed facility", location: "Brooklyn, NY", at: new Date().toISOString() }], position: null, proofCount: status === "delivered" ? 1 : 0, lines: [{ lineId: `${number}-1`, quantity: 2 }] }] : [],
+          timeline: [{ status: "in_transit", detail: "Departed facility", location: "Brooklyn, NY", at: new Date().toISOString() }], position: url.searchParams.get("position") ? { lat: 40.693, lng: -73.99, at: new Date().toISOString() } : null, proofCount: status === "delivered" ? 1 : 0, lines: [{ lineId: `${number}-1`, quantity: 2 }] }] : [],
       } });
       return send(res, 200, { number, sellerOrderNumber: orders.get(number).group.sellerOrderNumber });
     }

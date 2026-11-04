@@ -1,4 +1,5 @@
 import type { NotificationItem } from "./api-client.server";
+import { formatMoney } from "~/components/ui/display";
 
 /** The email categories a buyer can switch (the API's names), with plain labels. */
 export const CATEGORIES: { key: string; label: string; hint: string }[] = [
@@ -32,7 +33,7 @@ export function notificationText(n: NotificationItem): string {
     case "delivery_attempt_failed": return `A delivery attempt for ${order} did not work.`;
     case "refund_issued": {
       const cents = typeof n.parameters?.amountCents === "number" ? n.parameters.amountCents : null;
-      return `${seller(n)} refunded${cents !== null ? ` ${(cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })}` : ""} for ${order}.`;
+      return `${seller(n)} refunded${cents !== null ? ` ${formatMoney(cents, /^[A-Z]{3}$/.test(str(n.parameters?.currency)) ? str(n.parameters?.currency) : "USD")}` : ""} for ${order}.`;
     }
     case "message_received": return `${seller(n)} sent you a message${str(n.parameters?.subject) ? ` about ${str(n.parameters?.subject)}` : ""}.`;
     default:

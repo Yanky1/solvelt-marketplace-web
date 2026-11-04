@@ -6,6 +6,8 @@ import { isSafeId } from "./passkey.server";
  * Typed client for the buyer API. ASSUMED CONTRACT (docs/DESIGN.md W1-21): the API's auth endpoints are not
  * documented yet; shapes here are what the mock API in e2e/mock-api.mjs implements, to be confirmed by M1.
  */
+import { safeHttps } from "./orders";
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number) {
     super(message);
@@ -56,7 +58,7 @@ export interface TimelineEvent { status: string | null; detail: string | null; l
 export interface ShipmentView {
   id: string; method: string; carrier: string | null; service: string | null; trackingNumber: string | null; trackingUrl: string | null; shippedAt: string | null; deliveredAt: string | null; voided: boolean;
   trackingStatus: string | null; trackingStatusDetail: string | null; eta: string | null; etaWindowStart: string | null; etaWindowEnd: string | null; driverFirstName: string | null; placement: string | null;
-  timeline: TimelineEvent[] | null; position: { lat: number; lng: number; at: string } | null; proofCount: number; lines: { lineId: string; quantity: number }[];
+  timeline: TimelineEvent[] | null; position: { at: string } | null; proofCount: number; lines: { lineId: string; quantity: number }[];
 }
 export interface ReturnView {
   returnId: string; status: string; reason: string; decisionNote: string | null; createdAt: string; lines: { lineId: string; quantity: number }[];
@@ -75,6 +77,11 @@ export interface OrderGroupView {
 export interface OrderDetail {
   number: string; status: string; createdAt: string; paidAt: string | null; currency: string; itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; refundedCents: number;
   shipTo: { name: string; line1: string; line2: string | null; city: string; region: string | null; postalCode: string; country: string }; giftMessage: string | null; groups: OrderGroupView[];
+}
+/** Rebuilds the shipments' `position` as `{ at }` only, whatever else the API sent. */
+export function withoutCoordinates(o: OrderDetail): OrderDetail {
+  return { ...o, groups: (o.groups ?? []).map((g) => ({ ...g, shipments: (g.shipments ?? []).map((s) => ({ ...s, position: s.position && typeof s.position.at === "string" ? { at: s.position.at } : null })),
+    returns: (g.returns ?? []).map((r) => ({ ...r, label: r.label && safeHttps(r.label.url) ? r.label : null })) })) };   // a label link that is not https is dropped before it can be rendered or serialised
 }
 export interface ReturnInput { sellerOrderNumber: string; reason: string; comment: string; lines: { lineId: string; quantity: number }[] }
 
@@ -114,7 +121,8 @@ export const api = {
   unsubscribe: (ctx: ApiRequestContext, token: string) => call<void>(ctx, "/api/v1/notifications/unsubscribe", { token }),
   orders: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<OrderList>(ctx, `/api/v1/orders${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
-  order: (ctx: ApiRequestContext, number: string) => call<OrderDetail>(ctx, `/api/v1/orders/${pid(number)}`),
+  /** The driver's coordinates are dropped HERE, before anything can reach a loader, the hydration payload or a .data response: the page only ever says "on the way" (M5W-05). */
+  order: async (ctx: ApiRequestContext, number: string): Promise<OrderDetail> => withoutCoordinates(await call<OrderDetail>(ctx, `/api/v1/orders/${pid(number)}`)),
   requestCancel: (ctx: ApiRequestContext, number: string, b: { sellerOrderNumber: string; reason: string; note: string }) => call<{ requestId: string; status: string }>(ctx, `/api/v1/orders/${pid(number)}/cancel-requests`, b),
   requestReturn: (ctx: ApiRequestContext, number: string, b: ReturnInput, idempotencyKey: string) =>
     call<{ returnId: string; status: string }>(ctx, `/api/v1/orders/${pid(number)}/return-requests`, b, undefined, { "Idempotency-Key": idempotencyKey }),

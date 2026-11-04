@@ -33,6 +33,13 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   }
 }
 
+const CONFLICT_TEXT: Record<string, string> = {
+  not_cancellable: "This order can no longer be cancelled.",
+  not_shipped: "This order has not shipped yet.",
+  order_not_ready: "This order is not ready for that yet.",
+  not_returnable: "These items can no longer be returned.",
+  no_label: "There is no return label to refresh for this return.",
+};
 const INTENTS = ["cancel", "return", "confirm", "label"] as const;
 
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -77,7 +84,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   } catch (e) {
     if (e instanceof Response) throw e;
     if (e instanceof ApiError && e.status === 422) return formError({ intent, seller, fieldErrors: safeFieldErrors(e.fieldErrors, ["reason", "lines", "note", "comment"]), message: e.code === "quantity_exceeded" ? "Some items can no longer be returned in that quantity. Check the quantities and try again." : null }, 422);
-    if (e instanceof ApiError && e.status === 409) return formError({ intent, seller, fieldErrors: {}, message: intent === "cancel" ? "This order can no longer be cancelled." : intent === "confirm" ? "This order has not shipped yet." : "That is not possible right now." }, 409);
+    if (e instanceof ApiError && e.status === 409) return formError({ intent, seller, fieldErrors: {}, message: CONFLICT_TEXT[e.code] ?? "That is not possible right now." }, 409);
     if (e instanceof ApiError && e.status !== 401 && e.status !== 404) return formError({ intent, seller, fieldErrors: {}, message: "We could not do that right now. Please try again." }, 503);
     return failAccount(e, request);
   }
@@ -224,7 +231,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
             <section key={r.returnId} aria-label="Return" className="stack">
               <h4 style={{ margin: 0 }}>Return requested {formatDate(r.createdAt)} <Badge tone={r.status === "rejected" || r.status === "failed" ? "err" : r.status === "approved" || r.status === "received" || r.status === "refunded" ? "ok" : "neutral"}>{RETURN_STATUS[r.status] ?? "In progress"}</Badge></h4>
               {r.decisionNote && <p className="muted">“{r.decisionNote}”</p>}
-              {r.label && <p><a href={r.label.url} rel="noopener noreferrer" target="_blank">Print your return label</a>{r.label.carrier ? ` (${r.label.carrier})` : ""} <span className="muted">· link valid until {formatDate(r.label.expiresAt, true)}</span></p>}
+              {r.label && safeHttps(r.label.url) && <p><a href={safeHttps(r.label.url)!} rel="noopener noreferrer" target="_blank">Print your return label</a>{r.label.carrier ? ` (${r.label.carrier})` : ""} <span className="muted">· link valid until {formatDate(r.label.expiresAt, true)}</span></p>}
               {r.canRefreshLabel && !r.label && (
                 <Form method="post">
                   <CsrfField /><input type="hidden" name="sellerOrderNumber" value={g.sellerOrderNumber ?? ""} /><input type="hidden" name="intent" value="label" /><input type="hidden" name="returnId" value={r.returnId} />

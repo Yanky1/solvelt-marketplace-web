@@ -89,6 +89,50 @@ test("an unsubscribe link needs a click to confirm, drops the token from the add
   expect(res.headers()["cache-control"]).toContain("no-store");
 });
 
+test("the email-link path works signed out: a click confirms, nothing is sent on load, an expired link points to sign-in settings (review L5)", async ({ page }) => {
+  const email = await newVerifiedUser(page, "nsignedout");                                // the account exists, nobody is signed in
+  const posts: string[] = [];
+  page.on("request", (r) => { if (r.method() === "POST") posts.push(r.url()); });
+  const token = `U.${email}.shipped`;
+  await page.goto(`/unsubscribe?token=${encodeURIComponent(token)}`);
+  await page.getByRole("button", { name: "Stop these emails" }).waitFor();
+  expect(posts).toEqual([]);
+  const stored = async () => (await (await page.request.get(`${MOCK}/__test/prefs?email=${encodeURIComponent(email)}`)).json()) as Record<string, boolean> | null;
+  expect(await stored()).toBeNull();
+  await page.getByRole("button", { name: "Stop these emails" }).click();
+  await expect(page.getByRole("heading", { name: "You are unsubscribed" })).toBeVisible();
+  expect((await stored())!.shipped).toBe(false);
+  await page.goto(`/unsubscribe?token=${encodeURIComponent(`U.${email}.delivered.expired`)}`);
+  await page.getByRole("button", { name: "Stop these emails" }).click();
+  await expect(page.getByRole("heading", { name: "This link has expired" })).toBeVisible();
+  await page.getByRole("link", { name: "email settings" }).click();
+  await expect(page).toHaveURL(/\/sign-in\?next=/);                                        // signed out: the settings page asks for sign-in first
+});
+
+for (const theme of ["light", "dark"] as const) {
+  test(`axe: the unsubscribe result screens (${theme})`, async ({ page, context, baseURL }) => {
+    await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
+    const email = await newVerifiedUser(page, `nuaxe${theme}`);
+    const check = async (label: string) => {
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+      expect(results.violations, `${label}: ${JSON.stringify(results.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((x) => x.target) })))}`).toEqual([]);
+    };
+    await page.goto(`/unsubscribe?token=${encodeURIComponent(`U.${email}.shipped`)}`);
+    await page.getByRole("button", { name: "Stop these emails" }).click();
+    await expect(page.getByRole("heading", { name: "You are unsubscribed" })).toBeVisible();
+    await check("unsubscribed");
+    await page.goto(`/unsubscribe?token=${encodeURIComponent(`U.${email}.delivered.expired`)}`);
+    await page.getByRole("button", { name: "Stop these emails" }).click();
+    await expect(page.getByRole("heading", { name: "This link has expired" })).toBeVisible();
+    await check("expired");
+    await page.goto(`/unsubscribe?token=${encodeURIComponent("U.nobody@example.test.shipped.x")}`);
+    await page.getByRole("button", { name: "Stop these emails" }).click();
+    await expect(page.getByText("This link is not valid.")).toBeVisible();
+    await check("invalid");
+  });
+}
+
 for (const theme of ["light", "dark"] as const) {
   test(`axe: notifications pages (${theme})`, async ({ page, context, baseURL }) => {
     await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
