@@ -90,9 +90,11 @@ for (const kind of ["verify", "reset"] as const) {
       const verify = await mailedToken(page.request, "verify", email);
       await page.goto(`/verify-email?token=${verify}`);
       await page.getByRole("button", { name: "Verify email" }).click();
+      await expect(page.getByRole("heading", { name: "Email verified" })).toBeVisible(); // wait: navigating away would cancel the request
       await page.goto("/forgot-password");
       await page.getByLabel("Email").fill(email);
       await page.getByRole("button", { name: "Send reset link" }).click();
+      await expect(page.locator("p[role='status']")).toBeVisible(); // the request has finished, so the mail exists
       const token = await mailedToken(page.request, "reset", email);
       await page.goto(`/reset-password?token=${token}`);
       await expect.poll(() => page.url()).not.toContain(token);
@@ -183,6 +185,8 @@ test("an unverified sign-in offers to resend the verification email", async ({ p
 
 test("a stale or foreign CSRF token shows a friendly retry page, not a bare Forbidden", async ({ page }) => {
   await page.goto("/sign-in");
+  // The passkey button only exists after hydration. Tampering earlier races with React resetting the field to its server value.
+  await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible();
   await page.locator('input[name="csrf"]').first().evaluate((el) => { (el as HTMLInputElement).value = "stale-token-from-another-tab"; });
   await page.getByLabel("Email").fill("a@example.test");
   await page.getByLabel("Password").fill("whatever");
