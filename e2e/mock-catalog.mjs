@@ -160,3 +160,12 @@ export function catalogResponse(path, url) {
   if (path === "/api/v1/catalog/brands") return ok(brands.map((b) => ({ id: gid(`b:${b.slug}`), slug: b.slug, name: b.name, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] }, logoImageId: null, listingCount: list.filter((l) => l.brand.slug === b.slug).length })).filter((b) => b.listingCount > 0));
   return null;
 }
+
+/** Ids the mock answers specially for the image route: the API's 502 (bad image) and 503 (portal down). */
+export const IMAGE_BAD = gid("i:mock-bad"), IMAGE_DOWN = gid("i:mock-down");
+
+/** The size of a listing image the mock knows (null: not an image of a visible listing, the API's 404). */
+export function imageInfo(id) {
+  for (const l of list) for (const im of l.images) if (im.id === id) return { width: im.width, height: im.height, title: l.title };
+  return null;
+}
