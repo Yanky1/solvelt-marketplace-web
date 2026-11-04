@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import sharp from "sharp";
 import { expect, test } from "@playwright/test";
 import { PASSWORD, signIn, signUp, uniqueEmail, verifyEmail } from "./helpers";
 import { gid } from "./mock-catalog.mjs";
@@ -168,9 +169,10 @@ test.describe("gallery and images", () => {
     const id = gid("i:classic-braided-challah:0");
     const ok = await request.get(`/img/${id}?w=640&h=480`);
     expect(ok.status()).toBe(200);
-    expect(ok.headers()["content-type"]).toBe("image/svg+xml");
+    expect(ok.headers()["content-type"]).toBe("image/jpeg");                                 // no Accept header for WebP: JPEG (the real resizer, see img.spec.ts)
     expect(ok.headers()["cache-control"]).toMatch(/public/);
-    expect(await ok.text()).toContain('width="640"');
+    const m = await sharp(await ok.body()).metadata();
+    expect([m.width, m.height]).toEqual([480, 480]);                                          // a square picture inside a 640 x 480 box: the box is a maximum, the shape is kept
     expect((await request.get(`/img/${id}?w=641&h=480`)).status()).toBe(400);              // only the served widths
     expect((await request.get(`/img/${id}?w=640&h=99999`)).status()).toBe(400);
     expect((await request.get(`/img/${id}`)).status()).toBe(400);

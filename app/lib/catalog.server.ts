@@ -2,6 +2,7 @@ import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
 import { ApiError } from "./api-client.server";
 import { parseListingDetail, type ListingDetail } from "./catalog";
+import { MAX_INPUT_BYTES } from "./img.server";
 import { parseSitemapPage, SITEMAP_KINDS, type SitemapKind, type SitemapPageData } from "./sitemap";
 import { cleanQuery, parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, parseSuggestions, SUGGEST_MIN, toApiParams, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront, type Suggestion } from "./search";
 
@@ -33,7 +34,45 @@ function failure(status: number): ApiError {
   return status === 429 ? new ApiError(429, "rate_limited", "Too many requests. Please wait a moment and try again.") : new ApiError(status >= 500 ? 503 : 502, "unavailable", "The catalog is temporarily unavailable. Please try again.");
 }
 
+export type ImageResult = { kind: "ok"; bytes: Buffer; contentType: string } | { kind: "notFound" } | { kind: "unavailable" } | { kind: "bad" };
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+
 export const catalog = {
+  /**
+   * The original bytes of one image of a visible listing (`GET /api/v1/catalog/images/{id}`), for the resizer. The path is built from a checked GUID and nothing else
+   * (O-12). The answer is judged again here and not just trusted: only the picture types we resize, at most MAX_INPUT_BYTES, read as a stream that is cancelled the
+   * moment it grows past the limit.
+   */
+  async image(ctx: ApiRequestContext, id: string): Promise<ImageResult> {
+    if (!GUID.test(id)) return { kind: "notFound" };
+    let res: Response;
+    try {
+      res = await apiFetch(getConfig(), ctx, `/api/v1/catalog/images/${encodeURIComponent(id.toLowerCase())}`, { signal: AbortSignal.timeout(15_000) });
+    } catch {
+      return { kind: "unavailable" };
+    }
+    if (res.status === 404) { await res.body?.cancel(); return { kind: "notFound" }; }
+    if (res.status === 502) { await res.body?.cancel(); return { kind: "bad" }; }
+    if (res.status !== 200) { await res.body?.cancel(); return { kind: "unavailable" }; }
+    const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    if (!IMAGE_TYPES.has(type)) { await res.body?.cancel(); return { kind: "bad" }; }
+    if (Number(res.headers.get("content-length") ?? 0) > MAX_INPUT_BYTES) { await res.body?.cancel(); return { kind: "bad" }; }
+    const chunks: Uint8Array[] = []; let total = 0;
+    try {
+      const reader = res.body!.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.length;
+        if (total > MAX_INPUT_BYTES) { await reader.cancel(); return { kind: "bad" }; }
+        chunks.push(value);
+      }
+    } catch {
+      return { kind: "unavailable" };
+    }
+    return total === 0 ? { kind: "bad" } : { kind: "ok", bytes: Buffer.concat(chunks), contentType: type };
+  },
+
   /** One page of listings for a validated query (facets on for the search and category pages). Only typed parameters are ever sent (O-12). */
   async listings(ctx: ApiRequestContext, query: ListingQuery, opts: { facets: boolean } = { facets: true }): Promise<ListingPageData> {
     const { status, json } = await getJson(ctx, `/api/v1/catalog/listings?${toApiParams(query, opts).toString()}`);

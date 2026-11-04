@@ -1,38 +1,64 @@
 import type { Route } from "./+types/img";
 import { IMAGE_WIDTHS } from "~/components/Img";
-import { GUID } from "~/lib/catalog.server";
+import { apiCtx } from "~/lib/auth.server";
+import { catalog, GUID } from "~/lib/catalog.server";
+import { ImageError, negotiateFormat, resizeCache, resizeImage, resizeLimiter, type Resized } from "~/lib/img.server";
 
 /**
- * /img/:id?w=&h= : the image resize route.
+ * `/img/:id?w=&h=`: a resized copy of a catalog image.
  *
- * The API has no image bytes endpoint yet (the portal serves originals through a signed internal call, CONTRACT.md C1; the Http catalog source brings it), so until
- * then this answers a deterministic placeholder picture of the requested size. It is already the final shape of the route (O-12): it validates the id (a GUID) and
- * the width (from a fixed set), it does not forward anything to the API, and the browser never sees a portal URL. When bytes exist, only the body of `render` changes.
+ * What it accepts (O-12): the id must be a GUID, the width one of the fixed IMAGE_WIDTHS, the height (optional) a whole number up to 4000. Nothing else from the
+ * address reaches anything: the original is fetched from the API by a typed call whose path is made of the checked id only (`catalog.image`), never from a URL
+ * the visitor gave. The browser never sees a portal address.
+ *
+ * What it answers: WebP for browsers that accept it and JPEG for the rest (`Vary: Accept`), the picture's own shape inside the box and never larger than the
+ * original, no metadata. An unknown or hidden image is a 404, an original we cannot use a 502, a busy or unavailable service a 503 with `Retry-After`. Copies are
+ * kept in memory for an hour (and shared by identical requests), and sent with `Cache-Control: public, max-age=3600` and a validator, so an image of a listing that
+ * has just been unlisted can be seen for up to about an hour more (decision W2-24).
  */
 const MAX_HEIGHT = 4000;
+const CACHE = "public, max-age=3600";
+const noStore = { "Cache-Control": "no-store" } as const;
 
-function hue(id: string): number {
-  let h = 0;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return h;
+class Missing extends Error {}
+class Down extends Error {}
+
+const text = (status: number, message: string, extra: Record<string, string> = {}) => new Response(message, { status, headers: { ...noStore, ...extra } });
+const matches = (header: string | null, etag: string) => (header ?? "").split(",").some((t) => t.trim().replace(/^W\//, "") === etag);
+
+function headersFor(r: Resized): Record<string, string> {
+  return { "Content-Type": r.contentType, "Cache-Control": CACHE, ETag: r.etag, Vary: "Accept", "Content-Disposition": "inline" };      // nosniff and the CSP come from server.js for every response
 }
 
-export function placeholderSvg(id: string, w: number, h: number): string {
-  const a = hue(id), b = (a + 40) % 360;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-hidden="true">`
-    + `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${a} 35% 82%)"/><stop offset="1" stop-color="hsl(${b} 40% 70%)"/></linearGradient></defs>`
-    + `<rect width="${w}" height="${h}" fill="url(#g)"/>`
-    + `<g fill="none" stroke="hsl(${a} 30% 30%)" stroke-opacity=".55" stroke-width="${Math.max(2, Math.round(w / 120))}"><rect x="${w * 0.3}" y="${h * 0.3}" width="${w * 0.4}" height="${h * 0.4}" rx="${w * 0.03}"/><circle cx="${w * 0.42}" cy="${h * 0.43}" r="${w * 0.04}"/><path d="M${w * 0.3} ${h * 0.62} l${w * 0.12} -${h * 0.1} l${w * 0.1} ${h * 0.07} l${w * 0.08} -${h * 0.05} l${w * 0.1} ${h * 0.08}"/></g></svg>`;
-}
-
-export function loader({ params, request }: Route.LoaderArgs) {
-  const id = params.id ?? "";
+export async function loader({ params, request, context }: Route.LoaderArgs) {
+  const id = (params.id ?? "").toLowerCase();
+  if (!GUID.test(id)) return text(404, "Not found");
   const url = new URL(request.url);
-  const w = Number(url.searchParams.get("w"));
-  const h = Number(url.searchParams.get("h") ?? Math.round(w));
-  if (!GUID.test(id)) return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
-  if (!(IMAGE_WIDTHS as readonly number[]).includes(w) || !Number.isInteger(h) || h < 1 || h > MAX_HEIGHT) return new Response("Bad request", { status: 400, headers: { "Cache-Control": "no-store" } });
-  return new Response(placeholderSvg(id, w, h), {
-    headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=3600" },        // security headers (CSP, nosniff) are set once for every response by server.js (W1-17)
-  });
+  const wParam = url.searchParams.get("w"), hParam = url.searchParams.get("h");
+  // plain digits only: "1e3", "0320", "3.2e2" or " 320" are not spellings of a size, so one picture has one address
+  if (wParam === null || !/^[1-9]\d{0,4}$/.test(wParam) || (hParam !== null && !/^[1-9]\d{0,3}$/.test(hParam))) return text(400, "Bad request");
+  const w = Number(wParam), h = hParam === null ? undefined : Number(hParam);
+  if (!(IMAGE_WIDTHS as readonly number[]).includes(w) || (h !== undefined && h > MAX_HEIGHT)) return text(400, "Bad request");
+  const format = negotiateFormat(request.headers.get("accept"));
+  const key = `${id}:${w}:${h ?? ""}:${format}`;
+
+  const cached = resizeCache.peek(key);
+  if (cached && matches(request.headers.get("if-none-match"), cached.etag)) return new Response(null, { status: 304, headers: headersFor(cached) });
+
+  try {
+    const resized = await resizeCache.get(key, async () => {
+      const original = await catalog.image(apiCtx(request, context, null), id);
+      if (original.kind === "notFound") throw new Missing();
+      if (original.kind === "unavailable") throw new Down();
+      if (original.kind === "bad") throw new ImageError("invalid");
+      return resizeLimiter.run(() => resizeImage(original.bytes, { width: w, height: h }, format));
+    });
+    if (matches(request.headers.get("if-none-match"), resized.etag)) return new Response(null, { status: 304, headers: headersFor(resized) });
+    return new Response(new Uint8Array(resized.body), { headers: headersFor(resized) });
+  } catch (e) {
+    if (e instanceof Missing) return text(404, "Not found");
+    if (e instanceof Down || (e instanceof ImageError && e.reason === "busy")) return text(503, "Images are temporarily unavailable", { "Retry-After": "30" });
+    if (e instanceof ImageError) return text(502, "This image cannot be shown");
+    throw e;
+  }
 }

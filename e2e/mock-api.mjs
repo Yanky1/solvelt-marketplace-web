@@ -2,7 +2,8 @@
 // Test-only hooks live under /__test and are not part of the contract.
 import { createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
-import { catalogResponse } from "./mock-catalog.mjs";
+import sharp from "sharp";
+import { catalogResponse, IMAGE_BAD, IMAGE_DOWN, imageInfo } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
@@ -370,6 +371,21 @@ http.createServer(async (req, res) => {
     const token = `tok_${randomBytes(24).toString("hex")}`;
     sessions.set(token, u.id);
     return send(res, 200, { token, user: { id: u.id, displayName: u.displayName } });
+  }
+
+  let im;
+  if (req.method === "GET" && (im = /^\/api\/v1\/catalog\/images\/([0-9a-f-]{36})$/.exec(path))) {
+    const id = im[1];
+    if (id === IMAGE_BAD) return send(res, 502, { code: "bad_image", message: "The image could not be served." });
+    if (id === IMAGE_DOWN) return send(res, 503, { code: "image_unavailable", message: "Images are temporarily unavailable." }, { "Retry-After": "30" });
+    const info = imageInfo(id);
+    if (!info) return send(res, 404, { code: "not_found", message: "Image not found." });
+    // a real picture of the stated size: a gradient (so resizes differ from each other) with the listing's first letter's shade; EXIF orientation 1 and a comment to prove it is stripped
+    const hue = [...id].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 0);
+    const bytes = await sharp({ create: { width: info.width, height: info.height, channels: 3, background: { r: hue % 255, g: (hue * 2) % 255, b: (hue * 3) % 255 } } })
+      .withMetadata({ exif: { IFD0: { Copyright: "mock original" } } }).png().toBuffer();
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": bytes.length, "Cache-Control": "public, max-age=300" });
+    return res.end(bytes);
   }
 
   if (req.method === "GET" && path.startsWith("/api/v1/catalog/")) {
