@@ -87,6 +87,18 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       </div>
     );
   }
+  if (isRouteErrorResponse(error) && error.status === 410) {
+    // A listing that was public and is gone for good (unlisted, archived): a 410 tells search engines to drop it.
+    return (
+      <div className="empty">
+        <title>No longer available | Solvelt</title>
+        <meta name="robots" content="noindex" />
+        <h1>This item is no longer available</h1>
+        <p className="muted">The seller has taken it down. You can look for something similar.</p>
+        <LinkButton to="/search">Search the marketplace</LinkButton>
+      </div>
+    );
+  }
   return (
     <div className="empty">
       <title>{notFound ? "Page not found | Solvelt" : "Something went wrong | Solvelt"}</title>
