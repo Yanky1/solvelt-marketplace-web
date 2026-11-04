@@ -14,6 +14,9 @@ const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const authAt = new Map(); // session token -> ms of the last successful step-up (the API-side O-11 clock)
+const notifs = new Map(); // userId -> [{id, kind, ...}]
+const prefs = new Map(); // userId -> {category: bool}
+const CATEGORIES = ["order_updates", "shipped", "out_for_delivery", "delivered", "refunds", "messages", "bookings"];
 const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
 const seen = []; // recorded request metadata (no bodies)
@@ -79,7 +82,17 @@ http.createServer(async (req, res) => {
       } });
       return send(res, 200, { number, sellerOrderNumber: orders.get(number).group.sellerOrderNumber });
     }
-    if (path === "/__test/reset") { orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/seed-notification") {
+      const u = users.get((url.searchParams.get("email") ?? "").toLowerCase());
+      if (!u) return send(res, 404, { code: "not_found" });
+      const list = notifs.get(u.id) ?? [];
+      const n = { id: randomBytes(8).toString("hex"), kind: url.searchParams.get("kind") ?? "order_shipped", category: "shipped", orderNumber: url.searchParams.get("order") ?? "MP-E2E-1", sellerOrderNumber: null,
+        parameters: { sellerName: "Challah Corner", carrier: "USPS", threadId: "t1" }, createdAt: new Date(Date.now() - list.length * 1000).toISOString(), read: false };
+      notifs.set(u.id, [n, ...list]);
+      return send(res, 200, { id: n.id });
+    }
+    if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
+    if (path === "/__test/reset") { notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -169,6 +182,29 @@ http.createServer(async (req, res) => {
       u.displayName = String(b.displayName).trim(); u.phone = String(b.phone ?? "");
     }
     return send(res, 200, { id: u.id, displayName: u.displayName, email: u.email, phone: u.phone ?? "" });
+  }
+
+  // ---- notifications (the unsubscribe token is "U.<email>.<category|all>": the mock does not sign) ----
+  if (path === "/api/v1/notifications/unsubscribe" && req.method === "POST") {
+    const m = /^U\.([^.]+@[^.]+\.[a-z]+)\.([a-z_]+)$/i.exec(String(body.token ?? ""));
+    const u = m ? users.get(m[1].toLowerCase()) : undefined;
+    if (!m || !(m[2] === "all" || CATEGORIES.includes(m[2]))) return send(res, 400, { code: "invalid_token", message: "This link is not valid." });
+    if (u) { const p = prefs.get(u.id) ?? Object.fromEntries(CATEGORIES.map((c) => [c, true])); for (const c of m[2] === "all" ? CATEGORIES : [m[2]]) p[c] = false; prefs.set(u.id, p); }
+    return send(res, 204);
+  }
+  const nm = /^\/api\/v1\/notifications(?:\/(read-all|preferences)|\/([^/]+)\/read)?$/.exec(path);
+  if (nm) {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const list = notifs.get(u.id) ?? [];
+    if (nm[1] === "preferences") {
+      const p = prefs.get(u.id) ?? Object.fromEntries(CATEGORIES.map((c) => [c, true]));
+      if (req.method === "PUT") { for (const [k, v] of Object.entries(body.email ?? {})) if (CATEGORIES.includes(k)) p[k] = v === true; prefs.set(u.id, p); }
+      return send(res, 200, { email: p });
+    }
+    if (nm[1] === "read-all") { list.forEach((n) => (n.read = true)); return send(res, 204); }
+    if (nm[2]) { const n = list.find((x) => x.id === nm[2]); if (!n) return send(res, 404, { code: "not_found" }); n.read = true; return send(res, 204); }
+    return send(res, 200, { unreadCount: list.filter((n) => !n.read).length, notifications: list, next: null });
   }
 
   // ---- buyer orders (another buyer's order is a 404) ----

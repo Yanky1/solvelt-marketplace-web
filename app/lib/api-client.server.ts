@@ -78,12 +78,25 @@ export interface OrderDetail {
 }
 export interface ReturnInput { sellerOrderNumber: string; reason: string; comment: string; lines: { lineId: string; quantity: number }[] }
 
+// ---- notifications (M5; API docs "Notifications") ----
+export interface NotificationItem { id: string; kind: string; category: string; orderNumber: string | null; sellerOrderNumber: string | null; parameters: Record<string, unknown> | null; createdAt: string; read: boolean }
+export interface NotificationList { unreadCount: number; notifications: NotificationItem[]; next: { before: string; beforeId: string } | null }
+export type NotificationPrefs = { email: Record<string, boolean> };
+
 /** Raw GET for binary answers (proof images, message files): the caller streams it to the browser with its own safe headers. */
 async function raw(ctx: ApiRequestContext, path: string): Promise<Response> {
   try { return await apiFetch(getConfig(), ctx, path, { signal: AbortSignal.timeout(20000) }); } catch { throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again."); }
 }
 
 export const api = {
+  notifications: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
+    call<NotificationList>(ctx, `/api/v1/notifications${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
+  markNotificationRead: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/notifications/${pid(id)}/read`, {}),
+  markAllNotificationsRead: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/notifications/read-all", {}),
+  notificationPrefs: (ctx: ApiRequestContext) => call<NotificationPrefs>(ctx, "/api/v1/notifications/preferences"),
+  saveNotificationPrefs: (ctx: ApiRequestContext, email: Record<string, boolean>) => call<NotificationPrefs>(ctx, "/api/v1/notifications/preferences", { email }, "PUT"),
+  /** Anonymous: the signed token from a mail link is the credential. Only ever switches mail OFF. */
+  unsubscribe: (ctx: ApiRequestContext, token: string) => call<void>(ctx, "/api/v1/notifications/unsubscribe", { token }),
   orders: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<OrderList>(ctx, `/api/v1/orders${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
   order: (ctx: ApiRequestContext, number: string) => call<OrderDetail>(ctx, `/api/v1/orders/${pid(number)}`),
