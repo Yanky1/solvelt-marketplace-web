@@ -29,9 +29,10 @@ export async function mailedToken(request: APIRequestContext, kind: "verify" | "
   return hit!.token;
 }
 
-export async function verifyEmail(page: Page, email: string) {
+export async function verifyEmail(page: Page, email: string, password = PASSWORD) {
   const token = await mailedToken(page.request, "verify", email);
   await page.goto(`/verify-email?token=${token}`);
+  await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByRole("heading", { name: "Email verified" })).toBeVisible();
 }

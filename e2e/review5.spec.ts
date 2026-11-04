@@ -111,6 +111,7 @@ test.describe("passkey challenges are bound to the browser session", () => {
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page).toHaveURL(/verify-email\?sent=1$/);
     await page.goto(`/verify-email?token=${await mailedToken(page.request, "verify", email)}`);
+    await page.getByLabel("Password").fill(PASSWORD);
     await page.getByRole("button", { name: "Verify email" }).click();
     await expect(page.getByRole("heading", { name: "Email verified" })).toBeVisible();
     await signIn(page, email);
@@ -168,8 +169,9 @@ test.describe("removing a passkey needs a recent sign-in", () => {
       await page.getByRole("button", { name: "Confirm" }).click();
       await expect(page).toHaveURL(new RegExp(`${port}/account/passkeys$`));
       const after = await tokensOf(page.request, email);
-      expect(after).toHaveLength(1);
-      expect(after[0]).not.toBe(first); // confirming issued a fresh API session and revoked the old one
+      expect(after).toEqual([first]); // the step-up endpoint keeps the session and token; it only refreshes the API's authenticated-at clock
+      const { authAt } = (await (await page.request.get(`${MOCK}/__test/auth-at?token=${first}`)).json()) as { authAt: number | null };
+      expect(authAt).not.toBeNull();
 
       await passkeyRow(page, "Fresh key").getByRole("button", { name: /Remove passkey/ }).click();
       await expect(page.getByRole("heading", { name: "No passkeys yet" })).toBeVisible();

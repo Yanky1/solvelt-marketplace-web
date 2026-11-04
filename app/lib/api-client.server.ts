@@ -50,7 +50,10 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
 export const api = {
   signUp: (ctx: ApiRequestContext, b: { email: string; password: string; displayName: string }) => call<void>(ctx, "/api/v1/auth/sign-up", b),
   resendVerification: (ctx: ApiRequestContext, email: string) => call<void>(ctx, "/api/v1/auth/resend-verification", { email }),
-  verifyEmail: (ctx: ApiRequestContext, token: string) => call<void>(ctx, "/api/v1/auth/verify-email", { token }),
+  /** O-16: verifying also needs the password chosen at sign-up (a wrong one answers the same generic 400 and leaves the link valid). */
+  verifyEmail: (ctx: ApiRequestContext, b: { token: string; password: string }) => call<void>(ctx, "/api/v1/auth/verify-email", b),
+  /** Step-up: 204 = right password, and this API session's authenticated-at clock is now (a replayed cookie cannot reset it). */
+  reauthenticate: (ctx: ApiRequestContext, password: string) => call<void>(ctx, "/api/v1/auth/reauthenticate", { password }),
   signIn: (ctx: ApiRequestContext, b: { email: string; password: string }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/sign-in", b),
   signOut: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/auth/sign-out", {}),
   signOutAll: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/auth/sign-out-all", {}),

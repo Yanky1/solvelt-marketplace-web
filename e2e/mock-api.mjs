@@ -13,6 +13,7 @@ const passkeys = new Map(); // credentialId -> {id, userId, name, createdAt, las
 const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
+const authAt = new Map(); // session token -> ms of the last successful step-up (the API-side O-11 clock)
 const outbox = []; // {kind, email, token}
 const seen = []; // recorded request metadata (no bodies)
 
@@ -49,6 +50,7 @@ http.createServer(async (req, res) => {
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
+    if (path === "/__test/auth-at") { const t = url.searchParams.get("token") ?? ""; return send(res, 200, { authAt: authAt.get(t) ?? null }); }
     if (path === "/__test/tokens") {
       const email = url.searchParams.get("email");
       const uid = email ? users.get(email.toLowerCase())?.id : undefined;
@@ -80,8 +82,12 @@ http.createServer(async (req, res) => {
     return send(res, 204);
   }
   if (path === "/api/v1/auth/verify-email" && req.method === "POST") {
+    // O-16: needs the password chosen at sign-up. Missing -> 422. A wrong password and a bad/expired token get the SAME generic
+    // 400, and a wrong password leaves the link valid. Wrong passwords count toward the per-address limit like sign-in.
+    if (typeof body.password !== "string" || body.password === "") return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { password: "Required" } });
     const u = [...users.values()].find((x) => x.verifyToken === body.token && body.token);
-    if (!u) return send(res, 400, { code: "invalid_token", message: "Invalid or expired" });
+    if (u && (u.wrongPasswords ?? 0) >= 8) return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "60" });
+    if (!u || u.password !== body.password) { if (u) u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 400, { code: "invalid_token", message: "Invalid or expired" }); }
     u.verified = true; u.verifyToken = undefined;
     return send(res, 204);
   }
@@ -114,7 +120,17 @@ http.createServer(async (req, res) => {
     const u = [...users.values()].find((x) => x.resetToken && x.resetToken === body.token);
     if (!u) return send(res, 400, { code: "invalid_token", message: "Invalid or expired" });
     u.password = String(body.password); u.resetToken = undefined;
+    u.verified = true; u.verifyToken = undefined; // O-16: the reset link proves control of the mailbox
     for (const [t, id] of sessions) if (id === u.id) sessions.delete(t); // all devices signed out
+    return send(res, 204);
+  }
+  if (path === "/api/v1/auth/reauthenticate" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (typeof body.password !== "string" || body.password === "") return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { password: "Required" } });
+    if (body.password === "trigger-429" || (u.wrongPasswords ?? 0) >= 8) return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "60" }); // same per-address gate as sign-in
+    if (u.password !== body.password) { u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 401, { code: "invalid_credentials", message: "Invalid" }); }
+    authAt.set(bearer(req), Date.now());
     return send(res, 204);
   }
   if (path === "/api/v1/account/me" && req.method === "GET") {

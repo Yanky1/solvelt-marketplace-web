@@ -3,7 +3,7 @@ import { Form, Link, useActionData, useLoaderData, useNavigation } from "react-r
 import type { Route } from "./+types/verify-email";
 import { AuthPage, ErrorSummary, FormMessage } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
-import { Button } from "~/components/ui/form";
+import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, formError, privateHeaders } from "~/lib/auth.server";
 import { str } from "~/lib/validation";
@@ -21,18 +21,26 @@ export function loader({ request }: Route.LoaderArgs) {
   return { token: url.searchParams.get("token") ?? "", sent: url.searchParams.has("sent") };
 }
 
-// Verification is a POST (confirm button), so mail scanners and link prefetchers cannot consume the token.
+// Verification is a POST (confirm button), so mail scanners and link prefetchers cannot consume the token. It also needs the
+// password chosen at sign-up (O-16): holding the emailed link alone is not enough. A wrong password and a bad or expired
+// link get the same answer, and a wrong password leaves the link valid.
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   assertCsrf(request, form);
   const token = str(form, "token");
-  if (!token) return formError({ done: false, message: "This verification link is not valid." });
+  const password = str(form, "password");
+  if (!token) return formError({ done: false, message: "This verification link is not valid.", error: null, failed: false });
+  if (!password) return formError({ done: false, message: null, error: "Enter the password you chose when you signed up.", failed: false });
   try {
-    await api.verifyEmail(apiCtx(request, context, null), token);
-    return formError({ done: true, message: null }, 200);
+    await api.verifyEmail(apiCtx(request, context, null), { token, password });
+    return formError({ done: true, message: null, error: null, failed: false }, 200);
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 400 || e.status === 404 || e.status === 410 || e.status === 422)) return formError({ done: false, message: "This verification link is invalid or has expired.", expired: true }, 400);
-    return formError({ done: false, message: "We could not verify your email right now. Please try again." }, 503);
+    if (e instanceof ApiError && (e.status === 400 || e.status === 404 || e.status === 410)) {
+      return formError({ done: false, message: "We could not verify your email with that password and link. Check the password and try again. If the link has expired, request a new one.", error: null, failed: true }, 400);
+    }
+    if (e instanceof ApiError && e.status === 422) return formError({ done: false, message: null, error: "Enter the password you chose when you signed up.", failed: false }, 422);
+    if (e instanceof ApiError && e.status === 429) return formError({ done: false, message: "Too many attempts. Please wait a moment and try again.", error: null, failed: false }, 429);
+    return formError({ done: false, message: "We could not verify your email right now. Please try again.", error: null, failed: false }, 503);
   }
 }
 
@@ -55,12 +63,14 @@ export default function VerifyEmail() {
     );
   }
   return (
-    <AuthPage title="Verify your email" intro="Confirm to finish setting up your account.">
-      <Form method="post" action="/verify-email" className="stack">
+    <AuthPage title="Verify your email" intro="Enter the password you chose when you signed up to confirm your email address.">
+      <Form method="post" action="/verify-email" className="stack" noValidate>
         <CsrfField />
         <input type="hidden" name="token" value={token} />
-        <ErrorSummary submission={a} message={a?.message} />
-        {Boolean(a && "expired" in a && a.expired) && <p><Link to="/resend-verification">Request a new verification link</Link></p>}
+        <ErrorSummary submission={a} message={a?.message} errors={a?.error ? { password: a.error } : undefined} />
+        <Input label="Password" name="password" type="password" autoComplete="current-password" error={a?.error ?? undefined} required />
+        {Boolean(a?.failed) && <p><Link to="/resend-verification">Request a new verification link</Link></p>}
+        <p><Link to="/forgot-password">Forgot your password?</Link> Resetting it also verifies your email.</p>
         <Button type="submit" disabled={busy}>{busy ? "Verifying…" : "Verify email"}</Button>
       </Form>
     </AuthPage>

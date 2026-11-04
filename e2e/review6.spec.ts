@@ -271,6 +271,7 @@ test.describe("name fields are cleaned on every route that takes them", () => {
     const res = await anon.request.post("/sign-up", { form: { csrf: csrf2, displayName: "A\u202eB\u2028C", email, password: PASSWORD }, headers: { origin: baseURL! }, maxRedirects: 0 });
     expect(res.status()).toBe(302);
     await anon.goto(`/verify-email?token=${await mailedToken(anon.request, "verify", email)}`);
+    await anon.getByLabel("Password").fill(PASSWORD);
     await anon.getByRole("button", { name: "Verify email" }).click();
     await expect(anon.getByRole("heading", { name: "Email verified" })).toBeVisible();
     await signIn(anon, email);

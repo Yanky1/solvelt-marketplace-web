@@ -4,7 +4,7 @@ import { AuthPage, ErrorSummary } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, formError, privateHeaders, requireAccount, revokePreviousSession, rotatedCookie } from "~/lib/auth.server";
+import { assertCsrf, failAccount, formError, privateHeaders, requireAccount, rotatedCookie } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
 import { safeNext } from "~/lib/csrf.server";
 import { MAX_CONFIRM_FAILURES, sessionCookie } from "~/lib/session.server";
@@ -25,7 +25,7 @@ export function loader({ request, context }: Route.LoaderArgs) {
 const LOCKED_MESSAGE = "Too many incorrect passwords. We could not end your session on the server, so confirmation is locked. Please try again later.";
 
 /**
- * Re-authentication for sensitive changes (O-11): the password is checked by the API, which issues a fresh session.
+ * Re-authentication for sensitive changes (O-11): the password is checked by the API (step-up endpoint), which refreshes this session's authenticated-at.
  *
  * Wrong passwords are also counted in the sealed cookie (`rf`) and, at MAX_CONFIRM_FAILURES, the session is ended. That
  * counter is a UX measure only: a client can keep an older cookie and replay it, which resets the count, and this tier has
@@ -57,11 +57,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   const password = str(form, "password");
   if (!password) return formError({ message: null, error: "Enter your password." });
   try {
-    const me = await api.me(ctx);
-    if (!me.email) throw new ApiError(503, "unavailable", "No email");
-    const { token } = await api.signIn({ ...ctx, sessionToken: undefined }, { email: me.email, password });
-    await revokePreviousSession(request, context);
-    return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": rotatedCookie(token), ...privateHeaders } });
+    // The API checks the password with the same gate as sign-in (per-address limits, so a replayed cookie cannot dodge them)
+    // and, on success, stamps THIS session's authenticated-at (its own O-11 clock). The session and token stay as they are.
+    await api.reauthenticate(ctx, password);
+    const { rf: _rf, ...rest } = session; // a correct password clears the UX failure count
+    void _rf;
+    return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": sessionCookie({ ...rest, authAt: Math.floor(Date.now() / 1000) }, cfg), ...privateHeaders } });
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
       if (e.code === "invalid_credentials") {
@@ -71,6 +72,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       }
       return failAccount(e, request); // the session itself is dead
     }
+    if (e instanceof ApiError && e.status === 422) return formError({ message: null, error: "Enter your password." }, 422);
     if (e instanceof ApiError && e.status === 429) return formError({ message: "Too many attempts. Please wait a moment and try again.", error: null }, 429);
     if (e instanceof ApiError) return formError({ message: "We could not check your password right now. Please try again.", error: null }, 503);
     return failAccount(e, request);

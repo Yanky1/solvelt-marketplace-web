@@ -82,6 +82,7 @@ for (const kind of ["verify", "reset"] as const) {
       await page.goto(`/verify-email?token=${token}`);
       await expect.poll(() => page.url()).not.toContain(token);
       expect(new URL(page.url()).search).toBe("");
+      await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Verify email" }).click();
       await expect(page.getByRole("heading", { name: "Email verified" })).toBeVisible();
       expect(page.url()).not.toContain(token);
@@ -89,6 +90,7 @@ for (const kind of ["verify", "reset"] as const) {
       await page.goto("/verify-email?sent=1"); // reset needs a verified user
       const verify = await mailedToken(page.request, "verify", email);
       await page.goto(`/verify-email?token=${verify}`);
+      await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Verify email" }).click();
       await expect(page.getByRole("heading", { name: "Email verified" })).toBeVisible(); // wait: navigating away would cancel the request
       await page.goto("/forgot-password");
@@ -166,11 +168,13 @@ test("expired verification link: request a new one; older links stop working; sa
   expect(fresh).not.toBe(old);
 
   await page.goto(`/verify-email?token=${old}`);
+  await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(SUMMARY(page)).toContainText("invalid or has expired");
+  await expect(SUMMARY(page)).toContainText("could not verify your email");
   await expect(page.getByRole("link", { name: "Request a new verification link" })).toBeVisible();
 
   await page.goto(`/verify-email?token=${fresh}`);
+  await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByRole("heading", { name: "Email verified" })).toBeVisible();
 });
