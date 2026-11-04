@@ -2,7 +2,7 @@ import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
 import { ApiError } from "./api-client.server";
 import { parseListingDetail, type ListingDetail } from "./catalog";
-import { parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, toApiParams, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront } from "./search";
+import { cleanQuery, parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, parseSuggestions, SUGGEST_MIN, toApiParams, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront, type Suggestion } from "./search";
 
 /**
  * The buyer API's catalog, as TYPED calls only (standing rule O-12: the web server never proxies a generic /api/* path; every upstream path is built
@@ -40,6 +40,17 @@ export const catalog = {
     const page = parseListingPage(json);
     if (!page) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
     return page;
+  },
+
+  /** Autocomplete for the header search box. Text under the minimum is answered with nothing and never reaches the API; the text is cleaned like a search. */
+  async suggest(ctx: ApiRequestContext, text: string): Promise<Suggestion[]> {
+    const q = cleanQuery(text);
+    if ([...q].length < SUGGEST_MIN) return [];
+    const { status, json } = await getJson(ctx, `/api/v1/catalog/suggest?${new URLSearchParams({ q, limit: "8" }).toString()}`);
+    if (status !== 200) throw failure(status);
+    const list = parseSuggestions(json);
+    if (!list) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
+    return list;
   },
 
   /** A brand's storefront by slug or id, or null when it is unknown, suspended or has nothing visible (the API does not say which). */
