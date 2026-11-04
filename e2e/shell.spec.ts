@@ -50,7 +50,9 @@ test("theme action ignores open-redirect targets", async ({ request, baseURL }) 
 
 test("robots.txt and sitemap.xml are served", async ({ request, baseURL }) => {
   expect(await (await request.get("/robots.txt")).text()).toContain(`Sitemap: ${baseURL}/sitemap.xml`);
-  expect(await (await request.get("/sitemap.xml")).text()).toContain(`<loc>${baseURL}/</loc>`);
+  // the index names the child sitemaps; the home page is in the static one (the catalog sitemaps are checked in seo.spec.ts)
+  expect(await (await request.get("/sitemap.xml")).text()).toContain(`<loc>${baseURL}/sitemaps/static/1.xml</loc>`);
+  expect(await (await request.get("/sitemaps/static/1.xml")).text()).toContain(`<loc>${baseURL}/</loc>`);
 });
 
 test("start-up fails when NODE_ENV is unset and with weak secrets", async () => {
