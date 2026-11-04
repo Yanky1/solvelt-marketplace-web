@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
+import { Form, Link, useLocation, useMatches, useRouteLoaderData } from "react-router";
 import { Logo } from "./Logo";
 import { Button } from "./ui/form";
 import { Modal } from "./ui/overlay";
@@ -39,7 +39,10 @@ function ThemeSwitch({ theme }: { theme: ThemePref }) {
 export function Header() {
   const [open, setOpen] = useState(false);
   const user = useRootData()?.user;
-  const cartCount = useRootData()?.cartCount ?? 0;
+  // a page that just emptied the cart (the paid confirmation) says so itself: the root loader ran against the old cookie in the same request
+  const emptied = useMatches().some((m) => (m.data as { cartEmptied?: boolean } | undefined)?.cartEmptied === true);
+  const rootCount = useRootData()?.cartCount ?? 0;
+  const cartCount = emptied ? 0 : rootCount;
   return (
     <header className="topbar">
       <div className="container topbar-inner">

@@ -32,6 +32,7 @@ export default defineConfig({
         TRUSTED_PROXIES: "127.0.0.1,::1", // tests send X-Forwarded-For to pick a client IP (and so a mock API variant)
         SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u",
         WEB_FORWARDING_KEY: FWD_KEY,
+        STRIPE_JS_URL: "http://localhost:5080/__stripe/v3.js", // a stand-in for Stripe.js served by the mock API
       },
     },
   ],

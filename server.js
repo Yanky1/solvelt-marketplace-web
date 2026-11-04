@@ -6,6 +6,10 @@ import express from "express";
 // Importing the build runs start-up config validation (fails fast in production).
 const build = await import("./build/server/index.js");
 const https = (process.env.PUBLIC_ORIGIN ?? "").startsWith("https://");
+// Stripe.js (the Payment Element) is the one third-party script on the site, loaded only by the checkout page. Its origin comes from STRIPE_JS_URL (default Stripe's own); E2E points it at the mock API.
+const stripeJsUrl = process.env.STRIPE_JS_URL ?? "https://js.stripe.com/v3";
+const stripeOrigin = (() => { try { return new URL(stripeJsUrl).origin; } catch { return "https://js.stripe.com"; } })();
+const stripeScript = [...new Set(["https://js.stripe.com", stripeOrigin])].join(" ");
 
 const app = express();
 app.disable("x-powered-by");
@@ -17,12 +21,13 @@ app.use((req, res, next) => {
   res.locals.nonce = nonce;
   res.setHeader("Content-Security-Policy", [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'`,
+    `script-src 'self' 'nonce-${nonce}' ${stripeScript}`,
     "style-src 'self'",
     "style-src-attr 'unsafe-inline'", // React renders style="" attributes (no inline <style> or style tags are allowed)
-    "img-src 'self' data:",
+    "img-src 'self' data: https://*.stripe.com",
     "font-src 'self'",
-    "connect-src 'self'",
+    "connect-src 'self' https://api.stripe.com",
+    `frame-src ${stripeScript} https://hooks.stripe.com`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
