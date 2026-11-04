@@ -10,13 +10,13 @@ const dollars = (cents: number | undefined) => (cents === undefined ? "" : (cent
  * The filter form: a plain GET form (it works without JavaScript, and every choice is an address you can share). Checkboxes and radios apply as soon as they
  * change; the price fields and the button apply on submit. On a narrow screen it sits in a closed `<details>`; on a wide one it is simply open.
  */
-export function FacetForm({ action, query, facets, fixedHidden }: { action: string; query: ListingQuery; facets: FacetData | null; fixedHidden: Record<string, string> }) {
+export function FacetForm({ action, query, facets, fixedHidden, hideBrand = false }: { action: string; query: ListingQuery; facets: FacetData | null; fixedHidden: Record<string, string>; hideBrand?: boolean }) {
   const submit = useSubmit();
   const details = useRef<HTMLDetailsElement>(null);
   useEffect(() => { if (window.matchMedia?.("(max-width: 899px)").matches && details.current) details.current.open = false; }, []);   // closed on a phone, open everywhere else (and without JS)
   const kosher = facets?.attributes["kosher-certification"] ?? [];
   const delivery = (facets?.attributes["delivery"] ?? []).filter((d) => d.value in DELIVERY_LABELS);
-  const brands = facets?.brands ?? [];
+  const brands = hideBrand ? [] : (facets?.brands ?? []);
   const types = facets?.types ?? [];
   const onChange = (e: React.ChangeEvent<HTMLFormElement>) => { const t = e.target as unknown as HTMLInputElement; if (t.type === "checkbox" || t.type === "radio") submit(e.currentTarget, { preventScrollReset: true }); };
   return (

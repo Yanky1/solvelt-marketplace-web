@@ -2,7 +2,7 @@ import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
 import { ApiError } from "./api-client.server";
 import { parseListingDetail, type ListingDetail } from "./catalog";
-import { parseCategoryTree, parseListingPage, toApiParams, type CategoryNode, type ListingPageData, type ListingQuery } from "./search";
+import { parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, toApiParams, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront } from "./search";
 
 /**
  * The buyer API's catalog, as TYPED calls only (standing rule O-12: the web server never proxies a generic /api/* path; every upstream path is built
@@ -40,6 +40,28 @@ export const catalog = {
     const page = parseListingPage(json);
     if (!page) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
     return page;
+  },
+
+  /** A brand's storefront by slug or id, or null when it is unknown, suspended or has nothing visible (the API does not say which). */
+  async brand(ctx: ApiRequestContext, slugOrId: string): Promise<BrandStorefront | null> {
+    if (!isCatalogKey(slugOrId)) return null;
+    const { status, json } = await getJson(ctx, `/api/v1/catalog/brands/${encodeURIComponent(slugOrId)}`);
+    if (status === 404) return null;
+    if (status !== 200) throw failure(status);
+    const brand = parseBrandStorefront(json);
+    if (!brand) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
+    return brand;
+  },
+
+  /** A seller's storefront by id (a GUID), or null. */
+  async seller(ctx: ApiRequestContext, id: string): Promise<SellerStorefront | null> {
+    if (!GUID.test(id)) return null;
+    const { status, json } = await getJson(ctx, `/api/v1/catalog/sellers/${encodeURIComponent(id)}`);
+    if (status === 404) return null;
+    if (status !== 200) throw failure(status);
+    const seller = parseSellerStorefront(json);
+    if (!seller) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
+    return seller;
   },
 
   /** The category tree (empty categories are already left out by the API). */

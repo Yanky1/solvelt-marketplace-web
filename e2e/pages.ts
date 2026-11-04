@@ -1,3 +1,5 @@
+import { gid } from "./mock-catalog.mjs";
+
 // Every W1 page that must pass axe in light and dark (extended by later slices).
 export const PAGES = [
   "/",
@@ -16,4 +18,6 @@ export const PAGES = [
   "/search?q=zzzz",
   "/c/food-drink",
   "/c/gifts?page=2",
+  "/b/challah-corner",
+  `/s/${gid("s:mazel")}`,
 ];

@@ -121,6 +121,22 @@ export function catalogResponse(path, url) {
     }
     return ok(body);
   }
+  let sm;
+  if ((sm = /^\/api\/v1\/catalog\/brands\/([^/]+)$/.exec(path))) {
+    const key = decodeURIComponent(sm[1]);
+    const b = brands.find((x) => x.slug === key || gid(`b:${x.slug}`) === key);
+    const pool = b ? list.filter((l) => l.brand.slug === b.slug) : [];
+    if (!b || pool.length === 0) return err(404, "not_found");
+    return ok({ id: gid(`b:${b.slug}`), slug: b.slug, name: b.name, logoImageId: null, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] }, listingCount: pool.length, categories: categoryTree(pool) });
+  }
+  if ((sm = /^\/api\/v1\/catalog\/sellers\/([^/]+)$/.exec(path))) {
+    const key = decodeURIComponent(sm[1]);
+    const handle = Object.keys(sellers).find((h) => gid(`s:${h}`) === key);
+    const pool = handle ? list.filter((l) => l.seller.id === key) : [];
+    if (!handle || pool.length === 0) return err(404, "not_found");
+    const myBrands = brands.filter((b) => b.seller === handle && pool.some((l) => l.brand.slug === b.slug));
+    return ok({ id: key, displayName: sellers[handle], listingCount: pool.length, brands: myBrands.map((b) => ({ id: gid(`b:${b.slug}`), slug: b.slug, name: b.name, logoImageId: null, seller: { id: key, displayName: sellers[handle] }, listingCount: pool.filter((l) => l.brand.slug === b.slug).length })), categories: categoryTree(pool) });
+  }
   if (path === "/api/v1/catalog/categories") return ok(categoryTree(list));
   if (path === "/api/v1/catalog/brands") return ok(brands.map((b) => ({ id: gid(`b:${b.slug}`), slug: b.slug, name: b.name, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] }, logoImageId: null, listingCount: list.filter((l) => l.brand.slug === b.slug).length })).filter((b) => b.listingCount > 0));
   return null;
