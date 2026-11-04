@@ -83,12 +83,27 @@ export interface NotificationItem { id: string; kind: string; category: string; 
 export interface NotificationList { unreadCount: number; notifications: NotificationItem[]; next: { before: string; beforeId: string } | null }
 export type NotificationPrefs = { email: Record<string, boolean> };
 
+// ---- messages (M5; API docs "Messages") ----
+export interface ThreadSummary { id: string; kind: string; subject: string; sellerName: string | null; orderNumber: string | null; listingId: string | null; lastMessageAt: string; unreadCount: number; preview: string }
+export interface ThreadList { unreadCount: number; threads: ThreadSummary[]; next: { before: string; beforeId: string } | null }
+export interface MessageAttachmentView { id: string; fileName: string; size: number; type: string | null; available: boolean }
+export interface ThreadMessageView { id: string; direction: "buyer" | "seller"; status: string; sentAt: string; read: boolean; reported: boolean; hidden: boolean; text: string | null; attachments: MessageAttachmentView[] }
+export interface ThreadView { thread: { id: string; kind: string; subject: string; sellerName: string | null; listingId: string | null }; messages: ThreadMessageView[]; older: string | null }
+export interface SendMessageInput { threadId?: string; orderNumber?: string; sellerOrderNumber?: string; listingId?: string; text: string; acknowledgeWarning?: boolean }
+
 /** Raw GET for binary answers (proof images, message files): the caller streams it to the browser with its own safe headers. */
 async function raw(ctx: ApiRequestContext, path: string): Promise<Response> {
   try { return await apiFetch(getConfig(), ctx, path, { signal: AbortSignal.timeout(20000) }); } catch { throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again."); }
 }
 
 export const api = {
+  threads: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
+    call<ThreadList>(ctx, `/api/v1/messages/threads${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
+  thread: (ctx: ApiRequestContext, id: string, before?: string) => call<ThreadView>(ctx, `/api/v1/messages/threads/${pid(id)}${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  sendMessage: (ctx: ApiRequestContext, b: SendMessageInput) => call<{ threadId: string; messageId: string; status: string }>(ctx, "/api/v1/messages", b),
+  markThreadRead: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/messages/threads/${pid(id)}/read`, {}),
+  reportMessage: (ctx: ApiRequestContext, id: string, b: { reason: string; note?: string }) => call<{ reported: boolean }>(ctx, `/api/v1/messages/${pid(id)}/report`, b),
+  messageAttachment: (ctx: ApiRequestContext, id: string) => raw(ctx, `/api/v1/messages/attachments/${pid(id)}`),
   notifications: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<NotificationList>(ctx, `/api/v1/notifications${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
   markNotificationRead: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/notifications/${pid(id)}/read`, {}),
