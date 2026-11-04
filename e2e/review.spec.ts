@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { csrfFor, MOCK, mailedToken, newVerifiedUser, PASSWORD, signIn, signUp, tokensOf, uniqueEmail } from "./helpers";
+import { csrfFor, MOCK, mailedToken, newVerifiedUser, PASSWORD, signIn, signUp, tokensOf, uniqueEmail, waitHydrated } from "./helpers";
 
 const SUMMARY = (page: Page) => page.getByRole("group", { name: "There is a problem" });
 
@@ -185,8 +185,8 @@ test("an unverified sign-in offers to resend the verification email", async ({ p
 
 test("a stale or foreign CSRF token shows a friendly retry page, not a bare Forbidden", async ({ page }) => {
   await page.goto("/sign-in");
-  // The passkey button only exists after hydration. Tampering earlier races with React resetting the field to its server value.
-  await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible();
+  // Tampering before hydration races with React resetting the field to its server value: wait for the explicit marker.
+  await waitHydrated(page);
   await page.locator('input[name="csrf"]').first().evaluate((el) => { (el as HTMLInputElement).value = "stale-token-from-another-tab"; });
   await page.getByLabel("Email").fill("a@example.test");
   await page.getByLabel("Password").fill("whatever");

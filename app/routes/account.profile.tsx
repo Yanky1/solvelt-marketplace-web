@@ -7,7 +7,7 @@ import { Button, Input } from "~/components/ui/form";
 import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
-import { str, validateDisplayName, validatePhone, type FieldErrors } from "~/lib/validation";
+import { cleanField, validateDisplayName, validatePhone, type FieldErrors } from "~/lib/validation";
 
 export function meta() {
   return [{ title: "Profile | Solvelt" }, { name: "robots", content: "noindex" }];
@@ -20,7 +20,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
   try {
     const p = await api.profile(ctx);
-    return { displayName: p.displayName, email: p.email, phone: p.phone ?? "" };
+    // `saved` is read here (not from window during render), so server and client render the same markup.
+    return { displayName: p.displayName, email: p.email, phone: p.phone ?? "", saved: new URL(request.url).searchParams.has("saved") };
   } catch (e) {
     return failAccount(e, request);
   }
@@ -30,8 +31,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   assertCsrf(request, form);
   const { ctx } = requireAccount(request, context);
-  const displayName = str(form, "displayName").trim();
-  const phone = str(form, "phone").trim();
+  const displayName = cleanField(form, "displayName");
+  const phone = cleanField(form, "phone");
   const fieldErrors: FieldErrors = {};
   const e1 = validateDisplayName(displayName), e2 = validatePhone(phone);
   if (e1) fieldErrors.displayName = e1;
@@ -50,7 +51,6 @@ export async function action({ request, context }: Route.ActionArgs) {
 export default function Profile({ loaderData }: Route.ComponentProps) {
   const a = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
-  const saved = typeof window !== "undefined" ? new URLSearchParams(window.location.search).has("saved") : false;
   return (
     <div>
       <h1>Your account</h1>
@@ -58,7 +58,7 @@ export default function Profile({ loaderData }: Route.ComponentProps) {
       <AuthPage title="Profile">
         <Form method="post" className="stack" noValidate>
           <CsrfField />
-          {saved && !a && <FormMessage kind="ok">Profile saved.</FormMessage>}
+          {loaderData.saved && !a && <FormMessage kind="ok">Profile saved.</FormMessage>}
           <ErrorSummary submission={a} message={a?.message} errors={a?.fieldErrors} />
           <Input label="Name" name="displayName" autoComplete="name" defaultValue={a?.displayName ?? loaderData.displayName} error={a?.fieldErrors?.displayName} required />
           <Input label="Email" name="email" type="email" value={loaderData.email} readOnly hint="To change your email address, contact support." />

@@ -1,5 +1,6 @@
 import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
+import { isSafeId } from "./passkey.server";
 
 /**
  * Typed client for the buyer API. ASSUMED CONTRACT (docs/DESIGN.md W1-21): the API's auth endpoints are not
@@ -20,6 +21,12 @@ export interface PasskeyInfo { id: string; name: string; createdAt: string; last
 export interface PasskeyChallenge { challengeId: string; options: Record<string, unknown> }
 
 export interface ApiUser { id: string; displayName: string; email?: string }
+
+/** Ids end up in URL paths: "." and ".." (or anything with separators) would be normalised by fetch onto other API routes. */
+function pid(id: string): string {
+  if (!isSafeId(id)) throw new ApiError(404, "not_found", "Not found");
+  return encodeURIComponent(id);
+}
 
 async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string): Promise<T> {
   let res: Response;
@@ -53,15 +60,15 @@ export const api = {
   profile: (ctx: ApiRequestContext) => call<Profile>(ctx, "/api/v1/account/profile"),
   updateProfile: (ctx: ApiRequestContext, b: { displayName: string; phone: string }) => call<Profile>(ctx, "/api/v1/account/profile", b, "PUT"),
   addresses: (ctx: ApiRequestContext) => call<Address[]>(ctx, "/api/v1/account/addresses"),
-  address: (ctx: ApiRequestContext, id: string) => call<Address>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}`),
+  address: (ctx: ApiRequestContext, id: string) => call<Address>(ctx, `/api/v1/account/addresses/${pid(id)}`),
   createAddress: (ctx: ApiRequestContext, b: AddressBody) => call<Address>(ctx, "/api/v1/account/addresses", b),
-  updateAddress: (ctx: ApiRequestContext, id: string, b: AddressBody) => call<Address>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}`, b, "PUT"),
-  deleteAddress: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}`, undefined, "DELETE"),
-  setDefaultAddress: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/addresses/${encodeURIComponent(id)}/default`, {}),
+  updateAddress: (ctx: ApiRequestContext, id: string, b: AddressBody) => call<Address>(ctx, `/api/v1/account/addresses/${pid(id)}`, b, "PUT"),
+  deleteAddress: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/addresses/${pid(id)}`, undefined, "DELETE"),
+  setDefaultAddress: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/addresses/${pid(id)}/default`, {}),
   passkeys: (ctx: ApiRequestContext) => call<PasskeyInfo[]>(ctx, "/api/v1/account/passkeys"),
   passkeyRegistrationOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/account/passkeys/options", {}),
   registerPasskey: (ctx: ApiRequestContext, b: { challengeId: string; name: string; credential: unknown }) => call<PasskeyInfo>(ctx, "/api/v1/account/passkeys", b),
-  deletePasskey: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/passkeys/${encodeURIComponent(id)}`, undefined, "DELETE"),
+  deletePasskey: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/passkeys/${pid(id)}`, undefined, "DELETE"),
   passkeySignInOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/auth/passkey/options", {}),
   passkeySignIn: (ctx: ApiRequestContext, b: { challengeId: string; credential: unknown }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/passkey/sign-in", b),
 };

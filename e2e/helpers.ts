@@ -54,3 +54,32 @@ export async function newVerifiedUser(page: Page, tag: string, name = "Dana Levi
 export async function tokensOf(request: APIRequestContext, email: string): Promise<string[]> {
   return (await (await request.get(`${MOCK}/__test/tokens?email=${encodeURIComponent(email)}`)).json()) as string[];
 }
+
+/** React has hydrated (root effect sets the marker). Wait for it before touching fields that React controls. */
+export async function waitHydrated(page: Page) {
+  await expect(page.locator("html")).toHaveAttribute("data-hydrated", "true");
+}
+
+/** Signs a WebAuthn request challenge with the page's (virtual) authenticator; returns the JSON the server expects. */
+export async function getAssertion(page: Page, options: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return page.evaluate(async (o) => {
+    const dec = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4)), (c) => c.charCodeAt(0));
+    const enc = (buf: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const cred = (await navigator.credentials.get({ publicKey: { ...(o as object), challenge: dec(o.challenge as string) } as PublicKeyCredentialRequestOptions })) as PublicKeyCredential;
+    const r = cred.response as AuthenticatorAssertionResponse;
+    return {
+      id: cred.id, rawId: enc(cred.rawId), type: cred.type, clientExtensionResults: {},
+      response: { clientDataJSON: enc(r.clientDataJSON), authenticatorData: enc(r.authenticatorData), signature: enc(r.signature), ...(r.userHandle ? { userHandle: enc(r.userHandle) } : {}) },
+    };
+  }, options);
+}
+
+/** A virtual authenticator for this page (Chromium DevTools protocol). */
+export async function addVirtualAuthenticator(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("WebAuthn.enable");
+  await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
+  });
+  return cdp;
+}

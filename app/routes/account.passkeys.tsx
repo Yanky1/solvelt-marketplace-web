@@ -8,8 +8,11 @@ import { Card, EmptyState } from "~/components/ui/display";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { getConfig } from "~/lib/config.server";
+import { hasRecentAuth, sessionCookie, checkPasskeyChallenge, withoutPasskeyChallenge } from "~/lib/session.server";
+import { isSafeId } from "~/lib/passkey.server";
 import { createPasskey, usePasskeysSupported } from "~/lib/webauthn";
-import { str } from "~/lib/validation";
+import { cleanText, str } from "~/lib/validation";
 
 export function meta() {
   return [{ title: "Passkeys | Solvelt" }, { name: "robots", content: "noindex" }];
@@ -29,25 +32,39 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
-  assertCsrf(request, form);
+  const session = assertCsrf(request, form);
   const { ctx } = requireAccount(request, context);
+  const cfg = getConfig();
   const intent = str(form, "intent");
+  // A registration challenge is single use: drop the binding from the cookie whatever the outcome.
+  const dropBinding = { "Set-Cookie": sessionCookie(withoutPasskeyChallenge(session), cfg) };
   try {
     if (intent === "register") {
-      const name = str(form, "name").trim().slice(0, 60) || "My passkey";
+      if (!checkPasskeyChallenge(session, str(form, "challengeId"), "create").ok) return formError({ message: "That passkey request expired or does not belong to this session. Please try again." }, 400, dropBinding);
+      const name = cleanText(str(form, "name")).trim().slice(0, 60) || "My passkey";
       let credential: unknown;
-      try { credential = JSON.parse(str(form, "credential")); } catch { return formError({ message: "That passkey could not be read. Please try again." }); }
+      try { credential = JSON.parse(str(form, "credential")); } catch { return formError({ message: "That passkey could not be read. Please try again." }, 400, dropBinding); }
       await api.registerPasskey(ctx, { challengeId: str(form, "challengeId"), name, credential });
-    } else if (intent === "delete" && str(form, "id")) {
-      await api.deletePasskey(ctx, str(form, "id"));
-    } else {
-      throw new Response("Bad request", { status: 400 });
+      return redirect("/account/passkeys", { headers: { ...privateHeaders, ...dropBinding } });
     }
+    if (intent === "delete") {
+      const id = str(form, "id");
+      if (!isSafeId(id)) throw new Response("Not found", { status: 404, headers: privateHeaders });
+      // Removing a sign-in method needs a recent sign-in (O-11): otherwise ask the user to confirm it is them first.
+      if (!hasRecentAuth(session, Date.now() / 1000, cfg.reauthWindowSeconds)) return redirect("/account/confirm?next=%2Faccount%2Fpasskeys", { headers: privateHeaders });
+      try {
+        await api.deletePasskey(ctx, id);
+      } catch (e) {
+        if (e instanceof ApiError && e.status !== 401 && e.status !== 404) return formError({ message: "We could not remove that passkey. Please try again." }, 503);
+        throw e;
+      }
+      return redirect("/account/passkeys", { headers: privateHeaders });
+    }
+    throw new Response("Bad request", { status: 400 });
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 400 || e.status === 409 || e.status === 422)) return formError({ message: "We could not add that passkey. It may already be registered, or the request expired." }, e.status);
+    if (e instanceof ApiError && (e.status === 400 || e.status === 409 || e.status === 422)) return formError({ message: "We could not add that passkey. It may already be registered, or the request expired." }, e.status, dropBinding);
     return failAccount(e, request);
   }
-  return redirect("/account/passkeys", { headers: privateHeaders });
 }
 
 export default function Passkeys({ loaderData }: Route.ComponentProps) {

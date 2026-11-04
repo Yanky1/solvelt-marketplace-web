@@ -22,6 +22,15 @@ export function validateDisplayName(v: string): string | null {
   return null;
 }
 
+/**
+ * Strips C0/C1 control characters and bidirectional override/isolate marks (U+202A-202E, U+2066-2069, U+200E/F, U+061C):
+ * they can hide or reorder text in names and addresses shown to people or printed on labels. Use for free-text fields only.
+ */
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is being stripped
+export const cleanText = (s: string): string => s.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
+
+export const cleanField = (form: FormData, key: string): string => cleanText(str(form, key)).trim();
+
 export const str = (form: FormData, key: string): string => {
   const v = form.get(key);
   return typeof v === "string" ? v : "";
@@ -45,9 +54,9 @@ export interface AddressInput {
 
 export function readAddress(form: FormData): AddressInput {
   return {
-    fullName: str(form, "fullName").trim(), line1: str(form, "line1").trim(), line2: str(form, "line2").trim(), city: str(form, "city").trim(),
-    region: str(form, "region").trim(), postalCode: str(form, "postalCode").trim(), country: str(form, "country").trim().toUpperCase(),
-    phone: str(form, "phone").trim(), isDefault: form.get("isDefault") === "on",
+    fullName: cleanField(form, "fullName"), line1: cleanField(form, "line1"), line2: cleanField(form, "line2"), city: cleanField(form, "city"),
+    region: cleanField(form, "region"), postalCode: cleanField(form, "postalCode"), country: cleanField(form, "country").toUpperCase(),
+    phone: cleanField(form, "phone"), isDefault: form.get("isDefault") === "on",
   };
 }
 

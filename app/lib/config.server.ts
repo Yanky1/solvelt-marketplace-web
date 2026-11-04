@@ -8,6 +8,8 @@ export interface AppConfig {
   trustedProxies: string[];
   /** Shared with the API (Web__ForwardingKey): signs the forwarded client IP. Distinct from the session secret. */
   webForwardingKey: string;
+  /** How recent a sign-in must be to remove a passkey or change a sign-in method (seconds). */
+  reauthWindowSeconds: number;
   production: boolean;
 }
 
@@ -62,8 +64,12 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const trustedProxies = (env.TRUSTED_PROXIES ?? "").split(",").map((x) => x.trim()).filter(Boolean);
   try { parseTrustedProxies(trustedProxies); } catch (e) { problems.push((e as Error).message); }
 
+  const reauthRaw = env.REAUTH_WINDOW_SECONDS;
+  const reauthWindowSeconds = reauthRaw === undefined || reauthRaw === "" ? 600 : /^[0-9]{1,4}$/.test(reauthRaw) ? Number(reauthRaw) : NaN;
+  if (!Number.isInteger(reauthWindowSeconds) || reauthWindowSeconds < 1 || reauthWindowSeconds > 3600) problems.push("REAUTH_WINDOW_SECONDS must be a whole number of seconds between 1 and 3600");
+
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, production };
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, production };
 }
 
 let cached: AppConfig | undefined;

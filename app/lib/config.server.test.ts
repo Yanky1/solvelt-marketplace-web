@@ -65,6 +65,14 @@ describe("TRUSTED_PROXIES in config", () => {
   });
 });
 
+describe("REAUTH_WINDOW_SECONDS", () => {
+  it("defaults to 10 minutes and is validated", () => {
+    expect(loadConfig(good).reauthWindowSeconds).toBe(600);
+    expect(loadConfig({ ...good, REAUTH_WINDOW_SECONDS: "5" }).reauthWindowSeconds).toBe(5);
+    for (const bad of ["0", "-1", "3601", "abc", "1.5", "1e2"]) fails({ ...good, REAUTH_WINDOW_SECONDS: bad }, /REAUTH_WINDOW_SECONDS/);
+  });
+});
+
 describe("weakSecretReason", () => {
   it("accepts a random-looking secret", () => { expect(weakSecretReason(SECRET)).toBeNull(); });
 });

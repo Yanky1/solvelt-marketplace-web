@@ -6,7 +6,7 @@ import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, currentUser, formError } from "~/lib/auth.server";
 import { safeFieldErrors } from "~/lib/api-errors";
-import { str, validateDisplayName, validateEmail, validateNewPassword, type FieldErrors } from "~/lib/validation";
+import { cleanField, str, validateDisplayName, validateEmail, validateNewPassword, type FieldErrors } from "~/lib/validation";
 
 const NONE: FieldErrors = {};
 
@@ -24,7 +24,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   assertCsrf(request, form);
   const email = str(form, "email").trim();
-  const displayName = str(form, "displayName").trim();
+  const displayName = cleanField(form, "displayName");
   const password = str(form, "password");
   const fieldErrors: FieldErrors = {};
   const e1 = validateDisplayName(displayName), e2 = validateEmail(email), e3 = validateNewPassword(password);

@@ -6,6 +6,7 @@ import { AuthPage, ErrorSummary } from "~/components/AuthForm";
 import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { isSafeId } from "~/lib/passkey.server";
 import { readAddress, validateAddress, type FieldErrors } from "~/lib/validation";
 
 export function meta() {
@@ -17,6 +18,7 @@ export function headers() {
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
+  if (!isSafeId(params.id)) throw new Response("Not found", { status: 404, headers: privateHeaders });
   try {
     const a = await api.address(ctx, params.id); // another user's address is a 404 from the API (never 403)
     return { values: { fullName: a.fullName, line1: a.line1, line2: a.line2 ?? "", city: a.city, region: a.region ?? "", postalCode: a.postalCode, country: a.country, phone: a.phone ?? "", isDefault: a.isDefault } };
@@ -29,6 +31,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const form = await request.formData();
   assertCsrf(request, form);
   const { ctx } = requireAccount(request, context);
+  if (!isSafeId(params.id)) throw new Response("Not found", { status: 404, headers: privateHeaders });
   const values = readAddress(form);
   const fieldErrors = validateAddress(values);
   if (Object.keys(fieldErrors).length) return formError({ fieldErrors, message: null, values });

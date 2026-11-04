@@ -6,6 +6,7 @@ import { Badge, Card, EmptyState } from "~/components/ui/display";
 import { Button, LinkButton } from "~/components/ui/form";
 import { api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { isSafeId } from "~/lib/passkey.server";
 import { COUNTRIES, str } from "~/lib/validation";
 import { redirect } from "react-router";
 
@@ -31,6 +32,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const { ctx } = requireAccount(request, context);
   const id = str(form, "id");
   const intent = str(form, "intent");
+  if (!isSafeId(id)) throw new Response("Not found", { status: 404, headers: privateHeaders });
   try {
     if (intent === "delete" && id) await api.deleteAddress(ctx, id);
     else if (intent === "default" && id) await api.setDefaultAddress(ctx, id);

@@ -68,6 +68,7 @@ http.createServer(async (req, res) => {
     return send(res, 204);
   }
   if (path === "/api/v1/auth/resend-verification" && req.method === "POST") {
+    if (String(body.email ?? "").includes("resend-boom")) return send(res, 503, { code: "unavailable", message: "Down" });
     const u = users.get(String(body.email ?? "").toLowerCase());
     if (u && !u.verified) { u.verifyToken = randomBytes(12).toString("hex"); outbox.push({ kind: "verify", email: u.email, token: u.verifyToken }); } // older links stop working
     return send(res, 204);
@@ -174,7 +175,7 @@ http.createServer(async (req, res) => {
     const challenge = b64u(randomBytes(32)), challengeId = randomBytes(8).toString("hex");
     challenges.set(challengeId, { challenge, userId: u.id, kind: "create" });
     return send(res, 200, { challengeId, options: {
-      challenge, rp: { id: "localhost", name: "Solvelt" }, user: { id: b64u(Buffer.from(u.id)), name: u.email, displayName: u.displayName },
+      challenge, rp: { id: u.email.includes("badrp") ? "evil.example" : "localhost", name: "Solvelt" }, user: { id: b64u(Buffer.from(u.id)), name: u.email, displayName: u.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }], timeout: 60000, attestation: "none",
       authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
       excludeCredentials: [...passkeys.values()].filter((p) => p.userId === u.id).map((p) => ({ type: "public-key", id: p.credentialId })),
@@ -199,6 +200,7 @@ http.createServer(async (req, res) => {
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
     const hit = [...passkeys.entries()].find(([, p]) => p.id === pm[1] && p.userId === u.id);
     if (!hit) return send(res, 404, { code: "not_found", message: "Not found" });
+    if (hit[1].name.includes("undeletable")) return send(res, 503, { code: "unavailable", message: "Down" });
     passkeys.delete(hit[0]);
     return send(res, 204);
   }

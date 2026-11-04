@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { csrfFor, MOCK, newVerifiedUser, signIn } from "./helpers";
+import { csrfFor, MOCK, newVerifiedUser, signIn, waitHydrated } from "./helpers";
 
 async function signedIn(page: Page, tag: string, name = "Dana Levi") {
   const email = await newVerifiedUser(page, tag, name);
@@ -227,29 +227,29 @@ test("without WebAuthn support the passkey UI degrades gracefully", async ({ pag
   await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toHaveCount(0);
 });
 
+// One test per page and theme (each with its own sign-in), so none of them approaches the 30 s test timeout.
+const AXE_PAGES: { name: string; path: string; prepare?: (page: Page) => Promise<void> }[] = [
+  { name: "overview", path: "/account" },
+  { name: "profile with errors", path: "/account/profile", prepare: async (page) => { await page.getByLabel("Name").fill(""); await page.getByRole("button", { name: "Save profile" }).click(); await expect(page.getByLabel("Name")).toHaveAttribute("aria-invalid", "true"); } },
+  { name: "addresses", path: "/account/addresses" },
+  { name: "new address with errors", path: "/account/addresses/new", prepare: async (page) => { await page.getByRole("button", { name: "Save address" }).click(); await expect(page.getByLabel("City")).toHaveAttribute("aria-invalid", "true"); } },
+  { name: "edit address", path: "/account/addresses", prepare: async (page) => { await page.getByRole("link", { name: /Edit address for Dana Levi/ }).click(); await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible(); } },
+  { name: "passkeys", path: "/account/passkeys" },
+  { name: "confirm password", path: "/account/confirm" },
+];
+
 for (const theme of ["light", "dark"] as const) {
-  test(`axe: account pages (${theme})`, async ({ page, context, baseURL }) => {
-    await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
-    await signedIn(page, `axeacc${theme}`);
-    await addAddress(page, { name: "Dana Levi", line1: "1 Herzl Street" });
-    await addAddress(page, { name: "Office Haifa", line1: "9 Allenby Road" });
-    const states: [string, () => Promise<void>][] = [
-      ["/account", async () => undefined],
-      ["/account/profile", async () => { await page.getByLabel("Name").fill(""); await page.getByRole("button", { name: "Save profile" }).click(); await expect(page.getByLabel("Name")).toHaveAttribute("aria-invalid", "true"); }],
-      ["/account/addresses", async () => undefined],
-      ["/account/addresses/new", async () => { await page.getByRole("button", { name: "Save address" }).click(); await expect(page.getByLabel("City")).toHaveAttribute("aria-invalid", "true"); }],
-      ["/account/passkeys", async () => undefined],
-    ];
-    for (const [path, prepare] of states) {
+  for (const { name, path, prepare } of AXE_PAGES) {
+    test(`axe: ${name} (${theme})`, async ({ page, context, baseURL }) => {
+      await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
+      await signedIn(page, `axe${theme}${name.replace(/\W/g, "").slice(0, 8)}`);
+      await addAddress(page, { name: "Dana Levi", line1: "1 Herzl Street" });
       await page.goto(path);
-      await prepare();
+      await waitHydrated(page);
+      await prepare?.(page);
       await page.evaluate(() => window.scrollTo(0, 0)); // axe at a fixed scroll position: a sticky header can partly cover fields scrolled under it
       const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
-      expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => `${n.html} (${n.any.map((c) => c.message).join("; ")})`).join(" | ")}`), path).toEqual([]);
-    }
-    await page.goto("/account/addresses");
-    await page.getByRole("link", { name: /Edit address for Dana Levi/ }).click();
-    const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
-    expect(r.violations.map((v) => v.id), "edit address").toEqual([]);
-  });
+      expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => `${n.html} (${n.any.map((c) => c.message).join("; ")})`).join(" | ")}`), `${name} (${theme})`).toEqual([]);
+    });
+  }
 }

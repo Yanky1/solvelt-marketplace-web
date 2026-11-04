@@ -14,6 +14,7 @@ export default [
   route("forgot-password", "routes/forgot-password.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
   route("account", "routes/account.tsx"),
+  route("account/confirm", "routes/account.confirm.tsx"),
   route("account/profile", "routes/account.profile.tsx"),
   route("account/addresses", "routes/account.addresses.tsx"),
   route("account/addresses/new", "routes/account.addresses.new.tsx"),

@@ -23,13 +23,14 @@ npm run build && npm start   # production SSR server on :3000
 | `WEB_FORWARDING_KEY` | yes (>= 32 chars) | Same secret as the API's `Web__ForwardingKey`; signs the forwarded client IP. Must differ from `SESSION_COOKIE_SECRET` |
 | `PUBLIC_ORIGIN` | yes (https) | Public origin: canonical URLs, sitemap, Origin checks |
 | `TRUSTED_PROXIES` | no | Comma-separated IPs or CIDRs (IPv4 or IPv6) of your reverse proxies; `X-Forwarded-For` is trusted only from these. Invalid entries stop start-up. Keep server clocks in NTP sync (the API accepts the signed timestamp for a short window) |
+| `REAUTH_WINDOW_SECONDS` | no | How recent a sign-in must be to remove a passkey (default 600, 1..3600) |
 | `PORT` | no | Server port (default 3000) |
 
 The server refuses to start in production when a required value is missing or invalid (the error never prints secret values). Anything except `NODE_ENV=development` or `test` counts as production, including an unset `NODE_ENV`. Secrets must be random (at least 12 distinct characters, no placeholders such as `change-me`).
 
 ## Sessions and auth
 
-The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..54), including the API auth contract this site currently assumes.
+The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..62), including the API auth contract this site currently assumes.
 
 ## Pages
 

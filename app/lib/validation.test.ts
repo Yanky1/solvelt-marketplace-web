@@ -43,3 +43,20 @@ describe("phone and address validation", () => {
   });
   it("only offers listed countries", () => { expect(Object.keys(COUNTRIES)).toContain("IL"); });
 });
+
+import { cleanText } from "./validation";
+
+describe("cleanText", () => {
+  it("removes C0/C1 controls and bidi overrides, keeps ordinary and non-Latin text", () => {
+    expect(cleanText("a\u0000b\u202eevil\u202c\u2066x\u2069\u200f\u061c\u0085\u009f\u007f\t\n")).toBe("abevilx");
+    expect(cleanText("Dana Levi \u05d3\u05e0\u05d4 \u00e9\u00fc")).toBe("Dana Levi \u05d3\u05e0\u05d4 \u00e9\u00fc");
+  });
+  it("is applied to every address text field when reading a form", () => {
+    const f = new FormData();
+    for (const k of ["fullName", "line1", "line2", "city", "region", "postalCode", "phone"]) f.set(k, `x\u0000${k}\u202e`);
+    f.set("country", "i\u0000l");
+    const a = readAddress(f);
+    for (const k of ["fullName", "line1", "line2", "city", "region", "postalCode", "phone"] as const) expect(a[k]).toBe(`x${k}`);
+    expect(a.country).toBe("IL");
+  });
+});

@@ -11,6 +11,18 @@ export interface SessionData {
   token?: string;
   /** Issued-at, unix seconds. */
   iat: number;
+  /** When the user last proved who they are (password or passkey sign-in), unix seconds. Missing = never in this session. */
+  authAt?: number;
+  /** The one passkey challenge this session may complete: binds the API's challenge to this browser session. */
+  pk?: PasskeyBinding;
+}
+
+export interface PasskeyBinding {
+  /** The API's challenge id. */
+  cid: string;
+  kind: "create" | "get";
+  /** Expiry, unix seconds. */
+  exp: number;
 }
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
@@ -35,8 +47,15 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     const d = JSON.parse(json) as Partial<SessionData>;
     if (typeof d.sid !== "string" || d.sid.length < 16 || typeof d.iat !== "number") return null;
     if (d.token !== undefined && typeof d.token !== "string") return null;
+    if (d.authAt !== undefined && typeof d.authAt !== "number") return null;
+    const pk = d.pk;
+    if (pk !== undefined && (typeof pk !== "object" || pk === null || typeof pk.cid !== "string" || typeof pk.exp !== "number" || (pk.kind !== "create" && pk.kind !== "get"))) return null;
     if (now - d.iat > MAX_AGE_SECONDS) return null;
-    return d.token === undefined ? { sid: d.sid, iat: d.iat } : { sid: d.sid, token: d.token, iat: d.iat };
+    const out: SessionData = { sid: d.sid, iat: d.iat };
+    if (d.token !== undefined) out.token = d.token;
+    if (d.authAt !== undefined) out.authAt = d.authAt;
+    if (pk !== undefined) out.pk = { cid: pk.cid, kind: pk.kind, exp: pk.exp };
+    return out;
   } catch {
     return null;
   }
@@ -75,3 +94,32 @@ export function sessionCookie(data: SessionData, cfg: Pick<AppConfig, "publicOri
   const secure = cfg.publicOrigin.startsWith("https://");
   return `${cookieName(cfg)}=${seal(data, cfg.sessionCookieSecret)}; Path=/; Max-Age=${MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
+
+/** Passkey options are issued for exactly one challenge per session; a newer one replaces an older one. */
+export function bindPasskeyChallenge(session: SessionData, cid: string, kind: PasskeyBinding["kind"], timeoutMs: unknown, now = Date.now() / 1000): SessionData {
+  const ms = typeof timeoutMs === "number" && timeoutMs > 0 ? Math.min(timeoutMs, 300_000) : 60_000;
+  return { ...session, pk: { cid, kind, exp: Math.floor(now + ms / 1000) + 5 } };
+}
+
+export type ChallengeCheck = { ok: true } | { ok: false; reason: "none" | "mismatch" | "kind" | "expired" };
+
+/** Does this session own that challenge, for that ceremony, and is it still fresh? (Single use: callers then drop `pk`.) */
+export function checkPasskeyChallenge(session: SessionData, cid: unknown, kind: PasskeyBinding["kind"], now = Date.now() / 1000): ChallengeCheck {
+  const b = session.pk;
+  if (!b) return { ok: false, reason: "none" };
+  if (typeof cid !== "string" || cid.length === 0 || cid.length > 200 || b.cid.length !== cid.length || !timingSafeEqual(Buffer.from(b.cid), Buffer.from(cid))) return { ok: false, reason: "mismatch" };
+  if (b.kind !== kind) return { ok: false, reason: "kind" };
+  if (now >= b.exp) return { ok: false, reason: "expired" };
+  return { ok: true };
+}
+
+export const withoutPasskeyChallenge = (session: SessionData): SessionData => {
+  const { pk: _pk, ...rest } = session;
+  void _pk;
+  return rest;
+};
+
+/** Signed in recently enough for sensitive changes (removing a passkey, changing the password)? */
+export const RECENT_AUTH_SECONDS = 600;
+export const hasRecentAuth = (session: SessionData, now = Date.now() / 1000, windowSeconds = RECENT_AUTH_SECONDS): boolean =>
+  !!session.token && typeof session.authAt === "number" && now - session.authAt >= 0 && now - session.authAt < windowSeconds;

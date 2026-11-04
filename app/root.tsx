@@ -10,6 +10,15 @@ import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
 import { parseTheme, type ThemePref } from "~/lib/theme.server";
 import "~/styles/app.css";
 
+/**
+ * Error documents (404/503 thrown by account pages) are rendered by this route's boundary, so the thrown response's
+ * Cache-Control (no-store) must be carried over here or it would be lost.
+ */
+export function headers({ errorHeaders }: Route.HeadersArgs) {
+  const cc = errorHeaders?.get("Cache-Control");
+  return cc ? { "Cache-Control": cc } : {};
+}
+
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { user, expired } = await currentUser(request, context);
   const visitor = ensureVisitor(request, expired);
@@ -33,6 +42,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const nonce = useNonce();
   const userId = data?.user?.id ?? null;
   useEffect(() => { reconcileUserStorageInBrowser(userId); }, [userId]);
+  // A deterministic "React has hydrated" signal (tests wait for it before touching forms; nothing else uses it).
+  useEffect(() => { document.documentElement.dataset.hydrated = "true"; }, []);
   return (
     <html lang="en" data-theme={theme === "system" ? undefined : theme}>
       <head>

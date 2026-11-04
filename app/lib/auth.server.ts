@@ -64,10 +64,11 @@ export function assertCsrf(request: Request, form: FormData): SessionData {
 }
 
 /** New session id after sign-in or sign-out (prevents session fixation); optionally carries the API token. */
-export function rotatedCookie(token?: string): string {
+export function rotatedCookie(token?: string, now = Date.now() / 1000): string {
   const cfg = getConfig();
-  const fresh = newVisitor();
-  return sessionCookie(token ? { ...fresh, token } : fresh, cfg);
+  const fresh = newVisitor(now);
+  // A token means a fresh sign-in just happened: remember when (for "recent sign-in" checks).
+  return sessionCookie(token ? { ...fresh, token, authAt: Math.floor(now) } : fresh, cfg);
 }
 
 /** Redirect to sign-in for pages that need an account, keeping a safe return path. */
@@ -78,8 +79,8 @@ export function signInRedirect(request: Request): never {
 
 export const privateHeaders = { "Cache-Control": "private, no-store" } as const;
 
-export function formError<T extends object>(body: T, status = 400) {
-  return data(body, { status, headers: privateHeaders });
+export function formError<T extends object>(body: T, status = 400, extraHeaders: Record<string, string> = {}) {
+  return data(body, { status, headers: { ...privateHeaders, ...extraHeaders } });
 }
 
 /** Pages that need an account: a request context carrying the session token, or a redirect to sign-in. */
@@ -94,7 +95,7 @@ export function failAccount(e: unknown, request: Request): never {
   if (e instanceof Response) throw e;
   if (e instanceof ApiError) {
     if (e.status === 401) signInRedirect(request);
-    if (e.status === 404) throw new Response("Not found", { status: 404 });
+    if (e.status === 404) throw new Response("Not found", { status: 404, headers: privateHeaders });
   }
-  throw new Response("Service unavailable", { status: 503 });
+  throw new Response("Service unavailable", { status: 503, headers: privateHeaders });
 }

@@ -65,3 +65,53 @@ describe("csrf token", () => {
     expect(csrfTokenFor("sid", SECRET)).not.toBe(seal({ sid: "sid", iat: 1 }, SECRET));
   });
 });
+
+import { bindPasskeyChallenge, checkPasskeyChallenge, hasRecentAuth, RECENT_AUTH_SECONDS, withoutPasskeyChallenge } from "./session.server";
+
+describe("passkey challenge binding", () => {
+  const base = { ...newVisitor(1000), token: "tok" };
+  it("round-trips through the sealed cookie, with authAt", () => {
+    const d = { ...bindPasskeyChallenge({ ...base, authAt: 1000 }, "chal-1", "get", 60_000, 1000) };
+    expect(open(seal(d, SECRET), SECRET, 1001)).toEqual(d);
+    expect(d.pk).toEqual({ cid: "chal-1", kind: "get", exp: 1065 });
+  });
+  it("accepts only the bound challenge, for the bound ceremony, before it expires", () => {
+    const s = bindPasskeyChallenge(base, "chal-1", "get", 60_000, 1000);
+    expect(checkPasskeyChallenge(s, "chal-1", "get", 1010)).toEqual({ ok: true });
+    expect(checkPasskeyChallenge(s, "chal-2", "get", 1010)).toEqual({ ok: false, reason: "mismatch" });
+    expect(checkPasskeyChallenge(s, "chal-1", "create", 1010)).toEqual({ ok: false, reason: "kind" });
+    expect(checkPasskeyChallenge(s, "chal-1", "get", 1066)).toEqual({ ok: false, reason: "expired" });
+    expect(checkPasskeyChallenge(s, "chal-1", "get", 1065)).toEqual({ ok: false, reason: "expired" });
+  });
+  it.each([undefined, null, "", 5, "x".repeat(300)])("rejects challenge id %j", (cid) => {
+    expect(checkPasskeyChallenge(bindPasskeyChallenge(base, "chal-1", "get", 60_000, 1000), cid, "get", 1010).ok).toBe(false);
+  });
+  it("a session with no binding accepts nothing (a challenge minted in another session)", () => {
+    expect(checkPasskeyChallenge(base, "chal-1", "get", 1010)).toEqual({ ok: false, reason: "none" });
+  });
+  it("is single use: dropping it leaves the rest of the session intact", () => {
+    const s = withoutPasskeyChallenge(bindPasskeyChallenge({ ...base, authAt: 5 }, "chal-1", "get", 60_000, 1000));
+    expect(s).toEqual({ ...base, authAt: 5 });
+    expect(checkPasskeyChallenge(s, "chal-1", "get", 1010).ok).toBe(false);
+  });
+  it("caps and defaults the lifetime", () => {
+    expect(bindPasskeyChallenge(base, "c", "get", 10_000_000, 1000).pk!.exp).toBe(1305);
+    expect(bindPasskeyChallenge(base, "c", "get", undefined, 1000).pk!.exp).toBe(1065);
+    expect(bindPasskeyChallenge(base, "c", "get", -5, 1000).pk!.exp).toBe(1065);
+  });
+  it("rejects a tampered shape on open", () => {
+    expect(open(seal({ ...base, pk: { cid: "x", kind: "nope", exp: 1 } } as never, SECRET), SECRET, 1001)).toBeNull();
+    expect(open(seal({ ...base, authAt: "now" } as never, SECRET), SECRET, 1001)).toBeNull();
+  });
+});
+
+describe("recent sign-in", () => {
+  const s = { ...newVisitor(1000), token: "tok" };
+  it("is true only within the window after authAt, and only with a token", () => {
+    expect(hasRecentAuth({ ...s, authAt: 1000 }, 1000 + RECENT_AUTH_SECONDS - 1)).toBe(true);
+    expect(hasRecentAuth({ ...s, authAt: 1000 }, 1000 + RECENT_AUTH_SECONDS)).toBe(false);
+    expect(hasRecentAuth(s, 1001)).toBe(false); // a session from before authAt existed must re-authenticate
+    expect(hasRecentAuth({ sid: s.sid, iat: 1000, authAt: 1000 }, 1001)).toBe(false); // no token
+    expect(hasRecentAuth({ ...s, authAt: 2000 }, 1500)).toBe(false); // from the future
+  });
+});
