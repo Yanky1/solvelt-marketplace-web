@@ -1,15 +1,27 @@
-import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteLoaderData } from "react-router";
+import { data, isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/root";
 import { Footer, Header } from "~/components/Shell";
 import { ToastProvider } from "~/components/ui/overlay";
 import { LinkButton } from "~/components/ui/form";
 import { useNonce } from "~/lib/nonce";
+import { currentUser, ensureVisitor } from "~/lib/auth.server";
 import { parseTheme, type ThemePref } from "~/lib/theme.server";
 import "~/styles/app.css";
 
-export function loader({ request }: Route.LoaderArgs) {
-  // Theme is a cookie, so SSR can emit data-theme and there is no flash of the wrong theme.
-  return { theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref };
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { user, expired } = await currentUser(request, context);
+  const visitor = ensureVisitor(request, expired);
+  return data(
+    {
+      // Theme is a cookie, so SSR can emit data-theme and there is no flash of the wrong theme.
+      theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref,
+      csrf: visitor.csrf,
+      // Only what the header needs; never the token, email or addresses.
+      user: user ? { displayName: user.displayName } : null,
+    },
+    // A new visitor (or a dead session) gets a fresh sealed cookie; the API token never leaves the server.
+    { headers: visitor.setCookie ? { "Set-Cookie": visitor.setCookie } : {} },
+  );
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -23,6 +35,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="color-scheme" content="light dark" />
         <Meta />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <Links />
       </head>
       <body>

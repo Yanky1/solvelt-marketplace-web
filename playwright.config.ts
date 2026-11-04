@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3100;
+const FWD_KEY = "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o"; // shared by the mock API and the web server under test
 export default defineConfig({
   testDir: "e2e",
   testMatch: /.*\.spec\.ts/,
@@ -18,7 +19,7 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
   webServer: [
-    { command: "node e2e/mock-api.mjs", url: "http://localhost:5080/health", reuseExistingServer: !process.env.CI },
+    { command: "node e2e/mock-api.mjs", url: "http://localhost:5080/health", reuseExistingServer: !process.env.CI, env: { WEB_FORWARDING_KEY: FWD_KEY } },
     {
       command: "node server.js",
       url: `http://localhost:${PORT}/healthz`,
@@ -29,7 +30,7 @@ export default defineConfig({
         API_BASE_URL: "http://localhost:5080",
         PUBLIC_ORIGIN: `http://localhost:${PORT}`,
         SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u",
-        WEB_FORWARDING_KEY: "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o",
+        WEB_FORWARDING_KEY: FWD_KEY,
       },
     },
   ],

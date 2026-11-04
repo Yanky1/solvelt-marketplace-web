@@ -37,6 +37,8 @@ export default function handleRequest(
           responseHeaders.append("Vary", "Cookie"); // the theme is rendered from a cookie
           // Personalised pages must never be served from a shared cache; routes may override with something stricter.
           if (!responseHeaders.has("Cache-Control")) responseHeaders.set("Cache-Control", "private, no-cache");
+          // Bots get onAllReady (complete HTML, no streaming), browsers onShellReady; both end the abort timer with the stream.
+          body.on("close", () => clearTimeout(timer));
           resolve(new Response(stream, { headers: responseHeaders, status: responseStatusCode }));
           pipe(body);
         },
@@ -48,9 +50,6 @@ export default function handleRequest(
           responseStatusCode = 500;
           // Log the error class/message only; never request URLs, headers or bodies (PII/tokens).
           if (shellRendered) console.error("render error:", error instanceof Error ? error.message : "unknown");
-        },
-        onAllReady() {
-          clearTimeout(timer);
         },
       },
     );

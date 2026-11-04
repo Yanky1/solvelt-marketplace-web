@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { csrfFor } from "./helpers";
 
 test("404 page has status 404 and noindex", async ({ page }) => {
   const res = await page.goto("/nope");
@@ -23,21 +24,26 @@ test("theme choice is stored in a cookie and rendered by the server (no flash)",
   expect(html).toMatch(/<html[^>]*data-theme="dark"/);
 });
 
-test("theme action rejects cross-origin posts", async ({ request }) => {
-  const res = await request.post("/theme", { form: { theme: "dark" }, headers: { origin: "https://evil.example" }, maxRedirects: 0 });
-  expect(res.status()).toBe(403);
+test("theme action rejects cross-origin posts and missing or wrong CSRF tokens", async ({ request, baseURL }) => {
+  const csrf = await csrfFor(request, "/");
+  expect((await request.post("/theme", { form: { theme: "dark", csrf }, headers: { origin: "https://evil.example" }, maxRedirects: 0 })).status()).toBe(403);
+  expect((await request.post("/theme", { form: { theme: "dark" }, headers: { origin: baseURL! }, maxRedirects: 0 })).status()).toBe(403);
+  expect((await request.post("/theme", { form: { theme: "dark", csrf: "forged" }, headers: { origin: baseURL! }, maxRedirects: 0 })).status()).toBe(403);
+  expect((await request.post("/theme", { form: { theme: "dark", csrf }, headers: { origin: baseURL! }, maxRedirects: 0 })).status()).toBe(302);
 });
 
 for (const bad of ["//evil.example", "/\t/evil.example/x", "/\n/evil.example", "/ /evil.example", "/\\evil.example", "https://evil.example", "/\u0000/evil.example"]) {
   test(`theme action never redirects off-site: ${JSON.stringify(bad)}`, async ({ request, baseURL }) => {
-    const res = await request.post("/theme", { form: { theme: "dark", redirectTo: bad }, headers: { origin: baseURL! }, maxRedirects: 0 });
+    const csrf = await csrfFor(request, "/");
+    const res = await request.post("/theme", { form: { theme: "dark", redirectTo: bad, csrf }, headers: { origin: baseURL! }, maxRedirects: 0 });
     expect(res.status()).toBe(302);
     expect(res.headers()["location"]).toBe("/");
   });
 }
 
 test("theme action ignores open-redirect targets", async ({ request, baseURL }) => {
-  const res = await request.post("/theme", { form: { theme: "dark", redirectTo: "//evil.example" }, headers: { origin: baseURL! }, maxRedirects: 0 });
+  const csrf = await csrfFor(request, "/");
+  const res = await request.post("/theme", { form: { theme: "dark", redirectTo: "//evil.example", csrf }, headers: { origin: baseURL! }, maxRedirects: 0 });
   expect(res.status()).toBe(302);
   expect(res.headers()["location"]).toBe("/");
 });

@@ -71,3 +71,11 @@ test("pages hydrate with no console errors and no CSP violations", async ({ page
   await expect(page.getByText("Saved")).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+test("crawlers get complete HTML (bot user agents take the onAllReady path)", async ({ request }) => {
+  for (const ua of ["Googlebot/2.1 (+http://www.google.com/bot.html)", "curl/8.5.0"]) {
+    const res = await request.get("/sign-up", { headers: { "user-agent": ua }, timeout: 10_000 });
+    expect(res.status()).toBe(200);
+    expect(await res.text()).toContain("Create your account");
+  }
+});

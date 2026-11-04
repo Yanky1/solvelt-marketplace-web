@@ -27,6 +27,10 @@ npm run build && npm start   # production SSR server on :3000
 
 The server refuses to start in production when a required value is missing or invalid (the error never prints secret values).
 
+## Sessions and auth
+
+The browser only holds a sealed `HttpOnly` cookie; the API token stays on this server (BFF). Every action checks Origin plus a per-session CSRF token. See `docs/DESIGN.md` (W1-21..30), including the API auth contract this site currently assumes.
+
 ## Test
 
 ```bash

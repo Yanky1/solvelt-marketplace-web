@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Form, Link, useLocation } from "react-router";
+import { Form, Link, useLocation, useRouteLoaderData } from "react-router";
 import { Logo } from "./Logo";
 import { Button } from "./ui/form";
 import { Modal } from "./ui/overlay";
+import type { loader as rootLoader } from "~/root";
 import type { ThemePref } from "~/lib/theme.server";
 
 // Placeholder until the catalog categories endpoint is wired (W1 catalog slice).
@@ -12,10 +13,19 @@ export const NAV_LINKS = [
   { to: "/brands", label: "Brands" },
 ];
 
+export function useRootData() {
+  return useRouteLoaderData<typeof rootLoader>("root");
+}
+
+export function CsrfField() {
+  return <input type="hidden" name="csrf" value={useRootData()?.csrf ?? ""} />;
+}
+
 function ThemeSwitch({ theme }: { theme: ThemePref }) {
   const location = useLocation();
   return (
     <Form method="post" action="/theme" className="row" aria-label="Theme">
+      <CsrfField />
       <input type="hidden" name="redirectTo" value={location.pathname + location.search} />
       {(["system", "light", "dark"] as const).map((t) => (
         <Button key={t} type="submit" name="theme" value={t} variant={theme === t ? "primary" : "secondary"} aria-pressed={theme === t}>
@@ -28,6 +38,7 @@ function ThemeSwitch({ theme }: { theme: ThemePref }) {
 
 export function Header() {
   const [open, setOpen] = useState(false);
+  const user = useRootData()?.user;
   return (
     <header className="topbar">
       <div className="container topbar-inner">
@@ -41,7 +52,9 @@ export function Header() {
         <nav className="nav-desktop" aria-label="Main">
           {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
         </nav>
-        <Link to="/account" className="btn btn-ghost">Account</Link>
+        {user
+          ? <Link to="/account" className="btn btn-ghost" aria-label={`Account of ${user.displayName}`}>{user.displayName.split(" ")[0]}</Link>
+          : <Link to="/sign-in" className="btn btn-ghost">Sign in</Link>}
         <Link to="/cart" className="btn btn-secondary" aria-label="Cart, 0 items">Cart <span aria-hidden="true">0</span></Link>
       </div>
       <Modal open={open} onClose={() => setOpen(false)} title="Menu" variant="drawer">
