@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 const SECURITY = {
@@ -47,6 +48,36 @@ test("single-fetch .data responses are private and vary on Cookie", async ({ req
 test("resource routes and static files carry the security headers too", async ({ request }) => {
   expectSecurity((await request.get("/robots.txt")).headers());
   expectSecurity((await request.get("/healthz")).headers());
+});
+
+test("HSTS (>= 1 year, includeSubDomains) is sent when PUBLIC_ORIGIN is https", async () => {
+  const port = 3190 + Math.floor(Math.random() * 9);
+  const child = spawn("node", ["server.js"], {
+    env: {
+      PATH: process.env.PATH!, NODE_ENV: "production", PORT: String(port),
+      API_BASE_URL: "http://localhost:5080", PUBLIC_ORIGIN: "https://shop.example.test",
+      SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u", WEB_FORWARDING_KEY: "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o",
+    },
+    stdio: "ignore",
+  });
+  try {
+    let res: Response | undefined;
+    for (let i = 0; i < 60 && !res; i++) {
+      try { res = await fetch(`http://localhost:${port}/healthz`); } catch { await new Promise((r) => setTimeout(r, 250)); }
+    }
+    expect(res, "https-configured server started").toBeTruthy();
+    const hsts = res!.headers.get("strict-transport-security") ?? "";
+    expect(hsts).toContain("includeSubDomains");
+    expect(Number(/max-age=(\d+)/.exec(hsts)?.[1])).toBeGreaterThanOrEqual(31_536_000);
+    // The session cookie of an https deployment is Secure and __Host- prefixed.
+    const page = await fetch(`http://localhost:${port}/sign-in`);
+    const cookie = page.headers.get("set-cookie") ?? "";
+    expect(cookie).toMatch(/^__Host-solvelt_session=/);
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("HttpOnly");
+  } finally {
+    child.kill();
+  }
 });
 
 test("no HSTS over plain http (it is sent only when PUBLIC_ORIGIN is https)", async ({ request }) => {
