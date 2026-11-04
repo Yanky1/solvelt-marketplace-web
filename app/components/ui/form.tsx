@@ -14,9 +14,10 @@ export function LinkButton({ variant = "primary", className, ...rest }: LinkProp
 
 interface FieldShell { label: string; error?: string | undefined; hint?: string | undefined }
 
-function useFieldIds(id?: string) {
+function useFieldIds(id?: string, name?: string) {
   const auto = useId();
-  const base = id ?? auto;
+  // Fields with a name get a stable id (`f-<name>`) so an error summary can link to them.
+  const base = id ?? (name ? `f-${name}` : auto);
   return { id: base, hintId: `${base}-hint`, errorId: `${base}-error` };
 }
 
@@ -26,7 +27,7 @@ function Shell({ ids, label, error, hint, children }: FieldShell & { ids: Return
       <label htmlFor={ids.id}>{label}</label>
       {children}
       {hint && <span id={ids.hintId} className="field-hint">{hint}</span>}
-      {error && <span id={ids.errorId} className="field-error" role="alert">{error}</span>}
+      {error && <span id={ids.errorId} className="field-error">{error}</span>}
     </div>
   );
 }
@@ -35,7 +36,7 @@ const describedBy = (ids: ReturnType<typeof useFieldIds>, f: FieldShell) =>
   [f.hint && ids.hintId, f.error && ids.errorId].filter(Boolean).join(" ") || undefined;
 
 export function Input({ label, error, hint, id, className, ...rest }: FieldShell & InputHTMLAttributes<HTMLInputElement>) {
-  const ids = useFieldIds(id);
+  const ids = useFieldIds(id, rest.name);
   return (
     <Shell ids={ids} label={label} error={error} hint={hint}>
       <input id={ids.id} className={cls("input", className)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(ids, { label, error, hint })} {...rest} />
@@ -44,7 +45,7 @@ export function Input({ label, error, hint, id, className, ...rest }: FieldShell
 }
 
 export function Select({ label, error, hint, id, className, children, ...rest }: FieldShell & SelectHTMLAttributes<HTMLSelectElement>) {
-  const ids = useFieldIds(id);
+  const ids = useFieldIds(id, rest.name);
   return (
     <Shell ids={ids} label={label} error={error} hint={hint}>
       <select id={ids.id} className={cls("select", className)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(ids, { label, error, hint })} {...rest}>{children}</select>
@@ -53,14 +54,14 @@ export function Select({ label, error, hint, id, className, children, ...rest }:
 }
 
 export function Checkbox({ label, error, id, ...rest }: { label: ReactNode; error?: string } & InputHTMLAttributes<HTMLInputElement>) {
-  const ids = useFieldIds(id);
+  const ids = useFieldIds(id, rest.name);
   return (
     <div className="field">
       <label className="check" htmlFor={ids.id}>
         <input id={ids.id} type="checkbox" aria-invalid={error ? true : undefined} aria-describedby={error ? ids.errorId : undefined} {...rest} />
         <span>{label}</span>
       </label>
-      {error && <span id={ids.errorId} className="field-error" role="alert">{error}</span>}
+      {error && <span id={ids.errorId} className="field-error">{error}</span>}
     </div>
   );
 }

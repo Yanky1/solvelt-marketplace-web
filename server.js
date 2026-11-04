@@ -30,7 +30,9 @@ app.use((req, res, next) => {
   ].join("; "));
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  // Pages whose URL carries a one-time token never leak it through Referer.
+  const tokenPage = /^\/(verify-email|reset-password)(\.data)?\/?$/.test(req.path);
+  res.setHeader("Referrer-Policy", tokenPage ? "no-referrer" : "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   if (https) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");

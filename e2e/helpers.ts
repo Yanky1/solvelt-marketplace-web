@@ -49,3 +49,8 @@ export async function newVerifiedUser(page: Page, tag: string, name = "Dana Levi
   await verifyEmail(page, email);
   return email;
 }
+
+/** Live API session tokens of one user (mock test hook). Tests run in parallel, so never look at other users' sessions. */
+export async function tokensOf(request: APIRequestContext, email: string): Promise<string[]> {
+  return (await (await request.get(`${MOCK}/__test/tokens?email=${encodeURIComponent(email)}`)).json()) as string[];
+}

@@ -11,6 +11,7 @@ const sessions = new Map(); // token -> userId
 const addresses = new Map(); // addressId -> {userId, ...address}
 const passkeys = new Map(); // credentialId -> {id, userId, name, createdAt, lastUsedAt}
 const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
+const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const outbox = []; // {kind, email, token}
 const seen = []; // recorded request metadata (no bodies)
 
@@ -40,6 +41,7 @@ http.createServer(async (req, res) => {
 
   if (path.startsWith("/__test/")) {
     if (path === "/__test/outbox") return send(res, 200, outbox);
+    if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
     if (path === "/__test/tokens") {
       const email = url.searchParams.get("email");
@@ -51,17 +53,23 @@ http.createServer(async (req, res) => {
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
-  seen.push({ method: req.method, path, forwardingOk: forwardingOk(req), hasAuth: !!req.headers.authorization, clientIp: req.headers["x-solvelt-client-ip"] ?? null });
+  seen.push({ method: req.method, path, forwardingOk: forwardingOk(req), hasAuth: !!req.headers.authorization, tokenTail: (bearer(req) ?? "").slice(-8), clientIp: req.headers["x-solvelt-client-ip"] ?? null });
   const body = ["POST", "PUT", "PATCH"].includes(req.method ?? "") ? await readBody(req) : {};
 
   if (path === "/api/v1/auth/sign-up" && req.method === "POST") {
     const email = String(body.email ?? "").toLowerCase();
+    if (email.includes("taken-422")) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { email: "This email is already registered" } });
     if (String(body.password ?? "").length < 12) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { password: "Use at least 12 characters." } });
     if (!users.has(email)) {
       const token = randomBytes(12).toString("hex");
       users.set(email, { id: randomBytes(6).toString("hex"), email, displayName: String(body.displayName), password: String(body.password), verified: false, verifyToken: token });
       outbox.push({ kind: "verify", email, token });
     } // an existing address gets the same 204: no enumeration
+    return send(res, 204);
+  }
+  if (path === "/api/v1/auth/resend-verification" && req.method === "POST") {
+    const u = users.get(String(body.email ?? "").toLowerCase());
+    if (u && !u.verified) { u.verifyToken = randomBytes(12).toString("hex"); outbox.push({ kind: "verify", email: u.email, token: u.verifyToken }); } // older links stop working
     return send(res, 204);
   }
   if (path === "/api/v1/auth/verify-email" && req.method === "POST") {
@@ -78,6 +86,7 @@ http.createServer(async (req, res) => {
     sessions.set(token, u.id);
     return send(res, 200, { token, user: { id: u.id, displayName: u.displayName } });
   }
+  if ((path === "/api/v1/auth/sign-out" || path === "/api/v1/auth/sign-out-all") && req.method === "POST" && failSignOut.has(bearer(req) ?? "")) return send(res, 503, { code: "unavailable", message: "Down" });
   if (path === "/api/v1/auth/sign-out" && req.method === "POST") { sessions.delete(bearer(req) ?? ""); return send(res, 204); }
   if (path === "/api/v1/auth/sign-out-all" && req.method === "POST") {
     const u = userFor(req);

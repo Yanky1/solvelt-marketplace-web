@@ -1,9 +1,10 @@
 import { Form, redirect, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/account.profile";
 import { AccountNav } from "~/components/AccountNav";
-import { AuthPage, FormMessage } from "~/components/AuthForm";
+import { AuthPage, ErrorSummary, FormMessage } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
+import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
 import { str, validateDisplayName, validatePhone, type FieldErrors } from "~/lib/validation";
@@ -39,7 +40,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     await api.updateProfile(ctx, { displayName, phone });
   } catch (e) {
-    if (e instanceof ApiError && e.status === 422 && e.fieldErrors) return formError({ fieldErrors: e.fieldErrors, message: null, displayName, phone }, 422);
+    if (e instanceof ApiError && e.status === 422 && e.fieldErrors) return formError({ fieldErrors: safeFieldErrors(e.fieldErrors, ["displayName", "phone"]), message: null, displayName, phone }, 422);
     if (e instanceof ApiError && e.status !== 401 && e.status !== 404) return formError({ fieldErrors: {} as FieldErrors, message: "We could not save your profile right now. Please try again.", displayName, phone }, 503);
     return failAccount(e, request);
   }
@@ -58,7 +59,7 @@ export default function Profile({ loaderData }: Route.ComponentProps) {
         <Form method="post" className="stack" noValidate>
           <CsrfField />
           {saved && !a && <FormMessage kind="ok">Profile saved.</FormMessage>}
-          {a?.message && <FormMessage kind="error">{a.message}</FormMessage>}
+          <ErrorSummary submission={a} message={a?.message} errors={a?.fieldErrors} />
           <Input label="Name" name="displayName" autoComplete="name" defaultValue={a?.displayName ?? loaderData.displayName} error={a?.fieldErrors?.displayName} required />
           <Input label="Email" name="email" type="email" value={loaderData.email} readOnly hint="To change your email address, contact support." />
           <Input label="Phone (optional)" name="phone" type="tel" autoComplete="tel" defaultValue={a?.phone ?? loaderData.phone} error={a?.fieldErrors?.phone} />

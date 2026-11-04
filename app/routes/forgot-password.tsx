@@ -1,6 +1,6 @@
 import { Form, Link, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/forgot-password";
-import { AuthPage, FormMessage } from "~/components/AuthForm";
+import { AuthPage, ErrorSummary, FormMessage } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
@@ -36,7 +36,7 @@ export default function ForgotPassword() {
     <AuthPage title="Reset your password" intro="Enter your email and we will send you a link to choose a new password.">
       <Form method="post" className="stack" noValidate>
         <CsrfField />
-        {a?.message && <FormMessage kind="error">{a.message}</FormMessage>}
+        <ErrorSummary submission={a} message={a?.message} errors={a?.error ? { email: a.error } : undefined} />
         <Input label="Email" name="email" type="email" autoComplete="email" error={a?.error ?? undefined} required />
         <Button type="submit" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</Button>
         <Link to="/sign-in">Back to sign in</Link>

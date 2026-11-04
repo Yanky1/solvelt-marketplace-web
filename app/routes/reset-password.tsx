@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/reset-password";
-import { AuthPage, FormMessage } from "~/components/AuthForm";
+import { AuthPage, ErrorSummary, FormMessage } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
@@ -12,7 +13,7 @@ export function meta() {
 }
 
 export function headers() {
-  return { ...privateHeaders, "Referrer-Policy": "no-referrer" };
+  return privateHeaders; // Referrer-Policy: no-referrer for these token pages is set once in server.js
 }
 
 export function loader({ request }: Route.LoaderArgs) {
@@ -37,17 +38,21 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function ResetPassword() {
-  const { token } = useLoaderData<typeof loader>();
+  const loaded = useLoaderData<typeof loader>();
+  const [token] = useState(loaded.token); // kept in state: the URL is cleaned below
+  useEffect(() => {
+    if (token && window.location.search.includes("token=")) window.history.replaceState(window.history.state, "", window.location.pathname);
+  }, [token]);
   const a = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
   if (a?.done) return <AuthPage title="Password changed"><FormMessage kind="ok">Your password was changed. All other devices were signed out.</FormMessage><Link className="btn btn-primary" to="/sign-in">Sign in</Link></AuthPage>;
   if (!token) return <AuthPage title="Link not valid" intro="This reset link is missing its token."><Link to="/forgot-password">Request a new link</Link></AuthPage>;
   return (
     <AuthPage title="Choose a new password">
-      <Form method="post" className="stack" noValidate>
+      <Form method="post" action="/reset-password" className="stack" noValidate>
         <CsrfField />
         <input type="hidden" name="token" value={token} />
-        {a?.message && <FormMessage kind="error">{a.message}</FormMessage>}
+        <ErrorSummary submission={a} message={a?.message} errors={a?.error ? { password: a.error } : undefined} />
         <Input label="New password" name="password" type="password" autoComplete="new-password" hint="At least 12 characters." error={a?.error ?? undefined} required />
         <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Change password"}</Button>
       </Form>

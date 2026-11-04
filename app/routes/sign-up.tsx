@@ -1,10 +1,11 @@
 import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/sign-up";
-import { AuthPage, FormMessage } from "~/components/AuthForm";
+import { AuthPage, ErrorSummary } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, currentUser, formError } from "~/lib/auth.server";
+import { safeFieldErrors } from "~/lib/api-errors";
 import { str, validateDisplayName, validateEmail, validateNewPassword, type FieldErrors } from "~/lib/validation";
 
 const NONE: FieldErrors = {};
@@ -34,7 +35,12 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     await api.signUp(apiCtx(request, context, null), { email, password, displayName });
   } catch (e) {
-    if (e instanceof ApiError && e.status === 422 && e.fieldErrors) return formError({ fieldErrors: e.fieldErrors, message: null, email, displayName }, 422);
+    if (e instanceof ApiError && e.status === 422) {
+      // Whatever the API says about the email (e.g. "already registered") is replaced by a fixed message: no enumeration.
+      const safe = safeFieldErrors(e.fieldErrors, ["displayName", "email", "password"], ["email"]);
+      if (Object.keys(safe).length) return formError({ fieldErrors: safe, message: null, email, displayName }, 422);
+      return formError({ fieldErrors: NONE, message: "We could not create your account with those details. Please check them and try again.", email, displayName }, 422);
+    }
     if (e instanceof ApiError && e.status === 429) return formError({ fieldErrors: NONE, message: "Too many attempts. Please wait a moment and try again.", email, displayName }, 429);
     return formError({ fieldErrors: NONE, message: "We could not create your account right now. Please try again.", email, displayName }, 503);
   }
@@ -49,7 +55,7 @@ export default function SignUp() {
     <AuthPage title="Create your account" intro={<>Already have one? <Link to="/sign-in">Sign in</Link>.</>}>
       <Form method="post" className="stack" noValidate>
         <CsrfField />
-        {a?.message && <FormMessage kind="error">{a.message}</FormMessage>}
+        <ErrorSummary submission={a} message={a?.message} errors={a?.fieldErrors} />
         <Input label="Name" name="displayName" autoComplete="name" defaultValue={a?.displayName ?? ""} error={a?.fieldErrors?.displayName} required />
         <Input label="Email" name="email" type="email" autoComplete="email" defaultValue={a?.email ?? ""} error={a?.fieldErrors?.email} required />
         <Input label="Password" name="password" type="password" autoComplete="new-password" hint="At least 12 characters." error={a?.fieldErrors?.password} required />

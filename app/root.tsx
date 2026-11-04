@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { data, isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteLoaderData } from "react-router";
 import type { Route } from "./+types/root";
 import { Footer, Header } from "~/components/Shell";
@@ -5,6 +6,7 @@ import { ToastProvider } from "~/components/ui/overlay";
 import { LinkButton } from "~/components/ui/form";
 import { useNonce } from "~/lib/nonce";
 import { currentUser, ensureVisitor } from "~/lib/auth.server";
+import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
 import { parseTheme, type ThemePref } from "~/lib/theme.server";
 import "~/styles/app.css";
 
@@ -17,7 +19,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref,
       csrf: visitor.csrf,
       // Only what the header needs; never the token, email or addresses.
-      user: user ? { displayName: user.displayName } : null,
+      // Opaque id (not secret) lets the browser notice a different or vanished user and clear user-scoped storage.
+      user: user ? { id: user.id, displayName: user.displayName } : null,
     },
     // A new visitor (or a dead session) gets a fresh sealed cookie; the API token never leaves the server.
     { headers: visitor.setCookie ? { "Set-Cookie": visitor.setCookie } : {} },
@@ -28,6 +31,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData<typeof loader>("root");
   const theme = data?.theme ?? "system";
   const nonce = useNonce();
+  const userId = data?.user?.id ?? null;
+  useEffect(() => { reconcileUserStorageInBrowser(userId); }, [userId]);
   return (
     <html lang="en" data-theme={theme === "system" ? undefined : theme}>
       <head>
@@ -59,6 +64,18 @@ export default function App() {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const notFound = isRouteErrorResponse(error) && error.status === 404;
   const status = isRouteErrorResponse(error) ? error.status : 500;
+  if (isRouteErrorResponse(error) && error.status === 403) {
+    // A stale or missing CSRF token (form left open, another tab signed in or out): ask for a retry instead of a bare "Forbidden".
+    return (
+      <div className="empty">
+        <title>Please try again | Solvelt</title>
+        <meta name="robots" content="noindex" />
+        <h1>Please try again</h1>
+        <p className="muted">This page was open for a while or in another tab, so we could not confirm your request. Nothing was changed. Go back, reload the page and submit again.</p>
+        <LinkButton to="/">Back to home</LinkButton>
+      </div>
+    );
+  }
   return (
     <div className="empty">
       <title>{notFound ? "Page not found | Solvelt" : "Something went wrong | Solvelt"}</title>

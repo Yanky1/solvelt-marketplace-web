@@ -42,6 +42,10 @@ main { flex: 1; padding-block: var(--s4); }
 .input, .select { min-height: var(--target); padding: 0 var(--s2); border: 1px solid var(--border-strong); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; width: 100%; }
 .input[aria-invalid='true'], .select[aria-invalid='true'] { border-color: var(--err); }
 .input::placeholder { color: var(--muted); opacity: 1; } /* browser default #757575 fails contrast on dark surfaces */
+.error-summary { border: 3px solid var(--err); border-radius: var(--r-ctl); padding: var(--s2); background: var(--err-soft); color: var(--fg); }
+.error-summary-title { font-size: var(--fs-lg); color: var(--err); margin: 0 0 var(--s1); }
+.error-summary ul { margin: 0; padding-inline-start: var(--s3); }
+.error-summary a { color: var(--fg); font-weight: 600; display: inline-flex; align-items: center; min-height: var(--target); }
 .field-hint { color: var(--muted); font-size: var(--fs-sm); }
 .field-error { color: var(--err); font-size: var(--fs-sm); font-weight: 600; }
 .check { display: flex; align-items: center; gap: var(--s1); min-height: var(--target); cursor: pointer; }

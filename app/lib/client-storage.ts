@@ -24,3 +24,33 @@ export function clearUserScopedStorageInBrowser(): void {
   try { stores.push(window.sessionStorage); } catch { /* blocked */ }
   clearUserScopedStorage(stores);
 }
+
+/** Device-level marker (not user-scoped, so it survives clearing) holding the opaque id of the user the stored data belongs to. */
+export const STORAGE_OWNER_KEY = "solvelt.device.storage-owner";
+
+/**
+ * Clears user-scoped keys when the signed-in user changes or disappears without the sign-out button being used
+ * (session expiry, "sign out everywhere" from another device, a different person signing in on a shared computer).
+ * Returns true when it cleared something.
+ */
+export function reconcileUserStorage(userId: string | null, stores: Pick<Storage, "length" | "key" | "removeItem" | "getItem" | "setItem">[], marker: Pick<Storage, "getItem" | "setItem" | "removeItem">): boolean {
+  let previous: string | null = null;
+  try { previous = marker.getItem(STORAGE_OWNER_KEY); } catch { return false; }
+  let cleared = false;
+  if (previous !== null && previous !== (userId ?? "")) {
+    clearUserScopedStorage(stores);
+    cleared = true;
+  }
+  try {
+    if (userId) marker.setItem(STORAGE_OWNER_KEY, userId);
+    else marker.removeItem(STORAGE_OWNER_KEY);
+  } catch { /* storage blocked */ }
+  return cleared;
+}
+
+export function reconcileUserStorageInBrowser(userId: string | null): void {
+  if (typeof window === "undefined") return;
+  const stores: Storage[] = [];
+  try { stores.push(window.localStorage, window.sessionStorage); } catch { return; }
+  reconcileUserStorage(userId, stores, stores[0]!);
+}

@@ -2,7 +2,8 @@ import { redirect, useActionData } from "react-router";
 import type { Route } from "./+types/account.addresses.$id";
 import { AccountNav } from "~/components/AccountNav";
 import { AddressForm } from "~/components/AddressForm";
-import { AuthPage, FormMessage } from "~/components/AuthForm";
+import { AuthPage, ErrorSummary } from "~/components/AuthForm";
+import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
 import { readAddress, validateAddress, type FieldErrors } from "~/lib/validation";
@@ -34,7 +35,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   try {
     await api.updateAddress(ctx, params.id, values);
   } catch (e) {
-    if (e instanceof ApiError && e.status === 422 && e.fieldErrors) return formError({ fieldErrors: e.fieldErrors, message: null, values }, 422);
+    if (e instanceof ApiError && e.status === 422 && e.fieldErrors) return formError({ fieldErrors: safeFieldErrors(e.fieldErrors, ["fullName", "line1", "line2", "city", "region", "postalCode", "country", "phone"]), message: null, values }, 422);
     if (e instanceof ApiError && e.status !== 401 && e.status !== 404) return formError({ fieldErrors: {} as FieldErrors, message: "We could not save the address right now. Please try again.", values }, 503);
     return failAccount(e, request);
   }
@@ -48,7 +49,7 @@ export default function EditAddress({ loaderData }: Route.ComponentProps) {
       <h1>Your account</h1>
       <AccountNav />
       <AuthPage title="Edit address">
-        {a?.message && <FormMessage kind="error">{a.message}</FormMessage>}
+        <ErrorSummary submission={a} message={a?.message} errors={a?.fieldErrors} />
         <AddressForm values={a?.values ?? loaderData.values} errors={a?.fieldErrors} submitLabel="Save changes" />
       </AuthPage>
     </div>

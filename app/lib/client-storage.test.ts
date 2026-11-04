@@ -19,3 +19,38 @@ describe("clearUserScopedStorage", () => {
     expect(() => clearUserScopedStorage([bad])).not.toThrow();
   });
 });
+
+import { reconcileUserStorage, STORAGE_OWNER_KEY } from "./client-storage";
+
+describe("reconcileUserStorage", () => {
+  const fresh = () => { localStorage.clear(); sessionStorage.clear(); };
+  const run = (uid: string | null) => reconcileUserStorage(uid, [localStorage, sessionStorage], localStorage);
+  const seed = () => { localStorage.setItem(`${USER_STORAGE_PREFIX}cart`, "x"); sessionStorage.setItem(`${USER_STORAGE_PREFIX}draft`, "y"); localStorage.setItem("solvelt.device.other", "keep"); };
+
+  it("keeps data for the same user and records the owner", () => {
+    fresh(); expect(run("u1")).toBe(false); seed(); expect(run("u1")).toBe(false);
+    expect(localStorage.getItem(`${USER_STORAGE_PREFIX}cart`)).toBe("x");
+    expect(localStorage.getItem(STORAGE_OWNER_KEY)).toBe("u1");
+  });
+  it("clears user data when the user disappears (expiry, remote sign-out) and keeps device keys", () => {
+    fresh(); run("u1"); seed();
+    expect(run(null)).toBe(true);
+    expect([localStorage.getItem(`${USER_STORAGE_PREFIX}cart`), sessionStorage.getItem(`${USER_STORAGE_PREFIX}draft`), localStorage.getItem("solvelt.device.other")]).toEqual([null, null, "keep"]);
+    expect(localStorage.getItem(STORAGE_OWNER_KEY)).toBeNull();
+  });
+  it("clears when a different user signs in on the same browser", () => {
+    fresh(); run("u1"); seed();
+    expect(run("u2")).toBe(true);
+    expect(localStorage.getItem(`${USER_STORAGE_PREFIX}cart`)).toBeNull();
+    expect(localStorage.getItem(STORAGE_OWNER_KEY)).toBe("u2");
+  });
+  it("does nothing for an anonymous browser that never had an owner", () => {
+    fresh(); seed();
+    expect(run(null)).toBe(false);
+    expect(localStorage.getItem(`${USER_STORAGE_PREFIX}cart`)).toBe("x");
+  });
+  it("survives blocked storage", () => {
+    const bad = { getItem: () => { throw new Error("blocked"); }, setItem: () => {}, removeItem: () => {} };
+    expect(reconcileUserStorage("u1", [], bad)).toBe(false);
+  });
+});

@@ -61,6 +61,7 @@ export default function handleRequest(
 /** Single-fetch `.data` responses depend on the cookie (theme now, user data later): never shared-cacheable. */
 export function handleDataRequest(response: Response) {
   response.headers.append("Vary", "Cookie");
-  response.headers.set("Cache-Control", "private, no-cache");
+  // Keep a stricter no-store set by the route (account pages); otherwise never shared-cacheable.
+  if (!/no-store/i.test(response.headers.get("Cache-Control") ?? "")) response.headers.set("Cache-Control", "private, no-cache");
   return response;
 }

@@ -42,6 +42,7 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
 
 export const api = {
   signUp: (ctx: ApiRequestContext, b: { email: string; password: string; displayName: string }) => call<void>(ctx, "/api/v1/auth/sign-up", b),
+  resendVerification: (ctx: ApiRequestContext, email: string) => call<void>(ctx, "/api/v1/auth/resend-verification", { email }),
   verifyEmail: (ctx: ApiRequestContext, token: string) => call<void>(ctx, "/api/v1/auth/verify-email", { token }),
   signIn: (ctx: ApiRequestContext, b: { email: string; password: string }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/sign-in", b),
   signOut: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/auth/sign-out", {}),

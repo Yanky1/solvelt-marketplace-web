@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Form, redirect, useActionData, useNavigation, useSubmit } from "react-router";
 import type { Route } from "./+types/account.passkeys";
 import { AccountNav } from "~/components/AccountNav";
-import { FormMessage } from "~/components/AuthForm";
+import { ErrorSummary, FormMessage } from "~/components/AuthForm";
 import { CsrfField, useRootData } from "~/components/Shell";
 import { Card, EmptyState } from "~/components/ui/display";
 import { Button, Input } from "~/components/ui/form";
@@ -85,7 +85,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
       <AccountNav />
       <h2>Passkeys</h2>
       <p className="muted">A passkey lets you sign in with your fingerprint, face or device PIN instead of a password.</p>
-      {a?.message && <FormMessage kind="error">{a.message}</FormMessage>}
+      <ErrorSummary submission={a} message={a?.message} />
       {loaderData.passkeys.length === 0 ? (
         <EmptyState title="No passkeys yet">Add one to sign in faster on this device.</EmptyState>
       ) : (

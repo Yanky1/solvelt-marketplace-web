@@ -17,14 +17,32 @@ export const apiCtx = (request: Request, context: AppLoadContext, session: Sessi
 });
 
 /** Current user for a request, or null. A 401 means the token is dead (caller should clear it); other errors mean "unknown". */
-export async function currentUser(request: Request, context: AppLoadContext): Promise<{ user: ApiUser | null; expired: boolean }> {
+type CurrentUser = { user: ApiUser | null; expired: boolean };
+const perRequest = new WeakMap<object, Promise<CurrentUser>>();
+
+/** Memoised per request (the load context is one object per request), so root and page loaders share one API call. */
+export function currentUser(request: Request, context: AppLoadContext): Promise<CurrentUser> {
+  const hit = perRequest.get(context);
+  if (hit) return hit;
   const session = readSession(request, getConfig());
-  if (!session?.token) return { user: null, expired: false };
-  try {
-    return { user: await api.me(apiCtx(request, context, session)), expired: false };
-  } catch (e) {
-    return { user: null, expired: e instanceof ApiError && e.status === 401 };
-  }
+  const run = async (): Promise<CurrentUser> => {
+    if (!session?.token) return { user: null, expired: false };
+    try {
+      return { user: await api.me(apiCtx(request, context, session)), expired: false };
+    } catch (e) {
+      return { user: null, expired: e instanceof ApiError && e.status === 401 };
+    }
+  };
+  const p = run();
+  perRequest.set(context, p);
+  return p;
+}
+
+/** Signing in over an existing session: revoke the old API token first so it cannot stay live (best effort). */
+export async function revokePreviousSession(request: Request, context: AppLoadContext): Promise<void> {
+  const old = readSession(request, getConfig());
+  if (!old?.token) return;
+  try { await api.signOut(apiCtx(request, context, old)); } catch { /* already dead or API down: the cookie is replaced anyway */ }
 }
 
 /** Visitor session (cookie value + CSRF token) for the document: reuse the cookie or mint a new one. */

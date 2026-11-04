@@ -43,13 +43,13 @@ test("sign-in errors are generic, and unverified accounts are told to verify", a
   const email = uniqueEmail("generic");
   await signUp(page, email);
   await signIn(page, email);
-  await expect(page.getByRole("alert")).toContainText("verify your email");
-  const unknown = await (async () => { await signIn(page, uniqueEmail("nobody")); return (await page.getByRole("alert").textContent()) ?? ""; })();
+  await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("verify your email");
+  const unknown = await (async () => { await signIn(page, uniqueEmail("nobody")); return (await page.getByRole("group", { name: "There is a problem" }).textContent()) ?? ""; })();
   await verifyEmail(page, email);
   await signIn(page, email, "wrong password entirely");
-  const wrong = (await page.getByRole("alert").textContent()) ?? "";
+  const wrong = (await page.getByRole("group", { name: "There is a problem" }).textContent()) ?? "";
   expect(wrong).toBe(unknown); // same message for an unknown address and a wrong password
-  expect(wrong).toBe("Email or password is incorrect.");
+  expect(wrong).toContain("Email or password is incorrect.");
 });
 
 test("client-side validation messages are tied to the fields", async ({ page }) => {
@@ -176,10 +176,10 @@ test("forgot and reset password: same answer for unknown emails, old password st
   await page.goto(`/reset-password?token=${token}`); // single use
   await page.getByLabel("New password").fill("another passphrase 4242");
   await page.getByRole("button", { name: "Change password" }).click();
-  await expect(page.getByRole("alert")).toContainText("invalid or has expired");
+  await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("invalid or has expired");
 
   await signIn(page, email, PASSWORD);
-  await expect(page.getByRole("alert")).toHaveText("Email or password is incorrect.");
+  await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("Email or password is incorrect.");
   await signIn(page, email, "a brand new passphrase 42");
   await expect(page).toHaveURL(/\/account$/);
   await other.goto("/account");
@@ -194,7 +194,7 @@ test("verification links need a click (a GET alone consumes nothing) and set no-
   const res = await page.request.get(`/verify-email?token=${token}`);
   expect(res.headers()["referrer-policy"]).toMatch(/(^|, )no-referrer$/); // the last value wins in browsers
   await signIn(page, email);
-  await expect(page.getByRole("alert")).toContainText("verify your email"); // still unverified after the GET
+  await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("verify your email"); // still unverified after the GET
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -203,7 +203,7 @@ for (const theme of ["light", "dark"] as const) {
     const email = await newVerifiedUser(page, `axe${theme}`);
     await page.goto("/sign-in");
     await page.getByRole("button", { name: "Sign in", exact: true }).click(); // empty submit -> field errors
-    await expect(page.getByRole("alert").first()).toBeVisible();
+    await expect(page.getByRole("group", { name: "There is a problem" })).toBeVisible();
     for (const check of [async () => undefined, async () => { await signIn(page, email); await expect(page).toHaveURL(/\/account$/); }]) {
       await check();
       const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();

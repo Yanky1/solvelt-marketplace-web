@@ -145,6 +145,9 @@ test("account pages are private and uncacheable, and every API call carries sign
   expect(api.every((s) => s.forwardingOk)).toBe(true);
 });
 
+/** A row of the passkey list. (getByText would also match hint text such as "For example: Work laptop" before the passkey exists.) */
+const passkeyRow = (page: Page, name: string) => page.locator("main li").filter({ hasText: name });
+
 async function virtualAuthenticator(page: Page) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable");
@@ -161,7 +164,7 @@ test("passkeys: register, sign in with it, remove it, and a removed passkey no l
   await expect(page.getByRole("heading", { name: "No passkeys yet" })).toBeVisible();
   await page.getByLabel("Passkey name").fill("Work laptop");
   await page.getByRole("button", { name: "Add a passkey" }).click();
-  await expect(page.getByText("Work laptop")).toBeVisible();
+  await expect(passkeyRow(page, "Work laptop")).toBeVisible();
 
   await page.goto("/account");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
@@ -176,10 +179,11 @@ test("passkeys: register, sign in with it, remove it, and a removed passkey no l
   await expect(page.getByRole("heading", { name: "No passkeys yet" })).toBeVisible();
   await page.goto("/account");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/); // wait for the sign-out to finish: a navigation would cancel it
 
   await page.goto("/sign-in");
   await page.getByRole("button", { name: "Sign in with a passkey" }).click();
-  await expect(page.getByRole("alert")).toContainText("could not verify that passkey");
+  await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("could not verify that passkey");
   await expect(page).toHaveURL(/\/sign-in$/);
 });
 
@@ -188,7 +192,7 @@ test("passkey sign-in never redirects off-site via ?next=", async ({ page, baseU
   await signedIn(page, "pknext");
   await page.goto("/account/passkeys");
   await page.getByRole("button", { name: "Add a passkey" }).click();
-  await expect(page.getByText("My passkey")).toBeVisible();
+  await expect(passkeyRow(page, "My passkey")).toBeVisible();
   for (const bad of ["//evil.example", "https://evil.example/x", "/\t/evil.example"]) {
     await page.goto("/account");
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
@@ -205,7 +209,7 @@ test("registering the same authenticator twice is refused with a clear message",
   await signedIn(page, "pkdup");
   await page.goto("/account/passkeys");
   await page.getByRole("button", { name: "Add a passkey" }).click();
-  await expect(page.getByText("My passkey")).toBeVisible();
+  await expect(passkeyRow(page, "My passkey")).toBeVisible();
   await page.getByRole("button", { name: "Add a passkey" }).click();
   // excludeCredentials makes the authenticator refuse, which the page reports instead of failing silently.
   await expect(page.getByRole("alert")).toBeVisible();
