@@ -55,7 +55,13 @@ test("email settings: all on by default, saved per category", async ({ page }) =
 test("an unsubscribe link needs a click to confirm, drops the token from the address, and only switches mail off", async ({ page }) => {
   const email = await signedIn(page, "nunsub");
   const token = `U.${email}.refunds`;
+  const posts: string[] = [];
+  page.on("request", (r) => { if (r.method() === "POST") posts.push(r.url()); });
   await page.goto(`/unsubscribe?token=${encodeURIComponent(token)}`);
+  await page.getByRole("button", { name: "Stop these emails" }).waitFor();
+  await page.waitForTimeout(500);                                                          // give any auto-submit time to show itself
+  expect(posts).toEqual([]);                                                               // loading the page sent no POST at all (review P3)
+  expect((await (await page.request.get(`${MOCK}/__test/unsub-calls?token=${encodeURIComponent(token)}`)).json()).calls).toBe(0);   // and the API was never called
   const stored = async () => (await (await page.request.get(`${MOCK}/__test/prefs?email=${encodeURIComponent(email)}`)).json()) as Record<string, boolean> | null;
   expect(await stored()).toBeNull();                                                       // opening the link changed nothing (scanners and prefetchers)
   await expect(page).toHaveURL(/\/unsubscribe$/);                                          // the token left the address bar
@@ -67,6 +73,16 @@ test("an unsubscribe link needs a click to confirm, drops the token from the add
   await page.goto(`/unsubscribe?token=${encodeURIComponent("U.nobody@example.test.shipped.x")}`);
   await page.getByRole("button", { name: "Stop these emails" }).click();
   await expect(page.getByText("This link is not valid.")).toBeVisible();
+  // an expired link says so and points to the signed-in settings; it changes nothing
+  const expired = `U.${email}.shipped.expired`;
+  const callsOf = async () => (await (await page.request.get(`${MOCK}/__test/unsub-calls?token=${encodeURIComponent(expired)}`)).json()).calls as number;
+  expect(await callsOf()).toBe(0);
+  await page.goto(`/unsubscribe?token=${encodeURIComponent(expired)}`);
+  await page.getByRole("button", { name: "Stop these emails" }).click();
+  await expect(page.getByRole("heading", { name: "This link has expired" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "email settings" })).toHaveAttribute("href", "/account/notifications/preferences");
+  expect(await callsOf()).toBe(1);
+  expect((await stored())!.shipped).toBe(true);
   // the page is not cached and does not leak the token in a referrer
   const res = await page.request.get("/unsubscribe?token=abc");
   expect(res.headers()["referrer-policy"]).toBe("no-referrer");

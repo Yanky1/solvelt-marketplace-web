@@ -19,6 +19,7 @@ const prefs = new Map(); // userId -> {category: bool}
 const CATEGORIES = ["order_updates", "shipped", "out_for_delivery", "delivered", "refunds", "messages", "bookings"];
 const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
+const unsubCalls = new Map(); // token -> number of calls (the specs run in parallel on one mock)
 const seen = []; // recorded request metadata (no bodies)
 
 // Test variants are selected by the end-user IP the web server forwards (X-Solvelt-Client-Ip), so parallel tests never interfere.
@@ -61,6 +62,7 @@ http.createServer(async (req, res) => {
       return send(res, 200, [...sessions].filter(([, id]) => !email || id === uid).map(([t]) => t));
     }
     if (path === "/__test/seen") return send(res, 200, seen);
+    if (path === "/__test/unsub-calls") return send(res, 200, { calls: unsubCalls.get(url.searchParams.get("token") ?? "") ?? 0 });
     if (path === "/__test/seed-order") {
       // Orders as the API reports them (API docs "Buyer orders"). status: new | shipped | delivered.
       const email = (url.searchParams.get("email") ?? "").toLowerCase();
@@ -186,6 +188,8 @@ http.createServer(async (req, res) => {
 
   // ---- notifications (the unsubscribe token is "U.<email>.<category|all>": the mock does not sign) ----
   if (path === "/api/v1/notifications/unsubscribe" && req.method === "POST") {
+    unsubCalls.set(String(body.token ?? ""), (unsubCalls.get(String(body.token ?? "")) ?? 0) + 1);
+    if (/\.expired$/.test(String(body.token ?? ""))) return send(res, 400, { code: "expired_token", message: "This link has expired. Sign in to change your email settings." });   // a signed token past its 90 days (API M5-17)
     const m = /^U\.([^.]+@[^.]+\.[a-z]+)\.([a-z_]+)$/i.exec(String(body.token ?? ""));
     const u = m ? users.get(m[1].toLowerCase()) : undefined;
     if (!m || !(m[2] === "all" || CATEGORIES.includes(m[2]))) return send(res, 400, { code: "invalid_token", message: "This link is not valid." });

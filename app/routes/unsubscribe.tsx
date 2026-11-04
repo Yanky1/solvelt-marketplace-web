@@ -24,14 +24,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   assertCsrf(request, form);
   const token = str(form, "token");
-  if (!token || token.length > 200) return formError({ done: false, message: "This link is not valid." }, 400);
+  if (!token || token.length > 200) return formError({ done: false, expired: false, message: "This link is not valid." }, 400);
   try {
     await api.unsubscribe(apiCtx(request, context, null), token);
-    return formError({ done: true, message: null }, 200);
+    return formError({ done: true, expired: false, message: null }, 200);
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 400 || e.status === 404)) return formError({ done: false, message: "This link is not valid. You can change your email settings after signing in." }, 400);
-    if (e instanceof ApiError && e.status === 429) return formError({ done: false, message: "Too many attempts. Please wait a moment and try again." }, 429);
-    return formError({ done: false, message: "We could not do that right now. Please try again." }, 503);
+    if (e instanceof ApiError && e.code === "expired_token") return formError({ done: false, expired: true, message: "This link has expired." }, 400);
+    if (e instanceof ApiError && (e.status === 400 || e.status === 404)) return formError({ done: false, expired: false, message: "This link is not valid. You can change your email settings after signing in." }, 400);
+    if (e instanceof ApiError && e.status === 429) return formError({ done: false, expired: false, message: "Too many attempts. Please wait a moment and try again." }, 429);
+    return formError({ done: false, expired: false, message: "We could not do that right now. Please try again." }, 503);
   }
 }
 
@@ -44,6 +45,7 @@ export default function Unsubscribe() {
   const a = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
   if (a?.done) return <AuthPage title="You are unsubscribed"><FormMessage kind="ok">We will not send you those emails any more.</FormMessage><p><Link to="/account/notifications/preferences">Change your email settings</Link></p></AuthPage>;
+  if (a?.expired) return <AuthPage title="This link has expired"><FormMessage kind="error">Links in our emails stop working after 90 days.</FormMessage><p>Sign in to choose which emails you get: <Link to="/account/notifications/preferences">email settings</Link>.</p></AuthPage>;
   if (!token) return <AuthPage title="Stop emails" intro="Open the “stop these emails” link from one of our emails, or change your settings after signing in."><Link className="btn btn-secondary" to="/account/notifications/preferences">Email settings</Link></AuthPage>;
   return (
     <AuthPage title="Stop these emails?" intro="Confirm to stop the emails from this link. You can switch them back on in your email settings.">
