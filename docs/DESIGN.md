@@ -57,3 +57,10 @@ Slice 1 (skeleton, tokens, shell, CI): done. Next: auth (BFF), then catalog page
 | W1-30 | 2026-11-04 | Added `public/favicon.svg` and a `<link rel=icon>`. | An unhandled `/favicon.ico` 404 was a console error. |
 
 Still to do in the auth slice: profile, addresses (CRUD, default), passkeys (sign-in and management). Passkey and address endpoints are not assumed yet; they will be added to W1-21 when built.
+
+## Review 2 (orchestrator review of the client-IP forwarding)
+| Id | Date | Decision | Why |
+|---|---|---|---|
+| W1-31 | 2026-11-04 | `ApiRequestContext.socketAddress` is a required `string`. In development/test `apiFetch` **throws** when it is empty (a route forgot `context.socketAddress`); in production it still sends no `X-Solvelt-Client-*` headers at all and never copies any from the browser request. Tests cover both, including a request carrying forged `X-Solvelt-Client-*` and `X-Forwarded-For` with no socket address. | F1/F6: a missing address silently put all users in one API rate-limit bucket. |
+| W1-32 | 2026-11-04 | Client IP parsing (`client-ip.server.ts`) compares addresses as numbers, not strings. Hops may carry `:port`, `[brackets]` and `%zone` (Azure App Gateway, ARR); IPv6 is canonicalised (RFC 5952) and IPv4-mapped IPv6 becomes IPv4; IPv6 proxies and CIDRs are supported. `TRUSTED_PROXIES` is validated strictly at start-up (plain `ip` or `ip/bits`, decimal bits in range, no ports/brackets/zones, IPv4 in dotted form) and fails listing bad entries **by position**. | F2: common proxy formats made resolution fall back to the proxy's own address. |
+| W1-33 | 2026-11-04 | Operations: the API is shrinking the forwarding timestamp window from 300 s to 60 s (O-09). The signer uses the server clock, so web servers must keep NTP in sync (drift over ~60 s makes the API ignore the headers and rate-limit us as unsigned traffic). | Orchestrator heads-up. |

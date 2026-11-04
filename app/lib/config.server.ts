@@ -1,3 +1,5 @@
+import { parseTrustedProxies } from "./client-ip.server";
+
 export interface AppConfig {
   apiBaseUrl: string;
   sessionCookieSecret: string;
@@ -57,8 +59,10 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     problems.push("PUBLIC_ORIGIN must be https in production (http is allowed only for localhost or 127.0.0.1)");
   }
 
-  if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
   const trustedProxies = (env.TRUSTED_PROXIES ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  try { parseTrustedProxies(trustedProxies); } catch (e) { problems.push((e as Error).message); }
+
+  if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
   return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, production };
 }
 

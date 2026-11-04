@@ -56,6 +56,15 @@ describe("loadConfig", () => {
   });
 });
 
+describe("TRUSTED_PROXIES in config", () => {
+  it("is parsed strictly at start-up (bad entries fail, by position)", () => {
+    fails({ ...good, TRUSTED_PROXIES: "10.0.0.5, 10.0.0.0/0x8" }, /TRUSTED_PROXIES entry 2 is not a valid IP/);
+    fails({ ...good, TRUSTED_PROXIES: "10.0.0.5:80,2001:db8::/129" }, /entries 1, 2/);
+    expect(loadConfig({ ...good, TRUSTED_PROXIES: "10.0.0.5, 172.16.0.0/12, 2001:db8::/32" }).trustedProxies).toHaveLength(3);
+    expect(loadConfig(good).trustedProxies).toEqual([]);
+  });
+});
+
 describe("weakSecretReason", () => {
   it("accepts a random-looking secret", () => { expect(weakSecretReason(SECRET)).toBeNull(); });
 });

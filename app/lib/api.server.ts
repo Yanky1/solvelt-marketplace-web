@@ -13,8 +13,8 @@ export function signClientIp(key: string, timestamp: number, ip: string): string
 }
 
 export interface ApiRequestContext {
-  /** Remote address of the TCP peer, from the server's load context. */
-  socketAddress?: string | undefined;
+  /** Remote address of the TCP peer, from the server's load context. Required: without it no forwarding headers can be sent. */
+  socketAddress: string;
   /** The incoming browser request, used only to read X-Forwarded-For (when the peer is a trusted proxy). */
   request: Request;
   /** Opaque session token from our own cookie; sent as a Bearer header, never to the browser. */
@@ -30,10 +30,14 @@ export interface ApiCallOptions {
 }
 
 /** The ONLY function that talks to the marketplace API. Client-supplied forwarding headers are never passed through. */
-export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxies" | "webForwardingKey">, ctx: ApiRequestContext, path: string, opts: ApiCallOptions = {}): Promise<Response> {
+export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxies" | "webForwardingKey" | "production">, ctx: ApiRequestContext, path: string, opts: ApiCallOptions = {}): Promise<Response> {
   const headers = new Headers({ Accept: "application/json" });
   if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (ctx.sessionToken) headers.set("Authorization", `Bearer ${ctx.sessionToken}`);
+  if (!ctx.socketAddress && !cfg.production) {
+    // A route that forgot the load context would silently put every user into one shared API rate-limit bucket.
+    throw new Error("apiFetch: socketAddress is missing from the request context (pass context.socketAddress from the loader/action)");
+  }
   const ip = resolveClientIp(ctx.socketAddress, ctx.request.headers.get("x-forwarded-for"), cfg.trustedProxies);
   if (ip) {
     const ts = Math.floor((opts.now ?? (() => Date.now() / 1000))());

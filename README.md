@@ -22,7 +22,7 @@ npm run build && npm start   # production SSR server on :3000
 | `SESSION_COOKIE_SECRET` | yes (>= 32 chars) | Signs session cookie and CSRF tokens |
 | `WEB_FORWARDING_KEY` | yes (>= 32 chars) | Same secret as the API's `Web__ForwardingKey`; signs the forwarded client IP. Must differ from `SESSION_COOKIE_SECRET` |
 | `PUBLIC_ORIGIN` | yes (https) | Public origin: canonical URLs, sitemap, Origin checks |
-| `TRUSTED_PROXIES` | no | Comma-separated IPs/IPv4 CIDRs of your reverse proxies; `X-Forwarded-For` is trusted only from these |
+| `TRUSTED_PROXIES` | no | Comma-separated IPs or CIDRs (IPv4 or IPv6) of your reverse proxies; `X-Forwarded-For` is trusted only from these. Invalid entries stop start-up. Keep server clocks in NTP sync (the API accepts the signed timestamp for a short window) |
 | `PORT` | no | Server port (default 3000) |
 
 The server refuses to start in production when a required value is missing or invalid (the error never prints secret values).
