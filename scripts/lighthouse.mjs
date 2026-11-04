@@ -39,7 +39,7 @@ try {
   });
   await waitFor(`http://localhost:${WEB}/healthz`);
 
-  const chrome = await chromeLauncher.launch({ chromePath: process.env.PW_CHROMIUM_PATH || chromium.executablePath(), chromeFlags: ["--headless=new", "--no-sandbox"] });
+  const chrome = await chromeLauncher.launch({ chromePath: process.env.PW_CHROMIUM_PATH || chromium.executablePath(), chromeFlags: ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] });
   mkdirSync("lighthouse-report", { recursive: true });
   console.log("page".padEnd(16), "device".padEnd(8), "seo", "a11y", "best", "perf", " CLS");
   for (const [name, path] of Object.entries(PAGES)) {
@@ -48,8 +48,20 @@ try {
       const run = await lighthouse(`http://localhost:${WEB}${path}`, flags, device === "desktop" ? desktopConfig : undefined);
       const lhr = run.lhr;
       writeFileSync(`lighthouse-report/${name.replace(" ", "-")}-${device}.json`, JSON.stringify(lhr));
+      // A run Lighthouse could not complete is a failure that says why, not a crash on a missing number.
+      if (lhr.runtimeError) {
+        failed = true;
+        console.error(`  FAIL ${name} (${device}): Lighthouse could not measure the page: ${lhr.runtimeError.code}: ${lhr.runtimeError.message}`);
+        for (const w of lhr.runWarnings ?? []) console.error(`    warning: ${w}`);
+        continue;
+      }
       const score = (id) => Math.round((lhr.categories[id]?.score ?? 0) * 100);
-      const cls = lhr.audits["cumulative-layout-shift"].numericValue;
+      const cls = lhr.audits["cumulative-layout-shift"]?.numericValue;
+      if (typeof cls !== "number") {
+        failed = true;
+        console.error(`  FAIL ${name} (${device}): no layout-shift measurement (final URL ${lhr.finalDisplayedUrl}; warnings: ${(lhr.runWarnings ?? []).join(" | ") || "none"})`);
+        continue;
+      }
       console.log(name.padEnd(16), device.padEnd(8), String(score("seo")).padEnd(3), String(score("accessibility")).padEnd(4), String(score("best-practices")).padEnd(4), String(score("performance")).padEnd(4), cls.toFixed(3));
       for (const [id, min] of Object.entries(MIN)) {
         if ((lhr.categories[id]?.score ?? 0) < min) { failed = true; console.error(`  FAIL ${name} (${device}): ${id} ${score(id)} is under ${min * 100}`); }
