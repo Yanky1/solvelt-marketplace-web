@@ -73,7 +73,7 @@ test("a shipped order shows tracking, can be confirmed once and can be returned 
   await expect(page.getByText("Approved", { exact: true })).toBeVisible();
   // the form went out with an Idempotency-Key (one return however often it is sent)
   const seen = (await (await page.request.get(`${MOCK}/__test/seen`)).json()) as { path: string; idem: string | null }[];
-  const ret = seen.filter((s) => s.path.endsWith("/return-requests") && s.path.includes(o.number) && "idem" in s);   // the mock records each call twice: once generically, once with the key
+  const ret = seen.filter((s) => s.path.endsWith("/return-requests") && s.path.includes(o.number) && s.idem);   // the generic request record carries the Idempotency-Key header
   expect(ret.length).toBe(1);
   expect(ret[0]!.idem).toMatch(/^[A-Za-z0-9-]{8,64}$/);
   // a refreshed label link is shown as a link to the portal, with rel=noopener

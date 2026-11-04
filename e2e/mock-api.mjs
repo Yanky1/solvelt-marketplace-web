@@ -83,7 +83,7 @@ http.createServer(async (req, res) => {
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
-  seen.push({ method: req.method, path, forwardingOk: forwardingOk(req), hasAuth: !!req.headers.authorization, tokenTail: (bearer(req) ?? "").slice(-8), clientIp: req.headers["x-solvelt-client-ip"] ?? null });
+  seen.push({ method: req.method, path, forwardingOk: forwardingOk(req), hasAuth: !!req.headers.authorization, tokenTail: (bearer(req) ?? "").slice(-8), clientIp: req.headers["x-solvelt-client-ip"] ?? null, idem: req.headers["idempotency-key"] ?? null });
   const body = ["POST", "PUT", "PATCH"].includes(req.method ?? "") ? await readBody(req) : {};
 
   if (path === "/api/v1/auth/sign-up" && req.method === "POST") {
@@ -192,7 +192,6 @@ http.createServer(async (req, res) => {
     }
     const o = orders.get(number);
     if (!o || o.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found" });
-    seen.push({ method: req.method, path, idem: req.headers["idempotency-key"] ?? null });
     if (!om[2] && !om[3] && !om[4]) return send(res, 200, view(number, o));
     if (om[4] !== undefined) {
       const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
