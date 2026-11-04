@@ -75,6 +75,12 @@ for (const [form, device] of [["desktop", devices["Desktop Chrome"]], ["mobile",
       for (const d of await page.locator("details").all()) await d.evaluate((el) => { el.open = true; });
       await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
     }
+    // Notifications (M5)
+    for (const kind of ["order_shipped", "out_for_delivery", "order_delivered", "message_received"]) await fetch(`${MOCK}/__test/seed-notification?email=${encodeURIComponent(email)}&kind=${kind}&order=${seeded.shipped.number}`);
+    for (const [name, path] of [["notifications", "/account/notifications"], ["notification-settings", "/account/notifications/preferences"], ["unsubscribe", "/unsubscribe?token=demo"]]) {
+      await page.goto(BASE + path, { waitUntil: "networkidle" });
+      await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
+    }
     await context.close();
   }
 }
