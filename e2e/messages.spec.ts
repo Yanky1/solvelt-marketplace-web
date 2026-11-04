@@ -27,10 +27,13 @@ test("the inbox shows the thread with its unread count, opening it marks the sel
   await page.goto("/account/messages");
   await expect(page.getByText("1 unread", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /Challah Corner: Order MP-E2E-1/ })).toBeVisible();
+  // the page marks the thread read from the browser after it hydrates: wait for that request to finish before leaving (leaving early raced it in CI)
+  const markedRead = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/account/messages/${id}`));
   await page.getByRole("link", { name: /Challah Corner: Order MP-E2E-1/ }).click();
   await expect(page).toHaveURL(new RegExp(`/account/messages/${id}$`));
   await waitHydrated(page);
   await expect(page.getByText("Yes, it is nut free. Photo attached.")).toBeVisible();
+  await markedRead;
   await page.goto("/account/messages");
   await expect(page.getByText(/\d+ unread/)).toHaveCount(0);                                  // marked read by the page itself
 });
