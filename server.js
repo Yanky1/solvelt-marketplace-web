@@ -33,6 +33,8 @@ app.use((req, res, next) => {
     "form-action 'self'",
     "frame-ancestors 'none'",
   ].join("; "));
+  // The staff area (M7W-02) is never stored by a cache or a crawler, on documents and on the .data requests of client navigations alike.
+  if (req.path === "/staff" || req.path.startsWith("/staff/")) { res.setHeader("Cache-Control", "private, no-store"); res.setHeader("X-Robots-Tag", "noindex, nofollow"); }
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   // Pages whose URL carries a one-time token never leak it through Referer.
