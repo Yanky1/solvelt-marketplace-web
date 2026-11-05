@@ -4,6 +4,7 @@ export default [
   index("routes/home.tsx"),
   route("theme", "routes/theme.ts"),
   route("healthz", "routes/healthz.ts"),
+  route("error-ref", "routes/error-ref.ts"),
   route("robots.txt", "routes/robots.ts"),
   route("sitemap.xml", "routes/sitemap.ts"),
   route("sitemaps/:kind/:file", "routes/sitemaps.child.ts"),

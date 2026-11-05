@@ -12,6 +12,7 @@ import { apiCtx, assertCsrf, currentUser, formError, privateHeaders } from "~/li
 import { carrierValue, deliveryField, estimateText, groupsOf, guestExpiry, publishableKeyOk, withGrant, localValue, readCheckoutValues, readSelections, selectedValue, validateCheckout, type CheckoutValues } from "~/lib/checkout";
 import { readCart } from "~/lib/cart.server";
 import { getConfig } from "~/lib/config.server";
+import { noteFailure } from "~/lib/error-ref.server";
 import { isSafeId } from "~/lib/passkey.server";
 import { readSession, sessionCookie } from "~/lib/session.server";
 import { COUNTRIES, type FieldErrors } from "~/lib/validation";
@@ -101,7 +102,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (e.status === 422) return details("Check the address (for the US, include the state) and try again.", {});
       if (e.status === 401) return details("Please sign in again, or check out as a guest.", {});
     }
-    return details(NOT_NOW, {}, 503);
+    // Anything that is not an ApiError (a bug here, a malformed answer) is logged with its TYPE and the reference, never its message (it could hold a name or an address), and answered like any other failure.
+    if (e instanceof Response) throw e;
+    if (!(e instanceof ApiError)) noteFailure(context.errorRef, { source: "bff", status: 503, code: e instanceof Error ? e.constructor.name : typeof e, route: "/checkout", kind: "action" });
+    // The reference (the API's correlation id, or one made here) goes into the message, so a report from this page can be found in the logs (decision M8W-03).
+    const ref = (e instanceof ApiError ? e.reference : undefined) ?? context.errorRef?.id;
+    return details(ref ? `${NOT_NOW} Reference: ${ref}` : NOT_NOW, {}, 503);
   }
 }
 

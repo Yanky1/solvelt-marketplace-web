@@ -4,6 +4,8 @@ import { isbot } from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type AppLoadContext, type EntryContext } from "react-router";
 import { getConfig, stripeScriptOrigins as originsFor } from "~/lib/config.server";
+import { ApiError } from "~/lib/api-client.server";
+import { noteFailure, refCookie, routePattern } from "~/lib/error-ref.server";
 import { NonceContext } from "~/lib/nonce";
 import { isStaffPath } from "~/lib/staff-path";
 
@@ -24,6 +26,11 @@ export default function handleRequest(
   loadContext?: AppLoadContext,
 ) {
   const nonce = loadContext?.nonce ?? "";
+  // A failed page: the reference rides in a short-lived cookie, read by the error page after it hydrates (decision M8W-03). It cannot go into the page's own data: React Router has already
+  // serialized that for the browser when this runs, and a value only the server HTML had would be dropped at hydration.
+  const ref = loadContext?.errorRef?.id;
+  const failed = responseStatusCode >= 500 || Object.keys(routerContext.staticHandlerContext?.errors ?? {}).length > 0;
+  if (ref && failed) responseHeaders.append("Set-Cookie", refCookie(ref, config.publicOrigin.startsWith("https://")));
   return new Promise<Response>((resolve, reject) => {
     let shellRendered = false;
     const readyOption = isbot(request.headers.get("user-agent") ?? "") || routerContext.isSpaMode ? "onAllReady" : "onShellReady";
@@ -63,10 +70,23 @@ export default function handleRequest(
   });
 }
 
+/** Every unhandled error of a loader or action lands here (a page or a `.data` request). One log line with the reference; never a query string, header or body. */
+export function handleError(error: unknown, { request, context }: { request: Request; context: AppLoadContext }) {
+  if (request.signal?.aborted) return;   // the browser went away: not a failure
+  const api = error instanceof ApiError ? error : undefined;
+  noteFailure(context?.errorRef, {
+    source: api ? "api" : "bff", status: api?.status ?? 500, code: api?.code, route: routePattern(request.url), apiRef: api?.reference,
+    kind: "unhandled", ...(api ? {} : { code: error instanceof Error ? error.name : "unknown" }),
+  });
+}
+
 /** Single-fetch `.data` responses depend on the cookie (theme now, user data later): never shared-cacheable. */
-export function handleDataRequest(response: Response) {
+export function handleDataRequest(response: Response, { context }: { context?: AppLoadContext } = {}) {
   response.headers.append("Vary", "Cookie");
   // Keep a stricter no-store set by the route (account pages); otherwise never shared-cacheable.
   if (!/no-store/i.test(response.headers.get("Cache-Control") ?? "")) response.headers.set("Cache-Control", "private, no-cache");
+  // A failed client-side request: the error page (rendered in the browser) cannot see the server's holder, so the reference rides in a short-lived cookie it reads and clears.
+  const ref = context?.errorRef?.id;
+  if (ref && response.status >= 500) response.headers.append("Set-Cookie", refCookie(ref, config.publicOrigin.startsWith("https://")));
   return response;
 }

@@ -2,6 +2,7 @@ import { ALLOWED_API_HEADERS } from "./api-headers";
 import { createHmac } from "node:crypto";
 import { resolveClientIp } from "./client-ip.server";
 import type { AppConfig } from "./config.server";
+import { cleanRef, noteFailure, routePattern } from "./error-ref.server";
 
 /** Contract: API repo docs/API.md (M1, API main 3b48083). All three headers are always sent together. */
 export const FORWARDED_CLIENT_IP_HEADER = "X-Solvelt-Client-Ip";
@@ -20,6 +21,8 @@ export interface ApiRequestContext {
   request: Request;
   /** Opaque session token from our own cookie; sent as a Bearer header, never to the browser. */
   sessionToken?: string | undefined;
+  /** The request's error-reference holder (load context): an API server fault or an unreachable API puts the reference here (error-ref.server.ts). */
+  errorRef?: import("./error-ref.server").ErrorRefHolder | undefined;
 }
 
 export interface ApiCallOptions {
@@ -55,5 +58,11 @@ export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxi
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
   else if (opts.form !== undefined) init.body = opts.form;
   if (opts.signal) init.signal = opts.signal;
-  return fetch(`${cfg.apiBaseUrl}${path}`, init);
+  // Every API call of this server passes here, so this is where a failure gets its reference (error-ref.server.ts, decision M8W-03): the API's own X-Correlation-Id for a server fault,
+  // or one made here when nothing answered or the answer was not the API's (a proxy page). One log line; the route pattern has no query string and no ids.
+  let res: Response;
+  try { res = await fetch(`${cfg.apiBaseUrl}${path}`, init); }
+  catch (e) { noteFailure(ctx.errorRef, { source: "bff", status: 503, code: "unreachable", route: routePattern(path) }); throw e; }
+  if (res.status >= 500) noteFailure(ctx.errorRef, { source: "api", status: res.status, route: routePattern(path), apiRef: cleanRef(res.headers.get("x-correlation-id")) });
+  return res;
 }
