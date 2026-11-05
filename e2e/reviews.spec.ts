@@ -3,7 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { MOCK, csrfFor, newVerifiedUser, signIn, waitHydrated } from "./helpers";
 
 // Every spec runs on both projects at once against ONE mock API, and reviews belong to a listing, so the tests that count reviews each use a listing of their own per project; the rest use unique texts.
-const SLUG = "classic-braided-challah";
+// Review tests use generated gift boxes that no other spec asserts on (desktop and mobile share ONE mock, so reviews written here must not show up on the listings the older specs read).
+const SLUG = "gift-box-20";
 const PDP = `/p/${SLUG}`;
 const own = (a: string, b: string) => (test.info().project.name === "mobile" ? b : a);
 // a real 1x1 PNG
@@ -42,7 +43,7 @@ test("a guest sees the reviews area, is asked to sign in to review or to ask, an
 });
 
 test("write a review: it is checked, published, shown with its figures and structured data, edited and given photos", async ({ page }) => {
-  const slug = own("silver-plated-shabbat-candlesticks", "cabernet-sauvignon-mevushal");
+  const slug = own("gift-box-21", "gift-box-22");
   const pdp = `/p/${slug}`;
   const email = await signedIn(page, "rvw");
   const e = await eligible(page, email, "order_line", slug);
@@ -94,7 +95,7 @@ test("write a review: it is checked, published, shown with its figures and struc
 });
 
 test("another buyer can mark a review helpful and report it, the author cannot, and a hidden review and its photos disappear", async ({ page, browser }) => {
-  const slug = own("sold-out-honey-cake", "deep-house-cleaning");
+  const slug = own("gift-box-23", "gift-box-24");
   const PDP = `/p/${slug}`;
   const email = await signedIn(page, "rvauthor");
   const e = await eligible(page, email, "order_line", slug);
