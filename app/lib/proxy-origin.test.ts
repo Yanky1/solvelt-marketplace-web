@@ -45,6 +45,14 @@ describe("the request URL behind a TLS-terminating proxy", () => {
     expect((await get("/", { Host: "evil.example" })).url).toBe("https://shop.example.test/");
   });
 
+  it("leaves a request with a foreign Origin untouched, so our own check answers it", async () => {
+    const get = await start("http://localhost:3100");
+    const seen = await get("/sign-in.data", { Host: "127.0.0.1:3100", Origin: "http://127.0.0.1:3100" });
+    expect(seen.url).toBe("http://127.0.0.1:3100/sign-in.data");
+    const own = await get("/sign-in.data", { Host: "127.0.0.1:3100", Origin: "http://localhost:3100" });
+    expect(own.url).toBe("http://localhost:3100/sign-in.data");
+  });
+
   it("never reads X-Forwarded-Proto or X-Forwarded-Host from the peer", async () => {
     const get = await start("https://shop.example.test");
     const seen = await get("/", { "X-Forwarded-Proto": "http", "X-Forwarded-Host": "evil.example", Forwarded: "host=evil.example;proto=http" });
