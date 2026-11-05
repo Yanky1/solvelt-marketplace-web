@@ -14,6 +14,7 @@ export const apiCtx = (request: Request, context: AppLoadContext, session: Sessi
   request,
   socketAddress: context.socketAddress,
   sessionToken: session?.token,
+  errorRef: context.errorRef,
 });
 
 /** Current user for a request, or null. A 401 means the token is dead (caller should clear it); other errors mean "unknown". */

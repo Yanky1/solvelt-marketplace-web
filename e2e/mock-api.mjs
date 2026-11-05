@@ -848,6 +848,7 @@ http.createServer(async (req, res) => {
     const guest = key.startsWith("g:");
     if (guest && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(body.email ?? ""))) return send(res, 422, { code: "validation_failed", errors: { email: "Enter a valid email address." } });
     if ((carts.get(key) ?? []).length === 0) return send(res, 409, { code: "cart_not_ready", message: "Your cart is empty." });
+    if (body.address?.name === "Explode Checkout") return send(res, 500, { code: "internal_error", message: "Something went wrong." }, { "X-Correlation-Id": "0HN7E2ECORR002" });   // failure drill (M8W-03)
     const a = body.address ?? {};
     const fresh = quoteFor(key, { address: a, selections: body.selections }, guest ? priceBump.get(String(body.email)) ?? 0 : 0);
     if (!fresh.canPay) return send(res, 409, { code: "delivery_unavailable", message: "We can't deliver part of your cart to that address." });
@@ -954,6 +955,9 @@ http.createServer(async (req, res) => {
     if (bm[2] === "cancel" && req.method === "POST") { if (!["Hold", "Requested", "Confirmed"].includes(b.status)) return send(res, 409, { code: "invalid_state" }); b.status = "CancelledByBuyer"; return send(res, 200, { booking: bookingView(b) }); }
   }
 
+  // Failure drills for the error reference (decision M8W-03): a server fault that carries the API's correlation id, and an API that never answers.
+  if (req.method === "GET" && path === "/api/v1/catalog/listings/explode-500") return send(res, 500, { code: "internal_error", message: "An unexpected error occurred." }, { "X-Correlation-Id": "0HN7E2ECORR001" });
+  if (req.method === "GET" && path === "/api/v1/catalog/listings/drop-503") return req.socket.destroy();
   if (req.method === "GET" && path.startsWith("/api/v1/catalog/")) {
     const c = catalogResponse(path, url);
     if (c) return send(res, c.status, c.body, c.headers);

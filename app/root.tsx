@@ -1,10 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { data, isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation, useRouteLoaderData } from "react-router";
 import { Logo } from "~/components/Logo";
 import type { Route } from "./+types/root";
 import { Footer, Header } from "~/components/Shell";
 import { ToastProvider } from "~/components/ui/overlay";
-import { LinkButton } from "~/components/ui/form";
+import { Button, LinkButton } from "~/components/ui/form";
 import { useNonce } from "~/lib/nonce";
 import { isStaffPath } from "~/lib/staff-path";
 import { apiCtx, currentUser, ensureVisitor } from "~/lib/auth.server";
@@ -94,6 +94,27 @@ export default function App() {
   return <Outlet />;
 }
 
+/** "Reference: <id>" with a copy button: what a buyer reads out so the failure can be found in the logs. The server sends it in a short-lived cookie (a failed page or a failed client-side request); it is read once, after hydration. */
+function ErrorReference() {
+  const [ref, setRef] = useState<string | undefined>(undefined);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (ref) return;
+    const m = /(?:^|;\s*)sl_ref=([A-Za-z0-9._:-]{4,64})/.exec(document.cookie);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the cookie exists only in the browser: reading it during render would differ from the server's HTML (hydration)
+    if (m) { setRef(m[1]); document.cookie = "sl_ref=; Path=/; Max-Age=0"; }   // read once: a later, unrelated error must not show an old reference
+  }, [ref]);
+  if (!ref) return null;
+  return (
+    <p className="muted" data-testid="error-reference">
+      Reference: <code>{ref}</code>{" "}
+      <Button variant="secondary" onClick={() => { void navigator.clipboard?.writeText(ref).then(() => setCopied(true)).catch(() => {}); }}>
+        {copied ? "Copied" : "Copy reference"}
+      </Button>
+    </p>
+  );
+}
+
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const notFound = isRouteErrorResponse(error) && error.status === 404;
   const status = isRouteErrorResponse(error) ? error.status : 500;
@@ -134,6 +155,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       <meta name="robots" content="noindex" />
       <h1>{notFound ? "Page not found" : "Something went wrong"}</h1>
       <p className="muted">{notFound ? "The page you are looking for does not exist or has moved." : `An unexpected error occurred (${status}). Please try again.`}</p>
+      {!notFound && <ErrorReference />}
       <LinkButton to="/">Back to home</LinkButton>
     </div>
   );

@@ -2,6 +2,7 @@ import { CART_TOKEN_HEADER, GUEST_ORDER_HEADER } from "./api-headers";
 import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
 import { isSafeId } from "./passkey.server";
+import { cleanRef } from "./error-ref.server";
 
 /**
  * Typed client for the buyer API. ASSUMED CONTRACT (docs/DESIGN.md W1-21): the API's auth endpoints are not
@@ -13,7 +14,7 @@ import { parseQuestions, parseReview, parseReviewPage, parseReviewable, type Que
 import { parseCard, parseItems, parseSummary, type ListCardView, type WishlistItemView, type WishlistSummary } from "./lists";
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown) {
+  constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown, public reference?: string) {
     super(message);
   }
 }
@@ -54,7 +55,8 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
   try {
     res = await apiFetch(getConfig(), ctx, path, { ...(body !== undefined ? { body } : {}), ...(form ? { form } : {}), ...(method ? { method } : {}), ...(headers ? { headers } : {}), signal: AbortSignal.timeout(8000) });
   } catch {
-    throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again.");
+    // no answer at all (unreachable, timeout): apiFetch has made and logged the reference
+    throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again.", undefined, undefined, undefined, ctx.errorRef?.id);
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -63,7 +65,9 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
   if (!res.ok) {
     const e = (json ?? {}) as { code?: string; message?: string; errors?: Record<string, string> };
     const retry = Number(res.headers.get("retry-after"));
-    throw new ApiError(res.status, e.code ?? "error", e.message ?? "Request failed.", e.errors, Number.isFinite(retry) ? retry : undefined, json);
+    // A server fault keeps the API's own correlation id (it logged the same one); apiFetch put it, or one made here for a proxy page, in the request's holder: that is the page's "Reference".
+    const ref = res.status >= 500 ? ctx.errorRef?.id : cleanRef(res.headers.get("x-correlation-id"));
+    throw new ApiError(res.status, e.code ?? "error", e.message ?? "Request failed.", e.errors, Number.isFinite(retry) ? retry : undefined, json, ref);
   }
   return json as T;
 }

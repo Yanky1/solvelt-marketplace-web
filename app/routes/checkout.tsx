@@ -101,7 +101,9 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (e.status === 422) return details("Check the address (for the US, include the state) and try again.", {});
       if (e.status === 401) return details("Please sign in again, or check out as a guest.", {});
     }
-    return details(NOT_NOW, {}, 503);
+    // The reference (the API's correlation id, or one made here) goes into the message, so a report from this page can be found in the logs (decision M8W-03).
+    const ref = (e instanceof ApiError ? e.reference : undefined) ?? context.errorRef?.id;
+    return details(ref ? `${NOT_NOW} Reference: ${ref}` : NOT_NOW, {}, 503);
   }
 }
 

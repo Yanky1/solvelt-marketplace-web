@@ -66,7 +66,7 @@ app.use("/assets", compression(), express.static("build/client/assets", { immuta
 app.use(express.static("build/client", { maxAge: "1h" }));
 app.use(createRequestHandler({
   build,
-  getLoadContext: (req, res) => ({ socketAddress: req.socket.remoteAddress ?? "", nonce: String(res.locals.nonce ?? "") }),
+  getLoadContext: (req, res) => ({ socketAddress: req.socket.remoteAddress ?? "", nonce: String(res.locals.nonce ?? ""), errorRef: {} }),
 }));
 
 const port = Number(process.env.PORT ?? 3000);
