@@ -4,7 +4,7 @@ import { ApiError } from "./api-client.server";
 import { parseListingDetail, type ListingDetail } from "./catalog";
 import { MAX_INPUT_BYTES } from "./img.server";
 import { parseSitemapPage, SITEMAP_KINDS, type SitemapKind, type SitemapPageData } from "./sitemap";
-import { cleanQuery, parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, parseSuggestions, SUGGEST_MIN, toApiParams, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront, type Suggestion } from "./search";
+import { cleanQuery, parseBrandList, parseBrandStorefront, parseCategoryTree, parseListingPage, parseSellerStorefront, parseSuggestions, SUGGEST_MIN, toApiParams, type BrandCardData, type BrandStorefront, type CategoryNode, type ListingPageData, type ListingQuery, type SellerStorefront, type Suggestion } from "./search";
 
 /**
  * The buyer API's catalog, as TYPED calls only (standing rule O-12: the web server never proxies a generic /api/* path; every upstream path is built
@@ -100,6 +100,15 @@ export const catalog = {
     const { status, json } = await getJson(ctx, `/api/v1/catalog/suggest?${new URLSearchParams({ q, limit: "8" }).toString()}`);
     if (status !== 200) throw failure(status);
     const list = parseSuggestions(json);
+    if (!list) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
+    return list;
+  },
+
+  /** Every brand that has something visible (the /brands index). */
+  async brands(ctx: ApiRequestContext): Promise<BrandCardData[]> {
+    const { status, json } = await getJson(ctx, "/api/v1/catalog/brands");
+    if (status !== 200) throw failure(status);
+    const list = parseBrandList(json);
     if (!list) throw new ApiError(502, "bad_gateway", "The catalog answered with something we could not read.");
     return list;
   },

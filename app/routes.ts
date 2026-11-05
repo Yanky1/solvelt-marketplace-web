@@ -35,6 +35,8 @@ export default [
   route("passkeys/sign-in-options", "routes/passkeys.sign-in-options.ts"),
   route("p/:slug", "routes/product.tsx"),
   route("categories", "routes/categories.tsx"),
+  route("services", "routes/services.tsx"),
+  route("brands", "routes/brands.tsx"),
   route("search", "routes/search.tsx"),
   route("search/suggest", "routes/search.suggest.ts"),
   route("c/:slug", "routes/category.tsx"),

@@ -63,10 +63,13 @@ function list(raw: string | null, ok: (v: string) => boolean): string[] {
 // eslint-disable-next-line no-control-regex
 const plainValue = (v: string) => v.length <= MAX_VALUE && !/[\u0000-\u001F\u007F,]/.test(v);
 
-export function parseListingQuery(params: URLSearchParams, fixed: Partial<Pick<ListingQuery, "category" | "brand" | "seller">> = {}): ListingQuery {
+/** What a page's path can fix: its own category, brand, seller or type (`/services` is the service listings). */
+export type FixedKey = "category" | "brand" | "seller" | "type";
+
+export function parseListingQuery(params: URLSearchParams, fixed: Partial<Pick<ListingQuery, "category" | "brand" | "seller" | "type">> = {}): ListingQuery {
   const q: ListingQuery = emptyQuery();
   q.q = cleanQuery(params.get("q") ?? "");
-  const type = params.get("type");
+  const type = fixed.type ?? params.get("type");
   if (type === "product" || type === "service") q.type = type;
   for (const key of ["category", "brand", "seller"] as const) {
     const v = fixed[key] ?? params.get(key);
@@ -98,10 +101,10 @@ export const defaultSort = (q: Pick<ListingQuery, "q">): Sort => (q.q ? "relevan
 export const effectiveSort = (q: Pick<ListingQuery, "q" | "sort">): Sort => q.sort ?? defaultSort(q);
 
 /** Our own address for a query: a fixed parameter order, defaults left out, so one set of results has one address. `omit` leaves out what the path already says. */
-export function toSearchParams(query: ListingQuery, omit: ReadonlyArray<"category" | "brand" | "seller"> = []): URLSearchParams {
+export function toSearchParams(query: ListingQuery, omit: ReadonlyArray<FixedKey> = []): URLSearchParams {
   const p = new URLSearchParams();
   if (query.q) p.set("q", query.q);
-  if (query.type) p.set("type", query.type);
+  if (query.type && !omit.includes("type")) p.set("type", query.type);
   for (const key of ["category", "brand", "seller"] as const) if (query[key] && !omit.includes(key)) p.set(key, query[key]!);
   if (query.priceMin !== undefined) p.set("priceMin", String(query.priceMin));
   if (query.priceMax !== undefined) p.set("priceMax", String(query.priceMax));
@@ -141,8 +144,8 @@ export function centsAddress(url: URL): URL | null {
 }
 
 /** Is any filter active? `ignore` names what the page's path already fixes (a brand page's brand is not a filter). */
-export const hasFilters = (q: ListingQuery, ignore: ReadonlyArray<"brand" | "seller" | "category"> = []): boolean =>
-  !!(q.type || (q.brand && !ignore.includes("brand")) || (q.seller && !ignore.includes("seller")) || (q.category && !ignore.includes("category")) || q.priceMin !== undefined || q.priceMax !== undefined || q.available || q.kosher.length || q.delivery.length || q.attr.length);
+export const hasFilters = (q: ListingQuery, ignore: ReadonlyArray<FixedKey> = []): boolean =>
+  !!((q.type && !ignore.includes("type")) || (q.brand && !ignore.includes("brand")) || (q.seller && !ignore.includes("seller")) || (q.category && !ignore.includes("category")) || q.priceMin !== undefined || q.priceMax !== undefined || q.available || q.kosher.length || q.delivery.length || q.attr.length);
 
 /** The same query with one change; a change to any filter or the sort goes back to page 1. */
 export function withChange(q: ListingQuery, change: Partial<ListingQuery>): ListingQuery {
@@ -234,11 +237,11 @@ export function parseListingPage(json: unknown): ListingPageData | null {
 /** One active filter as a chip: what to show, and the query without it. */
 export interface FilterChip { key: string; label: string; without: ListingQuery }
 
-export function activeFilters(q: ListingQuery, facets: Facets | null, money: (cents: number) => string): FilterChip[] {
+export function activeFilters(q: ListingQuery, facets: Facets | null, money: (cents: number) => string, ignore: ReadonlyArray<FixedKey> = []): FilterChip[] {
   const chips: FilterChip[] = [];
   const drop = (change: Partial<ListingQuery>) => withChange(q, change);
-  if (q.type) chips.push({ key: "type", label: q.type === "service" ? "Services" : "Products", without: drop({ type: undefined }) });
-  if (q.brand) chips.push({ key: "brand", label: facets?.brands.find((b) => b.slug === q.brand)?.name ?? q.brand, without: drop({ brand: undefined }) });
+  if (q.type && !ignore.includes("type")) chips.push({ key: "type", label: q.type === "service" ? "Services" : "Products", without: drop({ type: undefined }) });
+  if (q.brand && !ignore.includes("brand")) chips.push({ key: "brand", label: facets?.brands.find((b) => b.slug === q.brand)?.name ?? q.brand, without: drop({ brand: undefined }) });
   if (q.priceMin !== undefined || q.priceMax !== undefined) {
     const label = q.priceMin !== undefined && q.priceMax !== undefined ? `${money(q.priceMin)} to ${money(q.priceMax)}` : q.priceMin !== undefined ? `${money(q.priceMin)} and up` : `Up to ${money(q.priceMax!)}`;
     chips.push({ key: "price", label, without: drop({ priceMin: undefined, priceMax: undefined }) });
@@ -254,6 +257,14 @@ export function activeFilters(q: ListingQuery, facets: Facets | null, money: (ce
 export interface BrandCardData { id: string; slug: string; name: string; logoImageId: string | null; listingCount: number; seller: { id: string; displayName: string } }
 export interface BrandStorefront extends BrandCardData { categories: CategoryNode[] }
 export interface SellerStorefront { id: string; displayName: string; listingCount: number; brands: BrandCardData[]; categories: CategoryNode[] }
+
+/** `GET /api/v1/catalog/brands`: every brand with something visible, or null when the answer cannot be read. */
+export function parseBrandList(json: unknown): BrandCardData[] | null {
+  if (!Array.isArray(json)) return null;
+  const out: BrandCardData[] = [];
+  for (const b of json) { const c = parseBrandCard(b); if (!c) return null; out.push(c); }
+  return out;
+}
 
 function parseBrandCard(v: unknown): BrandCardData | null {
   const o = obj(v);

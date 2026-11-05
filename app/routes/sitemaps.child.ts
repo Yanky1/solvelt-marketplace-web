@@ -12,7 +12,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const origin = getConfig().publicOrigin;
   const kind = params.kind ?? "", page = pageFromFile(params.file ?? "");
   if (page === null) return notFound();
-  if (kind === "static") return page === 1 ? xmlResponse(request, buildSitemap(origin, ["/", "/categories"])) : notFound();
+  if (kind === "static") return page === 1 ? xmlResponse(request, buildSitemap(origin, ["/", "/categories", "/services", "/brands"])) : notFound();
   if (!(SITEMAP_KINDS as readonly string[]).includes(kind)) return notFound();
   try {
     const data = await catalog.sitemap(apiCtx(request, context, null), kind, page, SITEMAP_PAGE_SIZE);

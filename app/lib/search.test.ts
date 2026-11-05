@@ -185,3 +185,28 @@ describe("parseSuggestions", () => {
     expect(parseSuggestions({ suggestions: Array.from({ length: 50 }, (_, i) => ({ kind: "listing", text: `T${i}`, slug: `s${i}` })) })).toHaveLength(20);
   });
 });
+
+describe("a page that fixes the type (/services)", () => {
+  it("takes the type from the page, never from the address, and leaves it out of the address", () => {
+    const q = parseListingQuery(new URLSearchParams("type=product&sort=price_asc"), { type: "service" });
+    expect(q.type).toBe("service");
+    expect(toSearchParams(q, ["type"]).toString()).toBe("sort=price_asc");
+    expect(toSearchParams(q).toString()).toBe("type=service&sort=price_asc");
+  });
+  it("does not count the fixed type as a filter or show it as a chip", () => {
+    const q = parseListingQuery(new URLSearchParams(""), { type: "service" });
+    expect(hasFilters(q, ["type"])).toBe(false);
+    expect(hasFilters(q)).toBe(true);
+    expect(activeFilters(q, null, (c) => String(c), ["type"])).toEqual([]);
+    expect(activeFilters(q, null, (c) => String(c)).map((c) => c.key)).toEqual(["type"]);
+  });
+  it("still counts every other filter", () => {
+    const q = parseListingQuery(new URLSearchParams("available=true"), { type: "service" });
+    expect(hasFilters(q, ["type"])).toBe(true);
+    expect(activeFilters(q, null, (c) => String(c), ["type"]).map((c) => c.key)).toEqual(["available"]);
+  });
+  it("a brand page's own brand is no chip either", () => {
+    const q = parseListingQuery(new URLSearchParams(""), { brand: "clay" });
+    expect(activeFilters(q, null, (c) => String(c), ["brand"])).toEqual([]);
+  });
+});

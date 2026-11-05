@@ -2,10 +2,10 @@ import { Link } from "react-router";
 import { CategoryLinks, FacetForm, SortForm } from "./Facets";
 import { ListingCard } from "./ListingCard";
 import { Breadcrumb, EmptyState, Pagination, formatMoney, type Crumb } from "./ui/display";
-import { activeFilters, hasFilters, toSearchParams, withChange, type CategoryNode, type ListingPageData, type ListingQuery } from "~/lib/search";
+import { activeFilters, hasFilters, toSearchParams, withChange, type CategoryNode, type FixedKey, type ListingPageData, type ListingQuery } from "~/lib/search";
 import { categoryPath } from "~/lib/urls";
 
-type Fixed = "category" | "brand" | "seller";
+type Fixed = FixedKey;
 
 /**
  * The results layout shared by search, category, brand and seller pages: heading and count, active filters, sort, the filter form beside the grid, and
@@ -16,13 +16,13 @@ export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixe
   categories?: CategoryNode[]; categoriesTitle?: string; emptyHint?: string; /** Shown between the heading and the results (a seller's brands, say). */ extra?: React.ReactNode;
 }) {
   const href = (q: ListingQuery) => { const p = toSearchParams(q, fixed).toString(); return p ? `${basePath}?${p}` : basePath; };
-  const chips = activeFilters(query, data.facets, (c) => formatMoney(c));
+  const chips = activeFilters(query, data.facets, (c) => formatMoney(c), fixed);
   const fixedHidden: Record<string, string> = {};
   if (!fixed.includes("category") && query.category) fixedHidden.category = query.category;           // a search narrowed to a category keeps it while filters change
-  const cleared: ListingQuery = { ...query, type: undefined, brand: fixed.includes("brand") ? query.brand : undefined, priceMin: undefined, priceMax: undefined, available: false, kosher: [], delivery: [], attr: [], page: 1 };
+  const cleared: ListingQuery = { ...query, type: fixed.includes("type") ? query.type : undefined, brand: fixed.includes("brand") ? query.brand : undefined, priceMin: undefined, priceMax: undefined, available: false, kosher: [], delivery: [], attr: [], page: 1 };
   const sortHidden: Record<string, string | string[]> = { ...fixedHidden };
   if (query.q) sortHidden.q = query.q;
-  if (query.type) sortHidden.type = query.type;
+  if (query.type && !fixed.includes("type")) sortHidden.type = query.type;
   if (query.brand && !fixed.includes("brand")) sortHidden.brand = query.brand;
   if (query.priceMin !== undefined) sortHidden.priceMin = String(query.priceMin);
   if (query.priceMax !== undefined) sortHidden.priceMax = String(query.priceMax);
@@ -50,11 +50,11 @@ export function ListingsPage({ title, intro, crumbs, data, query, basePath, fixe
           {/* The same form twice, so the layout needs no script: a closed <details> on a phone, an open panel on a wide screen. CSS shows exactly one (the other is not in the accessibility tree). */}
           <details className="facets facets-mobile">
             <summary className="facets-summary">Filters{hasFilters(query, fixed) ? " (active)" : ""}</summary>
-            <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} label="Filter results (menu)" />
+            <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} hideType={fixed.includes("type")} label="Filter results (menu)" />
           </details>
           <div className="facets facets-desktop">
             <h2 className="facets-title">Filters</h2>
-            <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} />
+            <FacetForm action={basePath} query={query} facets={data.facets} fixedHidden={fixedHidden} hideBrand={fixed.includes("brand")} hideType={fixed.includes("type")} />
           </div>
         </aside>
         <section className="listings-main" aria-labelledby="results-heading">

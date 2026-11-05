@@ -17,6 +17,8 @@ export const PAGES = [
   "/search?q=challah&available=true&kosher=OU",
   "/search?q=zzzz",
   "/categories",
+  "/services",
+  "/brands",
   "/c/food-drink",
   "/c/gifts?page=2",
   "/b/challah-corner",
