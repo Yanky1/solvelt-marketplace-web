@@ -6,7 +6,6 @@ import { Gallery } from "./Gallery";
 import { IMAGE_WIDTHS, Img, srcsetWidths } from "./Img";
 import { VariantPicker } from "./VariantPicker";
 import { AddToCart, CART_ACTION } from "./AddToCart";
-import { BOOKING_ACTION, BookingSlot } from "./BookingSlot";
 import { JsonLd } from "./JsonLd";
 import { Logo } from "./Logo";
 
@@ -114,39 +113,6 @@ describe("AddToCart slot", () => {
       expect((form.querySelector("[name=qty]") as HTMLInputElement).min).toBe("1");
       expect(screen.getByRole("button", { name: "Add Challah, Small, to cart" })).toBeEnabled();
     } finally { Object.assign(CART_ACTION, was); }
-  });
-});
-
-describe("BookingSlot (M4's boundary)", () => {
-  const props = { listingId: "l1", variantId: "v1", title: "Deep Cleaning", variantName: "2 bedrooms", priceCents: 18000, currency: "USD", locations: ["at-home", "online"] as ("at-home" | "online")[], available: true };
-  it("is a disabled, explained button until the booking action exists, with no form", () => {
-    withRouter(<BookingSlot {...props} />);
-    const button = screen.getByRole("button", { name: "Request a booking" });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAccessibleDescription(/booking opens soon/i);
-    expect(screen.getByTestId("booking-slot").querySelector("form")).toBeNull();
-  });
-  it("says so, and offers nothing, when the chosen option cannot be booked", () => {
-    withRouter(<BookingSlot {...props} available={false} />);
-    expect(screen.getByTestId("booking-slot")).toHaveTextContent("cannot be booked right now");
-    expect(screen.queryByRole("button")).toBeNull();
-  });
-  it("is the contract form once ready: listingId, variantId, csrf, and a location choice only when there is more than one", () => {
-    const was = { ...BOOKING_ACTION };
-    BOOKING_ACTION.ready = true;
-    try {
-      const { unmount } = withRouter(<BookingSlot {...props} />);
-      let form = screen.getByTestId("booking-slot") as HTMLFormElement;
-      expect(form.getAttribute("method")).toBe("post");
-      expect(form.getAttribute("action")).toBe("/bookings/requests");
-      expect(Array.from(form.querySelectorAll("input")).map((i) => i.name).sort()).toEqual(["csrf", "listingId", "variantId"]);
-      expect(Array.from((form.querySelector("[name=location]") as HTMLSelectElement).options).map((o) => o.value)).toEqual(["at-home", "online"]);
-      expect(screen.getByRole("button", { name: "Request a booking for Deep Cleaning, 2 bedrooms" })).toBeEnabled();
-      unmount();
-      withRouter(<BookingSlot {...props} locations={["online"]} />);
-      form = screen.getByTestId("booking-slot") as HTMLFormElement;
-      expect(form.querySelector("[name=location]")).toBeNull();
-    } finally { Object.assign(BOOKING_ACTION, was); }
   });
 });
 

@@ -77,6 +77,7 @@ const publicQuote = (q) => {
   return out;
 };
 
+const bookingsDb = new Map();
 const gidLine = () => `ln_${randomBytes(6).toString("hex")}`;
 
 const send = (res, status, body, extra = {}) => {
@@ -160,6 +161,7 @@ http.createServer(async (req, res) => {
       threads.set(id, t);
       return send(res, 200, { id });
     }
+    if (path === "/__test/book-status") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); b.status = url.searchParams.get("status") ?? b.status; return send(res, 204); }
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
     if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
@@ -582,6 +584,47 @@ http.createServer(async (req, res) => {
     if (key === null) return send(res, 401, { code: "unauthorized" });
     if (!allowed) return send(res, !req.headers.authorization && !guestHdr ? 401 : 404, { code: "not_found" });
     return send(res, 200, { number: co[1], status: o.status, currency: "USD", totalCents: o.totalCents, createdAt: o.createdAt, paidAt: o.status === "placed" ? o.createdAt : null, groups: o.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, deliveryKind: "carrier", shippingSpeed: "standard", localDate: null, totalCents: 0, lines: g.lines.map((l) => ({ title: l.title, variantName: l.variantName, quantity: l.quantity, lineTotalCents: l.lineTotalCents })) })) });
+  }
+
+  // ---- services and bookings (M4; API repo docs/API.md "Services (M4)"): a small stateful stand-in ----
+  const slotAt = (days, hour) => { const d = new Date(Date.now() + days * 86400000); d.setUTCHours(hour, 0, 0, 0); return d.toISOString(); };
+  const svc = /^\/api\/v1\/services\/([A-Za-z0-9_-]+)\/(availability|options)$/.exec(path);
+  if (svc && req.method === "GET") {
+    if (svc[2] === "options") return send(res, 200, { available: true, addOns: [], intakeQuestions: [{ id: "pets", label: "Any pets at home?", kind: "yesNo", required: true }], providers: [], assignment: "leastBusy" });
+    const loc = url.searchParams.get("location"), postal = url.searchParams.get("postalCode");
+    if (!["online", "customer", "seller"].includes(loc ?? "")) return send(res, 422, { code: "validation_failed", errors: { location: "required" } });
+    if (loc === "customer" && !postal) return send(res, 422, { code: "validation_failed", errors: { postalCode: "required" } });
+    if (postal === "99999") return send(res, 422, { code: "outside_service_area" });
+    const slots = [[2, 14], [2, 16], [3, 14]].map(([d, h]) => ({ startAt: slotAt(d, h), endAt: slotAt(d, h + 4), providerIds: ["pv1"] }));
+    return send(res, 200, { durationMinutes: 240, priceCents: 24000, providers: [{ providerId: "pv1", timeZone: "America/New_York" }], slots, from: slotAt(0, 0), to: slotAt(14, 0), fetchedAt: new Date().toISOString() }, { "Cache-Control": "no-store" });
+  }
+  const bookingView = (b) => ({ id: b.id, number: b.number, listingId: b.listingId, status: b.status, location: b.location, startAt: b.startAt, endAt: b.endAt, durationMinutes: 240, currency: "USD", priceCents: 24000, addOnsCents: 0, travelFeeCents: 0, totalCents: 24000, holdExpiresAt: b.status === "Hold" ? b.holdExpiresAt : null, holdExpired: b.status === "Hold" && Date.parse(b.holdExpiresAt) <= Date.now(), approvalDeadline: null, proposedStartAt: null, createdAt: b.createdAt });
+  if (path.startsWith("/api/v1/bookings")) {
+    const owner = userFor(req);
+    if (!owner) return send(res, 401, { code: "unauthorized" });
+    if (path === "/api/v1/bookings/holds" && req.method === "POST") {
+      const key = String(req.headers["idempotency-key"] ?? "");
+      if (!/^[A-Za-z0-9\-_.:]{8,100}$/.test(key)) return send(res, 422, { code: "validation_failed" });
+      const seen = [...bookingsDb.values()].find((b) => b.owner === owner.id && b.key === key);
+      if (seen) return send(res, 200, bookingView(seen));
+      if (body.location === "customer" && !(body.address?.line1 && body.address?.postalCode)) return send(res, 422, { code: "validation_failed", errors: { address: "required" } });
+      if (new Date(body.start).getUTCDate() === new Date(slotAt(3, 14)).getUTCDate() && new Date(body.start).getUTCHours() === 14 && Date.parse(body.start) > Date.parse(slotAt(2, 20))) return send(res, 409, { code: "slot_unavailable" });   // the last offered time is always "taken meanwhile"
+      const id = randomBytes(8).toString("hex").replace(/^(.{8})(.{4})(.{4})$/, "$1-$2-$3");
+      const b = { id: `00000000-0000-4000-8000-${randomBytes(6).toString("hex")}`, owner: owner.id, key, number: `BK-MOCK-${id.slice(0, 4).toUpperCase()}`, listingId: String(body.listingId), status: "Hold", location: body.location, startAt: body.start, endAt: new Date(Date.parse(body.start) + 4 * 3600000).toISOString(), holdExpiresAt: new Date(Date.now() + 10 * 60000).toISOString(), createdAt: new Date().toISOString() };
+      bookingsDb.set(b.id, b);
+      return send(res, 201, bookingView(b));
+    }
+    if (path === "/api/v1/bookings" && req.method === "GET") return send(res, 200, { bookings: [...bookingsDb.values()].filter((b) => b.owner === owner.id && b.status !== "Failed").reverse().map(bookingView) });
+    const bm = /^\/api\/v1\/bookings\/([A-Za-z0-9-]+)(?:\/(checkout|cancel|cancel-preview))?$/.exec(path);
+    const b = bm ? bookingsDb.get(bm[1]) : undefined;
+    if (!bm || !b || b.owner !== owner.id) return send(res, 404, { code: "not_found" });
+    if (!bm[2] && req.method === "GET") return send(res, 200, bookingView(b));
+    if (bm[2] === "cancel-preview" && req.method === "GET") return send(res, 200, { feeKnown: true, feeCents: 0, refundCents: 24000, totalCents: 24000, withinFreeWindow: true, currency: "USD" });
+    if (bm[2] === "checkout" && req.method === "POST") {
+      if (b.status !== "Hold" || Date.parse(b.holdExpiresAt) <= Date.now()) return send(res, 409, { code: "hold_expired" });
+      return send(res, 200, { booking: bookingView(b), payment: { provider: "stripe", clientSecret: `pi_mock_${b.id}_secret_x`, publishableKey: "pk_test_mock" } });
+    }
+    if (bm[2] === "cancel" && req.method === "POST") { if (!["Hold", "Requested", "Confirmed"].includes(b.status)) return send(res, 409, { code: "invalid_state" }); b.status = "CancelledByBuyer"; return send(res, 200, { booking: bookingView(b) }); }
   }
 
   if (req.method === "GET" && path.startsWith("/api/v1/catalog/")) {

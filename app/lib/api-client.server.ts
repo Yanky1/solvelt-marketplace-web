@@ -7,6 +7,7 @@ import { isSafeId } from "./passkey.server";
  * documented yet; shapes here are what the mock API in e2e/mock-api.mjs implements, to be confirmed by M1.
  */
 import { safeHttps } from "./orders";
+import type { Availability, BookingView } from "./bookings";
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown) {
@@ -129,9 +130,27 @@ export interface GroupSelection { sellerId: string; brandId: string; speed?: str
 export interface CheckoutAddress { name: string; line1: string; line2?: string; city: string; region?: string; postalCode: string; country: string; phone?: string }
 export interface Placed { orderNumber: string; status: string; quote: Quote; payment: { provider: string; clientSecret: string; publishableKey: string | null } | null; guestOrderToken?: string; guestOrderTokenExpiresAt?: string }
 export interface CheckoutOrder { number: string; status: string; currency?: string; totalCents?: number; createdAt: string; paidAt?: string | null; claimed?: boolean; groups?: { sellerName: string; brandName: string; deliveryKind: string; shippingSpeed: string | null; localDate: string | null; totalCents: number; lines: { title: string; variantName: string; quantity: number; lineTotalCents: number }[] }[] }
+// ---- services and bookings (M4; API repo docs/API.md "Services (M4)") ----
+export interface ServiceOptions {
+  available: boolean; addOns: { id: string; name: string; description?: string; priceCents: number; extraMinutes: number }[];
+  intakeQuestions: { id: string; label: string; kind: "text" | "longText" | "choice" | "yesNo" | "number"; required: boolean; choices?: string[]; maxLength?: number }[];
+  providers: { providerId: string; displayName: string }[]; assignment?: string; policy?: Record<string, number | null>;
+}
+export interface BookingPayment { provider: string; clientSecret: string; publishableKey: string | null }
+export interface HoldBody { listingId: string; start: string; location: string; durationMinutes?: number; providerId?: string; addOnIds?: string[]; phone?: string; address?: Record<string, string> }
+export interface CancelPreview { feeKnown: boolean; feeCents?: number; refundCents?: number; totalCents: number; withinFreeWindow: boolean; freeUntil?: string; currency: string }
 const guestOrderHeader = (token?: string): Record<string, string> | undefined => (token ? { "X-Guest-Order": token } : undefined);
 
 export const api = {
+  /** Public: available times (the BFF forwards only the allow-listed query). */
+  serviceAvailability: (ctx: ApiRequestContext, listingId: string, query: string) => call<Availability>(ctx, `/api/v1/services/${pid(listingId)}/availability?${query}`),
+  serviceOptions: (ctx: ApiRequestContext, listingId: string) => call<ServiceOptions>(ctx, `/api/v1/services/${pid(listingId)}/options`),
+  holdBooking: (ctx: ApiRequestContext, b: HoldBody, key: string) => call<BookingView>(ctx, "/api/v1/bookings/holds", b, undefined, { "Idempotency-Key": key }),
+  bookings: (ctx: ApiRequestContext) => call<{ bookings: BookingView[] }>(ctx, "/api/v1/bookings"),
+  booking: (ctx: ApiRequestContext, id: string) => call<BookingView>(ctx, `/api/v1/bookings/${pid(id)}`),
+  checkoutBooking: (ctx: ApiRequestContext, id: string, b: { intake?: { id: string; answer: string }[]; phone?: string }) => call<{ booking: BookingView; payment: BookingPayment }>(ctx, `/api/v1/bookings/${pid(id)}/checkout`, b),
+  cancelBookingPreview: (ctx: ApiRequestContext, id: string) => call<CancelPreview>(ctx, `/api/v1/bookings/${pid(id)}/cancel-preview`),
+  cancelBooking: (ctx: ApiRequestContext, id: string, reason?: string) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/cancel`, reason ? { reason } : {}),
   threads: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<ThreadList>(ctx, `/api/v1/messages/threads${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),
   thread: (ctx: ApiRequestContext, id: string, before?: string) => call<ThreadView>(ctx, `/api/v1/messages/threads/${pid(id)}${before ? `?before=${encodeURIComponent(before)}` : ""}`),
