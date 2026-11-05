@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { MOCK, PASSWORD, newVerifiedUser, signIn, waitHydrated } from "./helpers";
+import { MOCK, PASSWORD, newVerifiedUser, signIn, tokensOf, waitHydrated } from "./helpers";
 
 const addPasskeys = (page: Page, email: string, count: number) => page.request.get(`${MOCK}/__test/add-passkeys?email=${encodeURIComponent(email)}&count=${count}`);
 /** A verified user who is signed in (newVerifiedUser only verifies the address). */
@@ -129,4 +129,61 @@ test("password page needs an account", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in\?next=%2Faccount%2Fpassword/);
   await page.goto("/account/passkeys/remove-all");
   await expect(page).toHaveURL(/\/sign-in\?next=/);
+});
+
+test("password page: the API's 429 is shown with the wait it asked for (LOW-3)", async ({ page }) => {
+  await signedInUser(page, "pw-ratelimit");
+  await page.goto("/account/password");
+  await waitHydrated(page);
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByLabel("New password").fill("a brand new long password");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await expect(page.getByRole("group", { name: "There is a problem" })).toContainText("Too many attempts. Please wait about 42 seconds and try again.");
+});
+
+test("password page: a 409 (the account changed meanwhile) drops the dead cookie and goes to sign-in (LOW-3)", async ({ page }) => {
+  const email = await signedInUser(page, "pw-acctchanged");
+  const [token] = await tokensOf(page.request, email);
+  const callsWith = async () => ((await (await page.request.get(`${MOCK}/__test/seen`)).json()) as { tokenTail: string }[]).filter((s) => s.tokenTail === token!.slice(-8)).length;
+  await page.goto("/account/password");
+  await waitHydrated(page);
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByLabel("New password").fill("a brand new long password");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Faccount%2Fpassword/);
+  // the cookie that was sent back carries no session any more: an account page goes to sign-in at once, and the dead token is never sent to the API again
+  const before = await callsWith();
+  await page.goto("/account");
+  await expect(page).toHaveURL(/\/sign-in\?next=/);
+  expect(await callsWith()).toBe(before);
+});
+
+test("password page: a session the API no longer knows goes to sign-in instead of showing the page (LOW-4)", async ({ page, browser, baseURL }) => {
+  const email = await signedInUser(page, "pw-dead");
+  // a second browser signs in and changes the password: the API ends every other session, including the first one's
+  const other = await browser.newContext({ baseURL });
+  const p2 = await other.newPage();
+  await signIn(p2, email);
+  await p2.goto("/account/password");
+  await waitHydrated(p2);
+  await p2.getByLabel("Current password").fill(PASSWORD);
+  await p2.getByLabel("New password").fill("a brand new long password");
+  await p2.getByRole("button", { name: "Change password" }).click();
+  await expect(p2.getByText("Password changed. Your other devices were signed out.")).toBeVisible();
+  await other.close();
+  await page.goto("/account/password");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Faccount%2Fpassword/);
+});
+
+test("password page: when the passkey read-back fails the notice says it could not confirm, not that they were kept (LOW-6)", async ({ page }) => {
+  const email = await signedInUser(page, "pw-unconfirmed");
+  await addPasskeys(page, email, 1);
+  await page.goto("/account/password");
+  await waitHydrated(page);
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByLabel("New password").fill("a brand new long password");
+  await page.getByLabel("Also remove my passkeys").check();
+  await page.getByRole("button", { name: "Change password" }).click();
+  await expect(page.getByText(/couldn't confirm whether your passkeys were removed/)).toBeVisible();
+  await expect(page.getByText(/could not be removed this way/)).toHaveCount(0);
 });

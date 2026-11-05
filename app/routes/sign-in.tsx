@@ -8,7 +8,8 @@ import { ApiError, api } from "~/lib/api-client.server";
 import { afterSignIn } from "~/lib/cart.server";
 import { apiCtx, assertCsrf, currentUser, formError, revokePreviousSession, rotatedCookie } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
-import { demoMode } from "~/lib/demo.server";
+import { demoMode, resetDemoModeCache } from "~/lib/demo.server";
+import { retryAfterHeader, tooManyMessage } from "~/lib/rate-limit";
 import { safeNext } from "~/lib/csrf.server";
 import { checkPasskeyChallenge, sessionCookie, withoutPasskeyChallenge } from "~/lib/session.server";
 import { getPasskey, usePasskeysSupported } from "~/lib/webauthn";
@@ -82,7 +83,10 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (e instanceof ApiError) {
       if (e.status === 403 && e.code === "email_not_verified") return formError({ fieldErrors: NONE, message: "Please verify your email address first. Check your inbox for the link.", email, unverified: true }, 403);
       // After a failed "verify this account" the button stays so the visitor can try again; the answer is the same for an unknown address and a wrong password, so this says nothing about any account.
-      if (e.status === 429) return formError({ fieldErrors: NONE, message: "Too many attempts. Please wait a moment and try again.", email, unverified: demoVerify }, 429);
+      if (e.status === 429) return formError({ fieldErrors: NONE, message: tooManyMessage(e.retryAfter), email, unverified: demoVerify }, 429, retryAfterHeader(e.retryAfter));
+      // Test mode was switched off at the API while this page still offered the button (the answer is cached for a few seconds): say so instead of "could not sign you in", keep the
+      // verify prompt as it was, and forget the cached answer so the next page is right (LOW-5). The account is still unverified: the way in is the email link.
+      if (demoVerify && e.status === 404) { resetDemoModeCache(); return formError({ fieldErrors: NONE, message: "Test mode is switched off, so this account cannot be verified without email. Please verify your email address first: check your inbox for the link.", email, unverified: true }, 403); }
       if (e.status === 401) return formError({ fieldErrors: NONE, message: "Email or password is incorrect.", email, unverified: demoVerify }, 401); // same text for unknown user and wrong password
     }
     return formError({ fieldErrors: NONE, message: "We could not sign you in right now. Please try again.", email }, 503);

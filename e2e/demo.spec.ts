@@ -109,6 +109,42 @@ test.describe("test mode is on (API and web agree)", () => {
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Hello");
   });
 
+  test("the API's limit on fill is said with its wait, not shown as an error page (LOW-5)", async ({ page }) => {
+    await demoUser(page, "demo-limitfill");
+    await page.goto("/account/demo");
+    await waitHydrated(page);
+    await page.getByRole("button", { name: "Fill with demo data" }).click();
+    await expect(page.locator("main").getByRole("alert")).toContainText("Too many attempts. Please wait about 42 seconds and try again.");
+    await expect(page).toHaveURL(/\/account\/demo$/);
+    await expect(page.getByRole("button", { name: "Fill with demo data" })).toBeVisible();     // still there to try again
+  });
+
+  test("the API's limit on remove is said with its wait on the confirmation page (LOW-5)", async ({ page }) => {
+    await demoUser(page, "demo-limitremove");
+    await page.goto("/account/demo");
+    await waitHydrated(page);
+    await page.getByRole("button", { name: "Fill with demo data" }).click();
+    await expect(page).toHaveURL(/done=filled$/);
+    await page.goto("/account/demo/remove");
+    await waitHydrated(page);
+    await page.getByRole("button", { name: "Remove demo data" }).click();
+    await expect(page.locator("main").getByRole("alert")).toContainText("about 42 seconds");
+    await expect(page).toHaveURL(/\/account\/demo\/remove$/);
+  });
+
+  test("verify this account when the API has switched test mode off since the page was drawn: it says so and keeps the verify prompt (LOW-5)", async ({ page }) => {
+    const email = uniqueEmail("demooff");
+    await signUp(page, email, "Dana Levi");
+    await signIn(page, email);
+    await expect(page.getByRole("button", { name: "Verify this account and sign in" })).toBeVisible();
+    await waitHydrated(page);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Verify this account and sign in" }).click();
+    await expect(page.getByText("Test mode is switched off, so this account cannot be verified without email.")).toBeVisible();
+    await expect(page).toHaveURL(/\/sign-in$/);
+    await expect(page.getByText("We could not sign you in right now")).toHaveCount(0);
+  });
+
   test("a listing the portal marks as demo wears a Demo pill on its card and its page, and no other does", async ({ page }) => {
     await page.goto("/search?q=challah");
     const demoCard = page.locator(".listing-card", { hasText: "Classic Braided Challah" });

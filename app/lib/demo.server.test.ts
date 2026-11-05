@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { demoMode, parsePublicConfig, resetDemoModeCache } from "./demo.server";
 
 const ctx = { request: new Request("http://localhost/"), socketAddress: "127.0.0.1" } as never;
-const config = (demoEnabled: boolean) => ({ apiBaseUrl: "http://api.test", trustedProxies: [], webForwardingKey: "k".repeat(40), production: false, demoEnabled });
+const config = (demoEnabled: boolean) => ({ apiBaseUrl: "http://api.test", trustedProxies: [], webForwardingKey: "k".repeat(40), production: false, demoEnabled, demoAllowed: true });
 
 vi.mock("./config.server", () => ({ getConfig: vi.fn() }));
 vi.mock("./api.server", () => ({ apiFetch: vi.fn() }));
@@ -31,6 +31,22 @@ describe("demoMode", () => {
     expect(await demoMode(ctx, 1000)).toEqual({ badge: true, buttons: false });          // the API is in test mode, this server did not agree: a badge, no buttons
     resetDemoModeCache(); vi.mocked(getConfig).mockReturnValue(config(true) as never); answer({ demoEnabled: false });
     expect(await demoMode(ctx, 1000)).toEqual({ badge: false, buttons: false });         // this server is on but the API is not: nothing
+  });
+
+  it("a deployment that is not allowed shows no test-mode UI at all, not even the badge, and says so in the log (LOW-2)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(getConfig).mockReturnValue({ ...config(false), demoAllowed: false } as never);
+    answer({ demoEnabled: true });
+    expect(await demoMode(ctx, 1000)).toEqual({ badge: false, buttons: false });
+    expect(await demoMode(ctx, 2000)).toEqual({ badge: false, buttons: false });
+    expect(warn).toHaveBeenCalledTimes(1);                                                  // one line a minute, not one per page
+    expect(String(warn.mock.calls[0]![0])).toContain("demo_mode_hidden");
+    expect(await demoMode(ctx, 62_000)).toEqual({ badge: false, buttons: false });
+    expect(warn).toHaveBeenCalledTimes(2);
+    resetDemoModeCache(); answer({ demoEnabled: false });
+    warn.mockClear();
+    expect(await demoMode(ctx, 1000)).toEqual({ badge: false, buttons: false });
+    expect(warn).not.toHaveBeenCalled();                                                    // nothing to warn about when the API is not in test mode
   });
 
   it("an API that fails, times out or answers nonsense means off, never an error", async () => {

@@ -1,13 +1,14 @@
-import { Form, Link, redirect, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/account.demo";
 import { AccountNav } from "~/components/AccountNav";
 import { FormMessage } from "~/components/AuthForm";
 import { CsrfField } from "~/components/Shell";
 import { Card } from "~/components/ui/display";
 import { Button } from "~/components/ui/form";
-import { api, type DemoCounts } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { ApiError, api, type DemoCounts } from "~/lib/api-client.server";
+import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
 import { demoMode } from "~/lib/demo.server";
+import { retryAfterHeader, tooManyMessage } from "~/lib/rate-limit";
 
 /** Test mode only (M9): fill an account with demo data, see what is there, take it away (the confirm page). Answers 404 unless demo mode is on at the API and here. */
 export function meta() {
@@ -45,6 +46,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     const r = await api.demoFill(ctx);
     return redirect(`/account/demo?done=${r.created ? "filled" : "already"}`, { headers: privateHeaders });
   } catch (e) {
+    // the API limits how often demo data may be added or removed (10 a minute): say so, with the wait, instead of a bare error page (LOW-5)
+    if (e instanceof ApiError && e.status === 429) return formError({ message: tooManyMessage(e.retryAfter) }, 429, retryAfterHeader(e.retryAfter));
     return failAccount(e, request);
   }
 }
@@ -52,6 +55,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 export default function Demo({ loaderData }: Route.ComponentProps) {
   const { status, notice } = loaderData;
   const busy = useNavigation().state !== "idle";
+  const failed = useActionData<typeof action>();
   return (
     <div className="stack">
       <h1>Demo data</h1>
@@ -60,6 +64,7 @@ export default function Demo({ loaderData }: Route.ComponentProps) {
         <h2>Test mode</h2>
         <p>This marketplace is in test mode. Add demo data to get a realistic account to click through: an address, a cart, past orders, bookings, a message thread and notifications. Nothing real is sent: no emails, payments or seller messages.</p>
         {notice && <FormMessage kind="ok">{NOTICES[notice]}</FormMessage>}
+        {failed?.message && <FormMessage kind="error">{failed.message}</FormMessage>}
         <dl className="demo-counts" aria-label="What is in your account as demo data">
           {ROWS.map(([k, label]) => <div key={k}><dt>{label}</dt><dd>{status.counts[k]}</dd></div>)}
         </dl>

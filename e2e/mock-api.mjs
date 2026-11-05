@@ -234,6 +234,7 @@ http.createServer(async (req, res) => {
     if (!demoOn) return send(res, 404, { code: "not_found", message: "Not found" });          // while the flag is off every demo route is a 404, signed in or not
     if (path === "/api/v1/demo/verify" && req.method === "POST") {
       const u = users.get(String(body.email ?? "").toLowerCase());
+      if (String(body.email ?? "").includes("demooff")) return send(res, 404, { code: "not_found", message: "Not found" });   // test mode was switched off at the API after the page was drawn
       if (u && (u.wrongPasswords ?? 0) >= 8) return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "60" });
       if (!u || u.password !== body.password) { if (u) u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 401, { code: "invalid_credentials", message: "Invalid" }); }
       u.verified = true; u.verifyToken = undefined;
@@ -242,6 +243,7 @@ http.createServer(async (req, res) => {
     const du = userFor(req);
     if (!du) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
     if (path === "/api/v1/demo/status" && req.method === "GET") return send(res, 200, { hasDemoData: demoData.has(du.id), counts: demoCounts(du) });
+    if (((path === "/api/v1/demo/fill" && du.email.includes("limitfill")) || (path === "/api/v1/demo/remove" && du.email.includes("limitremove"))) && req.method === "POST") return send(res, 429, { code: "too_many_attempts", message: "Slow down" }, { "Retry-After": "42" });   // the per-account limit
     if (path === "/api/v1/demo/fill" && req.method === "POST") {
       const already = demoData.has(du.id); demoData.add(du.id);
       return send(res, already ? 200 : 201, { batchId: randomBytes(8).toString("hex"), created: !already, counts: DEMO_COUNTS, notes: [] });
@@ -506,6 +508,7 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/account/passkeys" && (req.method === "GET" || req.method === "POST")) {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (req.method === "GET" && u.pwChanged && u.email.includes("unconfirmed")) return send(res, 503, { code: "unavailable", message: "Down" });   // the read-back after a password change fails
     if (req.method === "GET") return send(res, 200, [...passkeys.values()].filter((p) => p.userId === u.id).map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt })));
     if (ipOf(req) === IP.REG_5XX) return send(res, 503, { code: "unavailable", message: "Down" });
     if (ipOf(req) === IP.REG_LENIENT) return send(res, 201, { id: "lenient", name: String(body.name || "Passkey"), createdAt: new Date().toISOString() }); // accepts ANY ceremony: only the web-side check can refuse
@@ -535,9 +538,11 @@ http.createServer(async (req, res) => {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
     if (u.email.includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
+    if (u.email.includes("ratelimit")) return send(res, 429, { code: "too_many_attempts", message: "Slow down" }, { "Retry-After": "42" });
+    if (u.email.includes("acctchanged")) return send(res, 409, { code: "account_changed", message: "The account changed" });   // a reset landed while this ran
     if (u.password !== body.currentPassword) return send(res, 401, { code: "invalid_credentials", message: "Invalid" });
     if (String(body.newPassword ?? "").length < 12) return send(res, 422, { code: "validation_failed", message: "Weak", errors: { newPassword: "Use at least 12 characters." } });
-    u.password = String(body.newPassword);
+    u.password = String(body.newPassword); u.pwChanged = true;
     if (body.removePasskeys === true && !u.email.includes("legacyapi")) for (const [k, p] of [...passkeys.entries()]) if (p.userId === u.id) passkeys.delete(k);
     for (const [t, id] of [...sessions.entries()]) if (id === u.id && t !== bearer(req)) sessions.delete(t);   // the other sessions end; this one stays
     return send(res, 204);

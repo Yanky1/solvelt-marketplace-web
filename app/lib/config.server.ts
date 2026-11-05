@@ -16,6 +16,8 @@ export interface AppConfig {
   allowLiveStripeKeys: boolean;
   /** Test mode (M9): the demo-data buttons. The server refuses to start with this on in production, with no override. */
   demoEnabled: boolean;
+  /** True only on a deployment named in DEMO_ALLOWED_DEPLOYMENTS: elsewhere no test-mode UI shows, not even the badge, whatever the API says (W2-32). */
+  demoAllowed: boolean;
   production: boolean;
 }
 
@@ -102,7 +104,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   if (demoEnabled && !DEMO_ALLOWED_DEPLOYMENTS.has(deploymentOf(env))) problems.push("DEMO_ENABLED must not be true here: demo data is test-mode data and is allowed only when APP_ENV is development, test, testing or staging (a test site runs with APP_ENV=staging); production, an unset name on a production build and any other name refuse")
 
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, allowLiveStripeKeys: production && env.ALLOW_LIVE_STRIPE_KEYS === "1", demoEnabled, production };
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, allowLiveStripeKeys: production && env.ALLOW_LIVE_STRIPE_KEYS === "1", demoEnabled, demoAllowed: DEMO_ALLOWED_DEPLOYMENTS.has(deploymentOf(env)), production };
 }
 
 /** The origins the checkout page may load Stripe.js from (script-src and frame-src): Stripe's own, plus the configured one when it differs (only possible for the E2E stand-in, see loadConfig). */

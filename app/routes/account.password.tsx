@@ -7,8 +7,9 @@ import { Card } from "~/components/ui/display";
 import { Button, Checkbox, Input } from "~/components/ui/form";
 import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, formError, privateHeaders, requireAccount, signInRedirect } from "~/lib/auth.server";
+import { assertCsrf, failAccount, formError, privateHeaders, requireAccount, rotatedCookie, signInRedirect } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
+import { retryAfterHeader, tooManyMessage } from "~/lib/rate-limit";
 import { hasRecentAuth } from "~/lib/session.server";
 import { str, validateNewPassword, type FieldErrors } from "~/lib/validation";
 
@@ -31,15 +32,17 @@ const NOTICES = {
   changed: "Password changed. Your other devices were signed out.",
   removed: "Password changed, and your passkeys were removed. Your other devices were signed out.",
   kept: "Password changed and your other devices were signed out, but your passkeys could not be removed this way. You can remove them on the passkeys page.",
+  unconfirmed: "Password changed and your other devices were signed out. We couldn't confirm whether your passkeys were removed: please check the passkeys page.",
 } as const;
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
   const key = new URL(request.url).searchParams.get("done");
-  const notice: keyof typeof NOTICES | null = key === "changed" || key === "removed" || key === "kept" ? key : null;
+  const notice: keyof typeof NOTICES | null = key === "changed" || key === "removed" || key === "kept" || key === "unconfirmed" ? key : null;
   try {
     // The box is offered when there are passkeys to remove (or when we cannot tell: asking is harmless).
-    const count = await api.passkeys(ctx).then((l) => l.length).catch(() => null);
+    // A dead session (401) is not "unknown": it goes to the sign-in page like on every account page (LOW-4). Anything else we cannot tell, and asking is harmless.
+    const count = await api.passkeys(ctx).then((l) => l.length).catch((e: unknown) => { if (e instanceof ApiError && e.status === 401) throw e; return null; });
     return { notice, offerPasskeys: count === null || count > 0 };
   } catch (e) {
     return failAccount(e, request);
@@ -63,15 +66,20 @@ export async function action({ request, context }: Route.ActionArgs) {
   try {
     await api.changePassword(ctx, { currentPassword: current, newPassword: next, ...(removePasskeys ? { removePasskeys: true } : {}) });
     let done: keyof typeof NOTICES = "changed";
-    if (removePasskeys) done = (await api.passkeys(ctx).then((l) => l.length).catch(() => -1)) === 0 ? "removed" : "kept";
+    if (removePasskeys) {
+      // What the API did is read back, never assumed: none left is "removed", some left is "kept" (an API that ignores the field), and a read that failed is "we couldn't confirm" (LOW-6),
+      // which says neither that they were removed nor that they could not be.
+      const left = await api.passkeys(ctx).then((l) => l.length).catch(() => null);
+      done = left === null ? "unconfirmed" : left === 0 ? "removed" : "kept";
+    }
     return redirect(`${BACK}?done=${done}`, { headers: privateHeaders });
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 403) return redirect(CONFIRM, { headers: privateHeaders });                           // the API's own clock says "sign in again"
       if (e.status === 401 && e.code === "invalid_credentials") return formError({ fieldErrors: { currentPassword: "That is not your current password." }, message: null, removePasskeys }, 401);
       if (e.status === 422) return formError({ fieldErrors: safeFieldErrors(e.fieldErrors, ["newPassword"]), message: e.fieldErrors?.newPassword ? null : "Please check the new password and try again.", removePasskeys }, 422);
-      if (e.status === 429) return formError({ fieldErrors: {}, message: "Too many attempts. Please wait a moment and try again.", removePasskeys }, 429);
-      if (e.status === 409) signInRedirect(request);                                                          // the account changed while this ran (a reset, say): sign in again
+      if (e.status === 429) return formError({ fieldErrors: {}, message: tooManyMessage(e.retryAfter), removePasskeys }, 429, retryAfterHeader(e.retryAfter));   // the wait the API asked for (LOW-3)
+      if (e.status === 409) signInRedirect(request, { "Set-Cookie": rotatedCookie(), ...privateHeaders });   // the account changed while this ran (a reset, say): the cookie's session is dead, so it is dropped and the person signs in again (LOW-3)
       if (e.status !== 401) return formError({ fieldErrors: {}, message: "We could not change your password right now. Please try again.", removePasskeys }, 503);
     }
     return failAccount(e, request);

@@ -124,7 +124,9 @@ test("another user's address is a 404 for pages and actions, and stays untouched
 test("every account action and passkey endpoint rejects missing, forged and cross-site CSRF", async ({ request, baseURL }) => {
   const csrf = await csrfFor(request);
   const body = { intent: "delete", id: "x", name: "n", displayName: "n", credential: "{}", challengeId: "c" };
-  for (const path of ["/account/profile", "/account/addresses", "/account/addresses/new", "/account/addresses/abc", "/account/passkeys", "/account/passkeys/options", "/passkeys/sign-in-options"]) {
+  // every mutating account route, including the ones added since: the password page, "remove all passkeys", the demo-data pages (they answer 404 only AFTER the CSRF check) and the data download
+  for (const path of ["/account/profile", "/account/addresses", "/account/addresses/new", "/account/addresses/abc", "/account/passkeys", "/account/passkeys/options", "/passkeys/sign-in-options",
+    "/account/password", "/account/passkeys/remove-all", "/account/demo", "/account/demo/remove", "/account/privacy/export", "/account/privacy"]) {
     const post = (form: Record<string, string>, origin?: string) => request.post(path, { form, headers: origin ? { origin } : {}, maxRedirects: 0 });
     expect((await post(body, baseURL!)).status(), `${path} no token`).toBe(403);
     expect((await post({ ...body, csrf: "forged" }, baseURL!)).status(), `${path} forged`).toBe(403);
