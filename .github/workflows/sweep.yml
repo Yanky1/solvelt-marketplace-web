@@ -108,8 +108,30 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - name: Install the browsers
-        run: npx playwright install --with-deps chromium firefox webkit
+      # one step per browser, each with its own time limit: a hung download or package install (the first run sat on all three for over half an hour) costs ONE browser and says so, not the whole sweep
+      - name: Install Chromium
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium
+      - name: Install Firefox
+        id: firefox
+        timeout-minutes: 10
+        continue-on-error: true
+        if: ${{ contains(inputs.browsers || 'chromium,firefox,webkit', 'firefox') }}
+        run: npx playwright install --with-deps firefox
+      - name: Install WebKit
+        id: webkit
+        timeout-minutes: 10
+        continue-on-error: true
+        if: ${{ contains(inputs.browsers || 'chromium,firefox,webkit', 'webkit') }}
+        run: npx playwright install --with-deps webkit
+      - name: Which browsers the sweep can use
+        run: |
+          list="chromium"
+          [ "${{ steps.firefox.outcome }}" = "success" ] && list="$list,firefox"
+          [ "${{ steps.webkit.outcome }}" = "success" ] && list="$list,webkit"
+          echo "SWEEP_BROWSERS=$list" >> "$GITHUB_ENV"
+          echo "Browsers for this sweep: $list (firefox: ${{ steps.firefox.outcome }}, webkit: ${{ steps.webkit.outcome }})"
+          if [ "$list" != "chromium,firefox,webkit" ]; then echo "::warning title=Not every browser was swept::Browsers swept: $list (requested: ${{ inputs.browsers || 'chromium,firefox,webkit' }}). A browser that could not be installed is NOT covered by this run."; fi
 
       # the staff and account areas make many requests from one address: the limits are not under test here (the journeys do the same for the auth and public limits)
       - name: Start the real stack (portal, API on PostgreSQL, web)
@@ -122,8 +144,6 @@ jobs:
         run: npm run sweep:setup
       - name: Sweep
         run: npm run sweep
-        env:
-          SWEEP_BROWSERS: ${{ inputs.browsers || 'chromium,firefox,webkit' }}
       - name: Lighthouse (layout shift and LCP on home, search, product, cart, checkout)
         if: always()
         run: node scripts/sweep-lighthouse.mjs
