@@ -22,7 +22,8 @@ export interface SessionData {
   /** How many items the cart held when the server last saw it: the header shows it without an API call on every page. */
   cn?: number;
   /** The guest order the browser has just placed: its number and order-access token (sealed, HttpOnly), so the confirmation page can follow it without the token ever being in the page or the URL (decision M3W-07). */
-  go?: { n: string; t: string; e?: number };
+  /** Order-access grants of a guest (one per order number, at most 5; the newest last): see checkout.ts `withGrant`. */
+  go?: { n: string; t: string; e?: number }[];
 }
 
 export interface PasskeyBinding {
@@ -58,9 +59,20 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.authAt !== undefined && typeof d.authAt !== "number") return null;
     if (d.rf !== undefined && (typeof d.rf !== "number" || !Number.isInteger(d.rf) || d.rf < 0 || d.rf > 1000)) return null;
     if (d.cart !== undefined && (typeof d.cart !== "string" || d.cart.length === 0 || d.cart.length > 100)) return null;
-    const go = d.go;
-    if (go !== undefined && (typeof go !== "object" || go === null || typeof go.n !== "string" || go.n.length === 0 || go.n.length > 40 || typeof go.t !== "string" || go.t.length === 0 || go.t.length > 120)) return null;
-    if (go !== undefined && go.e !== undefined && (typeof go.e !== "number" || !Number.isFinite(go.e) || go.e < 0)) return null;
+    // a grant list (an older cookie holds a single object: read as a list of one)
+    const rawGo: unknown = d.go === undefined ? undefined : Array.isArray(d.go) ? d.go : [d.go];
+    let go: { n: string; t: string; e?: number }[] | undefined;
+    if (rawGo !== undefined) {
+      const list = rawGo as unknown[];
+      if (list.length > 5) return null;
+      go = [];
+      for (const g of list) {
+        const x = g as { n?: unknown; t?: unknown; e?: unknown } | null;
+        if (typeof x !== "object" || x === null || typeof x.n !== "string" || x.n.length === 0 || x.n.length > 40 || typeof x.t !== "string" || x.t.length === 0 || x.t.length > 120) return null;
+        if (x.e !== undefined && (typeof x.e !== "number" || !Number.isFinite(x.e) || x.e < 0)) return null;
+        go.push({ n: x.n, t: x.t, ...(x.e !== undefined ? { e: x.e } : {}) });
+      }
+    }
     if (d.cn !== undefined && (typeof d.cn !== "number" || !Number.isInteger(d.cn) || d.cn < 0 || d.cn > 100_000)) return null;
     const pk = d.pk;
     if (pk !== undefined && (typeof pk !== "object" || pk === null || typeof pk.cid !== "string" || typeof pk.exp !== "number" || (pk.kind !== "create" && pk.kind !== "get"))) return null;
@@ -72,7 +84,7 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.rf !== undefined) out.rf = d.rf;
     if (d.cart !== undefined) out.cart = d.cart;
     if (d.cn !== undefined) out.cn = d.cn;
-    if (go !== undefined) out.go = { n: go.n, t: go.t, ...(go.e !== undefined ? { e: go.e } : {}) };
+    if (go !== undefined && go.length > 0) out.go = go;
     return out;
   } catch {
     return null;

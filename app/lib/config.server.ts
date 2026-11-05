@@ -12,6 +12,8 @@ export interface AppConfig {
   reauthWindowSeconds: number;
   /** Stripe.js (decision M3W-06). Only the checkout page loads it. */
   stripeJsUrl: string;
+  /** A live Stripe publishable key reaches the browser only with ALLOW_LIVE_STRIPE_KEYS=1, and only in production (decision M3W-15). */
+  allowLiveStripeKeys: boolean;
   production: boolean;
 }
 
@@ -80,7 +82,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   } catch { problems.push("STRIPE_JS_URL must be a URL"); }
 
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, production };
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, allowLiveStripeKeys: production && env.ALLOW_LIVE_STRIPE_KEYS === "1", production };
 }
 
 /** The origins the checkout page may load Stripe.js from (script-src and frame-src): Stripe's own, plus the configured one when it differs (only possible for the E2E stand-in, see loadConfig). */

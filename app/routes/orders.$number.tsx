@@ -2,7 +2,7 @@ import { data, redirect } from "react-router";
 import type { Route } from "./+types/orders.$number";
 import { OrderConfirmation } from "~/components/OrderConfirmation";
 import { privateHeaders } from "~/lib/auth.server";
-import { looksLikeGuestToken } from "~/lib/checkout";
+import { expiryFromToken, looksLikeGuestToken, withGrant } from "~/lib/checkout";
 import { loadConfirmation } from "~/lib/confirmation.server";
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
@@ -32,7 +32,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     if (!looksLikeGuestToken(token)) throw redirect(bare, { status: 303, headers: privateHeaders });
     const session = readSession(request, cfg) ?? newVisitor();
     // a signed-in browser keeps its account; the grant is for the guest reading of this one order
-    throw redirect(bare, { status: 303, headers: { ...privateHeaders, "Set-Cookie": sessionCookie({ ...session, go: { n: number, t: token } }, cfg) } });
+    throw redirect(bare, { status: 303, headers: { ...privateHeaders, "Set-Cookie": sessionCookie({ ...session, go: withGrant(session.go, { n: number, t: token, e: expiryFromToken(token) }) }, cfg) } });
   }
   return loadConfirmation(request, context, number, bare);
 }

@@ -130,3 +130,25 @@ describe("the cart in the sealed session (decision M3W-01)", () => {
     }
   });
 });
+
+describe("the guest order grants in the sealed cookie", () => {
+  const base = { sid: "x".repeat(32), iat: 1000 };
+  it("round-trip as a list with their expiry", () => {
+    const go = [{ n: "MP-A", t: "tok_aaaaaaaaaaaaaaaa", e: 5000 }, { n: "MP-B", t: "tok_bbbbbbbbbbbbbbbb" }];
+    expect(open(seal({ ...base, go }, SECRET), SECRET, 1000)?.go).toEqual(go);
+  });
+  it("read a cookie of the older single-grant shape as a list of one", () => {
+    const legacy = { ...base, go: { n: "MP-A", t: "tok_aaaaaaaaaaaaaaaa", e: 5000 } } as unknown as Parameters<typeof seal>[0];
+    expect(open(seal(legacy, SECRET), SECRET, 1000)?.go).toEqual([{ n: "MP-A", t: "tok_aaaaaaaaaaaaaaaa", e: 5000 }]);
+  });
+  it("refuse more than five, an empty or oversized field and a bad expiry", () => {
+    const g = (n: string, t = "tok_aaaaaaaaaaaaaaaa", e?: unknown) => ({ n, t, ...(e !== undefined ? { e } : {}) });
+    const sealed = (go: unknown) => open(seal({ ...base, go } as unknown as Parameters<typeof seal>[0], SECRET), SECRET, 1000);
+    expect(sealed(Array.from({ length: 6 }, (_, i) => g(`MP-${i}`)))).toBeNull();
+    expect(sealed([g("")])).toBeNull();
+    expect(sealed([g("x".repeat(41))])).toBeNull();
+    expect(sealed([g("MP-A", "x".repeat(121))])).toBeNull();
+    expect(sealed([g("MP-A", "tok_aaaaaaaaaaaaaaaa", "soon")])).toBeNull();
+    expect(sealed([g("MP-A", "tok_aaaaaaaaaaaaaaaa", -1)])).toBeNull();
+  });
+});
