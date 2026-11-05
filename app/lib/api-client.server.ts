@@ -93,12 +93,12 @@ export interface NotificationList { unreadCount: number; notifications: Notifica
 export type NotificationPrefs = { email: Record<string, boolean> };
 
 // ---- messages (M5; API docs "Messages") ----
-export interface ThreadSummary { id: string; kind: string; subject: string; sellerName: string | null; orderNumber: string | null; listingId: string | null; lastMessageAt: string; unreadCount: number; preview: string }
+export interface ThreadSummary { id: string; kind: string; subject: string; sellerName: string | null; orderNumber: string | null; listingId: string | null; marketplaceBookingId?: string | null; lastMessageAt: string; unreadCount: number; preview: string }
 export interface ThreadList { unreadCount: number; threads: ThreadSummary[]; next: { before: string; beforeId: string } | null }
 export interface MessageAttachmentView { id: string; fileName: string; size: number; type: string | null; available: boolean }
 export interface ThreadMessageView { id: string; direction: "buyer" | "seller"; status: string; sentAt: string; read: boolean; reported: boolean; hidden: boolean; text: string | null; attachments: MessageAttachmentView[] }
-export interface ThreadView { thread: { id: string; kind: string; subject: string; sellerName: string | null; listingId: string | null }; messages: ThreadMessageView[]; older: string | null }
-export interface SendMessageInput { threadId?: string; orderNumber?: string; sellerOrderNumber?: string; listingId?: string; text: string; acknowledgeWarning?: boolean }
+export interface ThreadView { thread: { id: string; kind: string; subject: string; sellerName: string | null; listingId: string | null; marketplaceBookingId?: string | null }; messages: ThreadMessageView[]; older: string | null }
+export interface SendMessageInput { threadId?: string; orderNumber?: string; sellerOrderNumber?: string; listingId?: string; marketplaceBookingId?: string; text: string; acknowledgeWarning?: boolean }
 
 /** Raw GET for binary answers (proof images, message files): the caller streams it to the browser with its own safe headers. */
 async function raw(ctx: ApiRequestContext, path: string): Promise<Response> {
