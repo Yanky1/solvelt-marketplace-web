@@ -62,6 +62,7 @@ const carts = new Map(); // owner key ("u:<userId>" or "g:<token>") -> [{id, var
 // the API's own header name, spelled out here on purpose: the mock must not follow a wrong name in the web code (review H1)
 const failCartOnce = new Set();
 const cartKeyOf = (req) => { const t = bearer(req); const uid = t ? sessions.get(t) : undefined; if (t && !uid) return null; return uid ? `u:${uid}` : (req.headers["x-solvelt-cart-token"] ? `g:${req.headers["x-solvelt-cart-token"]}` : undefined); };
+const heldCartAdds = new Map();   // account cart key -> { gate, release }: that account's next cart add waits at the gate until the test releases it (a slow request finishing after another tab rotated the token)
 function cartView(key, token) {
   const lines = carts.get(key) ?? [];
   const groups = new Map();
@@ -152,6 +153,13 @@ http.createServer(async (req, res) => {
     if (path === "/__test/checkout-orders") return send(res, 200, [...checkoutOrders.entries()].map(([number, o]) => ({ number, status: o.status, key: o.key.slice(0, 2), guestEmail: o.guestEmail, token: o.token, address: o.address, giftMessage: o.giftMessage })));
     if (path === "/__test/outbox") return send(res, 200, outbox);
     if (path === "/__test/fail-cart-once") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); if (u) failCartOnce.add(`u:${u.id}`); return send(res, 204); }   // the next cart read or merge of this account answers 503 (the sign-in cart call)
+    if (path === "/__test/hold-cart-add" || path === "/__test/release-cart-add") {
+      const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); const k = u ? `u:${u.id}` : "";
+      if (path === "/__test/hold-cart-add" && k) { let release; const gate = new Promise((r) => { release = r; }); heldCartAdds.set(k, { gate, release, waiting: false }); }
+      if (path === "/__test/release-cart-add" && heldCartAdds.has(k)) heldCartAdds.get(k).release();
+      return send(res, 204);
+    }
+    if (path === "/__test/cart-add-waiting") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, { waiting: !!(u && heldCartAdds.get(`u:${u.id}`)?.waiting) }); }
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
@@ -802,6 +810,7 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/cart/lines" && req.method === "POST") {
     let key = cartKeyOf(req);
     if (key === null) return send(res, 401, { code: "unauthorized" });
+    if (key && heldCartAdds.has(key)) { const h = heldCartAdds.get(key); h.waiting = true; await h.gate; heldCartAdds.delete(key); }
     let token;
     if (key === undefined || (key.startsWith("g:") && !carts.has(key))) { token = `cart_${randomBytes(24).toString("hex")}`; key = `g:${token}`; carts.set(key, []); }
     const info = variantInfo(String(body.variantId));

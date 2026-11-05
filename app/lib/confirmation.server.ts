@@ -4,7 +4,7 @@ import { apiCtx, privateHeaders } from "~/lib/auth.server";
 import { FINAL_ORDER_STATUSES, guestTokenFor, hasReturnParams, withoutGrant } from "~/lib/checkout";
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
-import { readSession, sessionCookie } from "~/lib/session.server";
+import { cartCookie, readSession, sessionCookie } from "~/lib/session.server";
 
 export interface ConfirmationData { order: CheckoutOrder | null; lost: boolean; cartEmptied: boolean }
 
@@ -33,15 +33,16 @@ export async function loadConfirmation(request: Request, context: AppLoadContext
     }
     order ??= await api.checkoutOrder(ctx, number);
     const done = order.status === "paid" || order.status === "placed";
-    const headers: Record<string, string> = { ...privateHeaders };
-    // a paid order emptied the cart: the header count follows; a final order no longer needs the guest token
+    const headers = new Headers(privateHeaders);
+    // a paid order emptied the cart: the header count follows (the cart cookie); a final order no longer needs the guest token (the session cookie, only when there is a grant to drop)
     const dropGrant = viaGrant && FINAL_ORDER_STATUSES.has(order.status);
-    if (session && ((done && session.cn !== 0) || dropGrant)) {
+    if (session && dropGrant) {
+      const left = withoutGrant(session.go, number);
       const { go: _go, ...rest } = session;
       void _go;
-      const left = dropGrant ? withoutGrant(session.go, number) : session.go;
-      headers["Set-Cookie"] = sessionCookie({ ...rest, ...(left ? { go: left } : {}), ...(done ? { cn: 0 } : {}) }, cfg);
+      headers.append("Set-Cookie", sessionCookie({ ...rest, ...(left ? { go: left } : {}) }, cfg));
     }
+    if (session && done && session.cn !== 0) headers.append("Set-Cookie", cartCookie(session.sid, { ...(session.cart !== undefined ? { cart: session.cart } : {}), cn: 0 }, cfg));
     return data({ order, lost: false, cartEmptied: done } satisfies ConfirmationData, { headers });
   } catch (e) {
     if (e instanceof ApiError && (e.status === 404 || e.status === 401)) return data(lost, { headers: privateHeaders });

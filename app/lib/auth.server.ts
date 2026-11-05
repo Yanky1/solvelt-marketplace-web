@@ -3,7 +3,7 @@ import type { ApiRequestContext } from "./api.server";
 import { ApiError, api, type ApiUser } from "./api-client.server";
 import { getConfig } from "./config.server";
 import { assertSameOrigin, logRefusal, refusal } from "./csrf.server";
-import { csrfTokenFor, csrfValid, newVisitor, readSession, sessionCookie, type SessionData } from "./session.server";
+import { cartCookie, csrfTokenFor, csrfValid, newVisitor, readSession, sessionCookie, type SessionData } from "./session.server";
 
 export interface RequestAuth {
   /** Existing valid session cookie, if any. */
@@ -65,13 +65,25 @@ export function assertCsrf(request: Request, form: FormData): SessionData {
   return session;
 }
 
-/** New session id after sign-in or sign-out (prevents session fixation); optionally carries the API token. */
-export function rotatedCookie(token?: string, now = Date.now() / 1000, extra?: Pick<SessionData, "cn">): string {
+/** New session id after sign-in or sign-out (prevents session fixation); optionally carries the API token. Identity only: the cart state has its own cookie (see `signInHeaders`). */
+export function rotatedCookie(token?: string, now = Date.now() / 1000): string {
   const cfg = getConfig();
   const fresh = newVisitor(now);
   // A token means a fresh sign-in just happened: remember when (for "recent sign-in" checks).
-  const base = extra?.cn !== undefined ? { ...fresh, cn: extra.cn } : fresh;
-  return sessionCookie(token ? { ...base, token, authAt: Math.floor(now) } : base, cfg);
+  return sessionCookie(token ? { ...fresh, token, authAt: Math.floor(now) } : fresh, cfg);
+}
+
+/**
+ * The headers of a fresh sign-in: the new session cookie (new id, the API token, the sign-in clock) AND a cart cookie sealed for that same new id carrying the item count of the merged
+ * cart (nothing when the cart call failed: the root loader heals it on the first page). Two cookies, because only one of them may ever hold the token (M7W-09).
+ */
+export function signInHeaders(token: string, cart: Pick<SessionData, "cn">, now = Date.now() / 1000): Headers {
+  const cfg = getConfig();
+  const fresh = newVisitor(now);
+  const h = new Headers({ "Cache-Control": "private, no-store" });
+  h.append("Set-Cookie", sessionCookie({ ...fresh, token, authAt: Math.floor(now) }, cfg));
+  if (cart.cn !== undefined) h.append("Set-Cookie", cartCookie(fresh.sid, { cn: cart.cn }, cfg));
+  return h;
 }
 
 /**
@@ -82,9 +94,8 @@ export function rotatedCookie(token?: string, now = Date.now() / 1000, extra?: P
 export function cookieWithNewToken(session: SessionData, token: string, freshAuth: boolean, now = Date.now() / 1000): string {
   const cfg = getConfig();
   const fresh = newVisitor(now);
-  const base = session.cn !== undefined ? { ...fresh, cn: session.cn } : fresh;
   const authAt = freshAuth ? Math.floor(now) : session.authAt;
-  return sessionCookie({ ...base, token, ...(authAt !== undefined ? { authAt } : {}) }, cfg);
+  return sessionCookie({ ...fresh, token, ...(authAt !== undefined ? { authAt } : {}) }, cfg);
 }
 
 /** Redirect to sign-in for pages that need an account, keeping a safe return path. */
