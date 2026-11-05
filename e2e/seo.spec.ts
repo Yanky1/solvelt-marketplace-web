@@ -37,7 +37,7 @@ test.describe("robots and sitemaps", () => {
     expect(await cached.text()).toBe("");
     expect(locs(await (await request.get("/sitemaps/categories/1.xml")).text())).toContain(`${baseURL}/c/bakery`);
     expect(locs(await (await request.get("/sitemaps/brands/1.xml")).text())).toContain(`${baseURL}/b/challah-corner`);
-    expect(locs(await (await request.get("/sitemaps/static/1.xml")).text())).toEqual([`${baseURL}/`, `${baseURL}/categories`]);
+    expect(locs(await (await request.get("/sitemaps/static/1.xml")).text())).toEqual([`${baseURL}/`, `${baseURL}/categories`, `${baseURL}/services`, `${baseURL}/brands`]);
   });
 
   test("no sitemap sets a cookie or shows anything about a visitor", async ({ request }) => {
