@@ -164,6 +164,7 @@ test("password page: a session the API no longer knows goes to sign-in instead o
   const other = await browser.newContext({ baseURL });
   const p2 = await other.newPage();
   await signIn(p2, email);
+  await expect(p2).toHaveURL(/\/account$/);                                  // signed in before going on (the sign-in is a form post that may still be running)
   await p2.goto("/account/password");
   await waitHydrated(p2);
   await p2.getByLabel("Current password").fill(PASSWORD);
