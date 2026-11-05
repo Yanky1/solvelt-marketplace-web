@@ -45,12 +45,21 @@ describe("the request URL behind a TLS-terminating proxy", () => {
     expect((await get("/", { Host: "evil.example" })).url).toBe("https://shop.example.test/");
   });
 
-  it("leaves a request with a foreign Origin untouched, so our own check answers it", async () => {
-    const get = await start("http://localhost:3100");
-    const seen = await get("/sign-in.data", { Host: "127.0.0.1:3100", Origin: "http://127.0.0.1:3100" });
-    expect(seen.url).toBe("http://127.0.0.1:3100/sign-in.data");
-    const own = await get("/sign-in.data", { Host: "127.0.0.1:3100", Origin: "http://localhost:3100" });
-    expect(own.url).toBe("http://localhost:3100/sign-in.data");
+  it("gives a request with another well-formed Origin that origin's own URL, so our check (not React Router's bare 400) refuses it", async () => {
+    const get = await start("https://shop.example.test");
+    const other = await get("/sign-in.data", { Host: "10.0.0.7:8080", Origin: "https://other.azurewebsites.net" });
+    expect(other.url).toBe("https://other.azurewebsites.net/sign-in.data");
+    const loopback = await (await start("http://localhost:3100"))("/sign-in.data", { Host: "127.0.0.1:3100", Origin: "http://127.0.0.1:3100" });
+    expect(loopback.url).toBe("http://127.0.0.1:3100/sign-in.data");
+    const own = await get("/sign-in.data", { Host: "10.0.0.7:8080", Origin: "https://shop.example.test" });
+    expect(own.url).toBe("https://shop.example.test/sign-in.data");
+  });
+
+  it("leaves a null or malformed Origin untouched (React Router's bare 400, safe)", async () => {
+    const get = await start("https://shop.example.test");
+    for (const origin of ["null", "not a url", "ftp://x.example", "https://x.example/path", "https://X.example"]) {
+      expect((await get("/", { Host: "10.0.0.7:8080", Origin: origin })).url, origin).toBe("http://10.0.0.7:8080/");
+    }
   });
 
   it("never reads X-Forwarded-Proto or X-Forwarded-Host from the peer", async () => {

@@ -61,7 +61,9 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const production = isProduction(env);
   const problems: string[] = [];
   const apiBaseUrl = (env.API_BASE_URL ?? (production ? "" : "http://localhost:5080")).replace(/\/+$/, "");
-  const publicOrigin = (env.PUBLIC_ORIGIN ?? (production ? "" : "http://localhost:3000")).replace(/\/+$/, "");
+  const publicOriginRaw = (env.PUBLIC_ORIGIN ?? (production ? "" : "http://localhost:3000")).replace(/\/+$/, "");
+  // The canonical form (lower-case host, default port dropped): a Origin header from the browser is always canonical, so a raw "https://Shop.example.test" or ":443" would otherwise refuse every form post (review LOW-2).
+  const publicOrigin = /^https?:\/\/[^/]+$/.test(publicOriginRaw) ? (() => { try { return new URL(publicOriginRaw).origin; } catch { return publicOriginRaw; } })() : publicOriginRaw;
   const secret = env.SESSION_COOKIE_SECRET ?? (production ? "" : DEV_SECRET);
   const fwdKey = env.WEB_FORWARDING_KEY ?? (production ? "" : DEV_FORWARDING_KEY);
 
