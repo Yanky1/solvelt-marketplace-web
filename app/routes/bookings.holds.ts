@@ -48,7 +48,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
   const key = /^[A-Za-z0-9\-_.:]{8,100}$/.test(String(form.get("key") ?? "")) ? String(form.get("key")) : newHoldKey();
   try {
-    const booking = await api.holdBooking(apiCtx(request, context, session), body, key);
+    const { booking } = await api.holdBooking(apiCtx(request, context, session), body, key);
     return redirect(`/bookings/${encodeURIComponent(booking.id)}`, { headers: privateHeaders });
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return signInRedirect(new Request(new URL(returnTo, request.url)));

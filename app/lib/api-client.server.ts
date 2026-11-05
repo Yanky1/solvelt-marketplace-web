@@ -172,7 +172,8 @@ export const api = {
   /** Public: available times (the BFF forwards only the allow-listed query). */
   serviceAvailability: (ctx: ApiRequestContext, listingId: string, query: string) => call<Availability>(ctx, `/api/v1/services/${pid(listingId)}/availability?${query}`),
   serviceOptions: (ctx: ApiRequestContext, listingId: string) => call<ServiceOptions>(ctx, `/api/v1/services/${pid(listingId)}/options`),
-  holdBooking: (ctx: ApiRequestContext, b: HoldBody, key: string) => call<BookingView>(ctx, "/api/v1/bookings/holds", b, undefined, { "Idempotency-Key": key }),
+  /** The API answers `201 { created: true, booking }` (`200 { created: false, booking }` for a repeated key): docs/API.md, Bookings. */
+  holdBooking: (ctx: ApiRequestContext, b: HoldBody, key: string) => call<{ created: boolean; booking: BookingView }>(ctx, "/api/v1/bookings/holds", b, undefined, { "Idempotency-Key": key }),
   bookings: (ctx: ApiRequestContext) => call<{ bookings: BookingView[] }>(ctx, "/api/v1/bookings"),
   booking: (ctx: ApiRequestContext, id: string) => call<BookingView>(ctx, `/api/v1/bookings/${pid(id)}`),
   checkoutBooking: (ctx: ApiRequestContext, id: string, b: { intake?: { id: string; answer: string }[]; phone?: string }) => call<{ booking: BookingView; payment: BookingPayment }>(ctx, `/api/v1/bookings/${pid(id)}/checkout`, b),

@@ -807,13 +807,13 @@ http.createServer(async (req, res) => {
       const key = String(req.headers["idempotency-key"] ?? "");
       if (!/^[A-Za-z0-9\-_.:]{8,100}$/.test(key)) return send(res, 422, { code: "validation_failed" });
       const seen = [...bookingsDb.values()].find((b) => b.owner === owner.id && b.key === key);
-      if (seen) return send(res, 200, bookingView(seen));
+      if (seen) return send(res, 200, { created: false, booking: bookingView(seen) });
       if (body.location === "customer" && !(body.address?.line1 && body.address?.postalCode)) return send(res, 422, { code: "validation_failed", errors: { address: "required" } });
       if (new Date(body.start).getUTCDate() === new Date(slotAt(3, 14)).getUTCDate() && new Date(body.start).getUTCHours() === 14 && Date.parse(body.start) > Date.parse(slotAt(2, 20))) return send(res, 409, { code: "slot_unavailable" });   // the last offered time is always "taken meanwhile"
       const id = randomBytes(8).toString("hex").replace(/^(.{8})(.{4})(.{4})$/, "$1-$2-$3");
       const b = { id: `00000000-0000-4000-8000-${randomBytes(6).toString("hex")}`, owner: owner.id, key, number: `BK-MOCK-${id.slice(0, 4).toUpperCase()}`, listingId: String(body.listingId), status: "Hold", location: body.location, startAt: body.start, endAt: new Date(Date.parse(body.start) + 4 * 3600000).toISOString(), holdExpiresAt: new Date(Date.now() + 10 * 60000).toISOString(), createdAt: new Date().toISOString() };
       bookingsDb.set(b.id, b);
-      return send(res, 201, bookingView(b));
+      return send(res, 201, { created: true, booking: bookingView(b) });   // the real API wraps it (docs/API.md); a bare booking here once hid a /bookings/undefined redirect
     }
     if (path === "/api/v1/bookings" && req.method === "GET") return send(res, 200, { bookings: [...bookingsDb.values()].filter((b) => b.owner === owner.id && b.status !== "Failed").reverse().map(bookingView) });
     const bm = /^\/api\/v1\/bookings\/([A-Za-z0-9-]+)(?:\/(checkout|cancel|cancel-preview|reschedule|proposal|acknowledge-reschedule|calendar\.ics|extra-charge\/accept|extra-charge\/decline))?$/.exec(path);
