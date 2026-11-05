@@ -482,7 +482,8 @@ http.createServer(async (req, res) => {
   if (rvPhoto && req.method === "GET") {
     const owner = [...reviews.values()].find((r) => r.photos.some((p) => p.id === rvPhoto[1]));
     if (!owner || owner.status !== "published") return send(res, 404, { code: "not_found", message: "Not found." });
-    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": PHOTO.length, "Cache-Control": "public, max-age=86400" });
+    // as the real API: five minutes, must revalidate, an ETag (the photo id never changes its bytes)
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": PHOTO.length, "Cache-Control": "public, max-age=300, must-revalidate", ETag: `"${rvPhoto[1]}"` });
     return res.end(PHOTO);
   }
   const rvw = /^\/api\/v1\/reviews(?:\/(eligible)|\/([^/]+?)(?:\/(helpful|report|reply\/report|photos)(?:\/([^/]+))?)?)?$/.exec(path);

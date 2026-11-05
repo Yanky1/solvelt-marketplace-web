@@ -137,10 +137,18 @@ test("another buyer can mark a review helpful and report it, the author cannot, 
   await expect(other.getByText("Reply from the seller")).toBeVisible();
   await expect(other.getByText("Thank you, see you soon!")).toBeVisible();
   const photoSrc = (await other.getByRole("img", { name: /From the review by/ }).getAttribute("src"))!;
+  // the picture is cached for minutes, not an hour, and revalidated cheaply while it is shown
+  const shown = await other.request.get(photoSrc);
+  expect(shown.status()).toBe(200);
+  expect(shown.headers()["cache-control"]).toBe("public, max-age=300, must-revalidate");
+  const etag = shown.headers()["etag"]!;
+  expect(etag).toMatch(/^"[\w-]+"$/);
+  expect((await other.request.get(photoSrc, { headers: { "if-none-match": etag } })).status()).toBe(304);
   await page.request.get(`${MOCK}/__test/review-set?id=${reviewId}&status=hidden`);
   await other.goto(PDP);
   await expect(other.getByText("No reviews yet.")).toBeVisible();
   expect((await other.request.get(photoSrc)).status()).toBe(404);
+  expect((await other.request.get(photoSrc, { headers: { "if-none-match": etag } })).status()).toBe(404);   // a cache that holds it is told it is gone, never "unchanged"
   await ctx.close();
 });
 
