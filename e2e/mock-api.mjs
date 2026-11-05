@@ -302,7 +302,9 @@ http.createServer(async (req, res) => {
       if (id && (!t || t.userId !== u.id)) return send(res, 404, { code: "not_found" });
       if (!t) {
         id = randomBytes(6).toString("hex");
-        t = { userId: u.id, kind: body.listingId ? "product" : "order", subject: body.listingId ? "Classic challah" : `Order ${body.orderNumber}`, sellerName: "Challah Corner", orderNumber: body.orderNumber ?? null, listingId: body.listingId ?? null, messages: [] };
+        t = body.marketplaceBookingId
+          ? { userId: u.id, kind: "booking", subject: `Booking ${body.marketplaceBookingId}`, sellerName: "Studio Shalom", orderNumber: null, listingId: null, marketplaceBookingId: body.marketplaceBookingId, messages: [] }
+          : { userId: u.id, kind: body.listingId ? "product" : "order", subject: body.listingId ? "Classic challah" : `Order ${body.orderNumber}`, sellerName: "Challah Corner", orderNumber: body.orderNumber ?? null, listingId: body.listingId ?? null, messages: [] };
         threads.set(id, t);
       }
       t.messages.push({ id: `${id}-${t.messages.length + 1}`, direction: "buyer", status: "pending", sentAt: new Date().toISOString(), read: true, reported: false, hidden: false, text, attachments: [] });
@@ -324,12 +326,12 @@ http.createServer(async (req, res) => {
     if (!mm[1]) {
       const list = mine().sort((a, b) => lastOf(b[1]).sentAt.localeCompare(lastOf(a[1]).sentAt));
       const unread = (t) => t.messages.filter((m) => m.direction === "seller" && !m.read).length;
-      return send(res, 200, { unreadCount: list.reduce((n, [, t]) => n + unread(t), 0), threads: list.map(([id, t]) => ({ id, kind: t.kind, subject: t.subject, sellerName: t.sellerName, orderNumber: t.orderNumber, listingId: t.listingId, lastMessageAt: lastOf(t).sentAt, unreadCount: unread(t), preview: lastOf(t).text })), next: null });
+      return send(res, 200, { unreadCount: list.reduce((n, [, t]) => n + unread(t), 0), threads: list.map(([id, t]) => ({ id, kind: t.kind, subject: t.subject, sellerName: t.sellerName, orderNumber: t.orderNumber, listingId: t.listingId, marketplaceBookingId: t.marketplaceBookingId ?? null, lastMessageAt: lastOf(t).sentAt, unreadCount: unread(t), preview: lastOf(t).text })), next: null });
     }
     const t = threads.get(mm[1]);
     if (!t || t.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found" });
     if (mm[2]) { t.messages.forEach((m) => { if (m.direction === "seller") m.read = true; }); return send(res, 204); }
-    return send(res, 200, { thread: { id: mm[1], kind: t.kind, subject: t.subject, sellerName: t.sellerName, listingId: t.listingId }, messages: t.messages, older: null });
+    return send(res, 200, { thread: { id: mm[1], kind: t.kind, subject: t.subject, sellerName: t.sellerName, listingId: t.listingId, marketplaceBookingId: t.marketplaceBookingId ?? null }, messages: t.messages, older: null });
   }
 
   // ---- notifications (the unsubscribe token is "U.<email>.<category|all>": the mock does not sign) ----

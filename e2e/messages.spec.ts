@@ -74,6 +74,19 @@ test("writing to a seller: a warning for contact details keeps the text and need
   await expect(page.getByText("Thanks!")).toBeVisible();
 });
 
+test("a booking thread starts from a booking, names the provider, and links back to the booking", async ({ page }) => {
+  await signedIn(page, "mbook");
+  await page.goto("/account/messages/new?booking=BK-E2E-1");
+  await waitHydrated(page);
+  await expect(page.getByRole("heading", { name: "Message the provider about booking BK-E2E-1" })).toBeVisible();
+  await page.getByLabel("Your message").fill("Can we move the start by ten minutes?");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect(page).toHaveURL(/\/account\/messages\/[a-f0-9]+$/);
+  await expect(page.getByRole("link", { name: "View this booking" })).toHaveAttribute("href", "/bookings/BK-E2E-1");
+  await page.goto("/account/messages/new?booking=%3Cx%3E");
+  await expect(page.getByText("Not found").first()).toBeVisible();
+});
+
 test("a message from a seller can be reported once with a reason", async ({ page }) => {
   const email = await signedIn(page, "mreport");
   const id = await seedThread(page, email);

@@ -73,6 +73,7 @@ export default function Thread({ loaderData, actionData }: Route.ComponentProps)
       <AccountNav />
       <Breadcrumb items={[{ label: "Messages", to: "/account/messages" }, { label: view.thread.sellerName ?? "Seller" }]} />
       <h2>{view.thread.sellerName ?? "Seller"}: {view.thread.subject}</h2>
+      {view.thread.marketplaceBookingId && <p><Link to={`/bookings/${encodeURIComponent(view.thread.marketplaceBookingId)}`}>View this booking</Link></p>}
       {reported && <FormMessage kind="ok">Thank you. We sent your report to our moderators.</FormMessage>}
       {view.older && <Link className="btn btn-secondary" to={`?before=${encodeURIComponent(view.older)}`}>Earlier messages</Link>}
       <ol className="stack" style={{ listStyle: "none", padding: 0 }} aria-label="Messages">
