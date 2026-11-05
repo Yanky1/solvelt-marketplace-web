@@ -51,6 +51,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 1,
   retries: 0, // flakiness must show up, like everywhere else
   timeout: 120_000,
+  globalTimeout: process.env.CI ? 200 * 60_000 : undefined,   // the job has 240 minutes: stop the tests first, so the report and the artifact still happen with what was swept
   expect: { timeout: 5_000, toHaveScreenshot: { maxDiffPixelRatio: 0.02, animations: "disabled", caret: "hide" } },
   reporter: [["list"], ["html", { open: "never", outputFolder: "sweep-out/playwright-report" }], ["json", { outputFile: "sweep-out/playwright-results.json" }]],
   use: { baseURL: SWEEP_URL, trace: "off", screenshot: "off" },

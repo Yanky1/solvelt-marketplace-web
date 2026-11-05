@@ -15,7 +15,9 @@ const world: World | null = existsSync(worldFile) ? (JSON.parse(readFileSync(wor
 const { visits, skipped, unclassified } = plan();
 const slug = (s: string) => (s === "*" ? "not-found" : s.replace(/^\//, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "home");
 
-test("the sweep has its world, and every route in the router is classified", async (_args, info) => {
+// (Playwright wants the first argument destructured, and the linter wants no empty pattern: so a fixture that is also worth a check is taken)
+test("the sweep has its world, and every route in the router is classified", async ({ baseURL }, info) => {
+  expect(baseURL, "no baseURL: SWEEP_WEB_URL is not set").toBeTruthy();
   expect(world, "scripts/sweep-setup.mjs has not run (no sweep-out/world.json)").not.toBeNull();
   expect(unclassified, "routes in the router that e2e/sweep/routes.ts does not classify").toEqual([]);
   info.annotations.push({ type: "skipped-routes", description: String(skipped.length) });
