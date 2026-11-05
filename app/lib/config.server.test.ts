@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEV_FORWARDING_KEY, isProduction, loadConfig, weakSecretReason } from "./config.server";
+import { DEV_FORWARDING_KEY, isProduction, loadConfig, weakSecretReason, stripeScriptOrigins } from "./config.server";
 
 const SECRET = "Xk9#Qz3vLp7Xw2Rt8YbN4mHc6Jd1Fs5GaU0e";
 const KEY = "Tn4Wb8Ke2Vr6Pj0Hs3Dy7Lc9Mf1Ga5QxZu8o";
@@ -75,4 +75,28 @@ describe("REAUTH_WINDOW_SECONDS", () => {
 
 describe("weakSecretReason", () => {
   it("accepts a random-looking secret", () => { expect(weakSecretReason(SECRET)).toBeNull(); });
+});
+
+describe("STRIPE_JS_URL (review M1: Stripe.js is loaded from Stripe's origin only)", () => {
+  const stub = "http://localhost:5080/__stripe/v3.js";
+  it("defaults to Stripe's own script and, in production, refuses any other origin", () => {
+    expect(loadConfig(good).stripeJsUrl).toBe("https://js.stripe.com/v3");
+    for (const evil of ["https://evil.example/v3", "https://js.stripe.com.evil.example/v3", "http://js.stripe.com/v3", "https://js-stripe.com/v3", stub]) fails({ ...good, STRIPE_JS_URL: evil }, /STRIPE_JS_URL/);
+    expect(loadConfig({ ...good, STRIPE_JS_URL: "https://js.stripe.com/basil/stripe.js" }).stripeJsUrl).toBe("https://js.stripe.com/basil/stripe.js");
+  });
+  it("lets the E2E stand-in through only with ALLOW_STRIPE_STUB=1 AND a localhost site", () => {
+    const local = { ...good, PUBLIC_ORIGIN: "http://localhost:3100", STRIPE_JS_URL: stub };
+    fails(local, /STRIPE_JS_URL/);                                                    // localhost alone is not enough
+    fails({ ...good, ALLOW_STRIPE_STUB: "1", STRIPE_JS_URL: stub }, /STRIPE_JS_URL/);  // the flag alone (a real https site) is not enough either
+    fails({ ...local, ALLOW_STRIPE_STUB: "true" }, /STRIPE_JS_URL/);
+    expect(loadConfig({ ...local, ALLOW_STRIPE_STUB: "1" }).stripeJsUrl).toBe(stub);
+  });
+  it("is free outside production, but never plain http to a remote host", () => {
+    expect(loadConfig({ NODE_ENV: "development", STRIPE_JS_URL: stub }).stripeJsUrl).toBe(stub);
+    expect(() => loadConfig({ NODE_ENV: "development", STRIPE_JS_URL: "http://evil.example/v3" })).toThrow(/STRIPE_JS_URL/);
+  });
+  it("builds the CSP script origins from the validated value: Stripe's own, plus the stand-in only when configured", () => {
+    expect(stripeScriptOrigins("https://js.stripe.com/v3")).toEqual(["https://js.stripe.com"]);
+    expect(stripeScriptOrigins(stub)).toEqual(["https://js.stripe.com", "http://localhost:5080"]);
+  });
 });

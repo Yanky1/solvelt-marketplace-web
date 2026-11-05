@@ -3,11 +3,14 @@ import { createReadableStreamFromReadable } from "@react-router/node";
 import { isbot } from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type AppLoadContext, type EntryContext } from "react-router";
-import { getConfig } from "~/lib/config.server";
+import { getConfig, stripeScriptOrigins as originsFor } from "~/lib/config.server";
 import { NonceContext } from "~/lib/nonce";
 
 // Fail at start-up (module load) when production config is missing.
-getConfig();
+const config = getConfig();
+
+/** The script/frame origins the checkout page may load Stripe.js from, from the VALIDATED config (server.js builds the CSP from this, never from process.env). */
+export const stripeScriptOrigins: string[] = originsFor(config.stripeJsUrl);
 
 const ABORT_DELAY_MS = 10_000;
 

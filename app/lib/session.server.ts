@@ -22,7 +22,7 @@ export interface SessionData {
   /** How many items the cart held when the server last saw it: the header shows it without an API call on every page. */
   cn?: number;
   /** The guest order the browser has just placed: its number and order-access token (sealed, HttpOnly), so the confirmation page can follow it without the token ever being in the page or the URL (decision M3W-07). */
-  go?: { n: string; t: string };
+  go?: { n: string; t: string; e?: number };
 }
 
 export interface PasskeyBinding {
@@ -60,6 +60,7 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.cart !== undefined && (typeof d.cart !== "string" || d.cart.length === 0 || d.cart.length > 100)) return null;
     const go = d.go;
     if (go !== undefined && (typeof go !== "object" || go === null || typeof go.n !== "string" || go.n.length === 0 || go.n.length > 40 || typeof go.t !== "string" || go.t.length === 0 || go.t.length > 120)) return null;
+    if (go !== undefined && go.e !== undefined && (typeof go.e !== "number" || !Number.isFinite(go.e) || go.e < 0)) return null;
     if (d.cn !== undefined && (typeof d.cn !== "number" || !Number.isInteger(d.cn) || d.cn < 0 || d.cn > 100_000)) return null;
     const pk = d.pk;
     if (pk !== undefined && (typeof pk !== "object" || pk === null || typeof pk.cid !== "string" || typeof pk.exp !== "number" || (pk.kind !== "create" && pk.kind !== "get"))) return null;
@@ -71,7 +72,7 @@ export function open(value: string, secret: string, now = Date.now() / 1000): Se
     if (d.rf !== undefined) out.rf = d.rf;
     if (d.cart !== undefined) out.cart = d.cart;
     if (d.cn !== undefined) out.cn = d.cn;
-    if (go !== undefined) out.go = { n: go.n, t: go.t };
+    if (go !== undefined) out.go = { n: go.n, t: go.t, ...(go.e !== undefined ? { e: go.e } : {}) };
     return out;
   } catch {
     return null;

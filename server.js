@@ -7,10 +7,9 @@ import express from "express";
 // Importing the build runs start-up config validation (fails fast in production).
 const build = await import("./build/server/index.js");
 const https = (process.env.PUBLIC_ORIGIN ?? "").startsWith("https://");
-// Stripe.js (the Payment Element) is the one third-party script on the site, loaded only by the checkout page. Its origin comes from STRIPE_JS_URL (default Stripe's own); E2E points it at the mock API.
-const stripeJsUrl = process.env.STRIPE_JS_URL ?? "https://js.stripe.com/v3";
-const stripeOrigin = (() => { try { return new URL(stripeJsUrl).origin; } catch { return "https://js.stripe.com"; } })();
-const stripeScript = [...new Set(["https://js.stripe.com", stripeOrigin])].join(" ");
+// Stripe.js (the Payment Element) is the one third-party script on the site, loaded only by the checkout page. Its origins come from the VALIDATED config (entry.server.tsx), not from process.env:
+// in production that is js.stripe.com only (the E2E run alone may add its local stand-in, see config.server.ts).
+const stripeScript = build.entry.module.stripeScriptOrigins.join(" ");
 
 const app = express();
 app.disable("x-powered-by");
@@ -37,7 +36,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   // Pages whose URL carries a one-time token never leak it through Referer.
-  const tokenPage = /^\/(verify-email|reset-password|unsubscribe)(\.data)?\/?$/.test(req.path);
+  const tokenPage = /^\/(verify-email|reset-password|unsubscribe|orders\/[^/]+)(\.data)?\/?$/.test(req.path);
   res.setHeader("Referrer-Policy", tokenPage ? "no-referrer" : "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(self), publickey-credentials-get=(self), publickey-credentials-create=(self)");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");

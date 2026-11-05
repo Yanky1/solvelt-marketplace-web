@@ -60,3 +60,56 @@ export const ORDER_STATUS_TEXT: Record<string, { title: string; text: string; to
   expired: { title: "This checkout expired", text: "Nothing was charged. Please go back to your cart and check out again.", tone: "bad" },
   superseded: { title: "This checkout was replaced", text: "You started a newer checkout of the same cart. Please use the latest one.", tone: "bad" },
 };
+
+// ---- the confirmation page and a guest's order-access token (review M2, M3, L3, L4) ----
+
+/** Statuses an order never leaves: once the page has shown one, a guest's token has done its job (the emailed link remains). */
+export const FINAL_ORDER_STATUSES: ReadonlySet<string> = new Set(["placed", "failed", "expired", "superseded"]);
+/** Statuses the confirmation page keeps polling for. */
+export const WAITING_ORDER_STATUSES: ReadonlySet<string> = new Set(["pending_payment", "payment_processing", "paid"]);
+
+/** Query parameters Stripe (or anyone) may append to the return address: none of them is believed or kept. */
+const RETURN_PARAMS = ["payment_intent", "payment_intent_client_secret", "redirect_status"] as const;
+export const hasReturnParams = (url: URL): boolean => RETURN_PARAMS.some((p) => url.searchParams.has(p));
+
+export interface GuestOrderGrant { n: string; t: string; e?: number }
+
+/** The token for THIS order, or undefined: it is bound to one order number and to the expiry the API gave (unix seconds). */
+export function guestTokenFor(go: GuestOrderGrant | undefined, number: string, now = Date.now() / 1000): string | undefined {
+  if (!go || go.n !== number) return undefined;
+  if (go.e !== undefined && go.e <= now) return undefined;
+  return go.t;
+}
+
+/** The API's `guestOrderTokenExpiresAt` (ISO) in unix seconds; a missing or unreadable value means one day, never longer than the API's own date. */
+export function guestExpiry(iso: string | undefined, now = Date.now() / 1000): number {
+  const t = iso ? Date.parse(iso) / 1000 : NaN;
+  const day = Math.floor(now) + 24 * 3600;
+  return Number.isFinite(t) ? Math.min(Math.floor(t), Math.floor(now) + 7 * 24 * 3600) : day;
+}
+
+/** A token as the API issues it (url-safe characters, bounded): anything else in a link is not stored. */
+export const looksLikeGuestToken = (t: unknown): t is string => typeof t === "string" && /^[A-Za-z0-9._~-]{16,120}$/.test(t);
+
+export const POLL_INTERVAL_MS = 3000;
+export const MAX_POLLS = 40;   // about two minutes
+
+/**
+ * Polls while an order is not final: every interval asks `revalidate` (only when the router is idle), and stops for good after `maxPolls` ticks. The tick COUNT lives here, outside any component
+ * state, so a revalidation that flips the router's state never restarts the count (review M2: it did, and the page polled for ever on payment_processing).
+ */
+export function startPolling(revalidate: () => void, isIdle: () => boolean, intervalMs = POLL_INTERVAL_MS, maxPolls = MAX_POLLS): () => void {
+  let ticks = 0;
+  const t = setInterval(() => {
+    if (++ticks > maxPolls) { clearInterval(t); return; }
+    if (isIdle()) revalidate();
+  }, intervalMs);
+  return () => clearInterval(t);
+}
+
+/**
+ * The publishable key the API hands over with a PaymentIntent. It must look like one (`pk_test_` or `pk_live_`), and outside production only a TEST key is ever used: a live key in a development or
+ * test run is a misconfiguration that must not put the Payment Element on a real account (review: pk_test guard; decision M3W-09).
+ */
+export const publishableKeyOk = (key: string | null | undefined, production: boolean): key is string =>
+  typeof key === "string" && (production ? /^pk_(test|live)_[A-Za-z0-9]{8,200}$/ : /^pk_test_[A-Za-z0-9]{8,200}$/).test(key);

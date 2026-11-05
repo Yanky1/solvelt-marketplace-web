@@ -1,3 +1,4 @@
+import { CART_TOKEN_HEADER, GUEST_ORDER_HEADER } from "./api-headers";
 import { apiFetch, type ApiRequestContext } from "./api.server";
 import { getConfig } from "./config.server";
 import { isSafeId } from "./passkey.server";
@@ -110,7 +111,7 @@ export interface CartGroup { sellerId: string; sellerName: string; brandId: stri
 export interface Cart { currency: string; groups: CartGroup[]; itemCount: number; subtotalCents: number; canCheckout: boolean; cartToken?: string }
 export const EMPTY_CART: Cart = { currency: "USD", groups: [], itemCount: 0, subtotalCents: 0, canCheckout: false };
 /** The guest cart token travels in a header, and only while nobody is signed in (a signed-in buyer's cart is the account's). */
-const cartHeaders = (ctx: ApiRequestContext, cartToken?: string): Record<string, string> | undefined => (!ctx.sessionToken && cartToken ? { "X-Cart-Token": cartToken } : undefined);
+export const cartHeaders = (ctx: ApiRequestContext, cartToken?: string): Record<string, string> | undefined => (!ctx.sessionToken && cartToken ? { [CART_TOKEN_HEADER]: cartToken } : undefined);
 
 // ---- checkout (M3; API repo docs/API.md "Checkout") ----
 export interface ShippingOption { speed: string; priceCents: number; free: boolean; estimate: { earliest: string; latest: string } }
@@ -129,7 +130,7 @@ export interface GroupSelection { sellerId: string; brandId: string; speed?: str
 export interface CheckoutAddress { name: string; line1: string; line2?: string; city: string; region?: string; postalCode: string; country: string; phone?: string }
 export interface Placed { orderNumber: string; status: string; quote: Quote; payment: { provider: string; clientSecret: string; publishableKey: string | null } | null; guestOrderToken?: string; guestOrderTokenExpiresAt?: string }
 export interface CheckoutOrder { number: string; status: string; currency?: string; totalCents?: number; createdAt: string; paidAt?: string | null; claimed?: boolean; groups?: { sellerName: string; brandName: string; deliveryKind: string; shippingSpeed: string | null; localDate: string | null; totalCents: number; lines: { title: string; variantName: string; quantity: number; lineTotalCents: number }[] }[] }
-const guestOrderHeader = (token?: string): Record<string, string> | undefined => (token ? { "X-Guest-Order": token } : undefined);
+const guestOrderHeader = (token?: string): Record<string, string> | undefined => (token ? { [GUEST_ORDER_HEADER]: token } : undefined);
 
 export const api = {
   threads: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>

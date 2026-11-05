@@ -123,3 +123,14 @@ test("built JavaScript and CSS are compressed, HTML and data responses are not (
     expect(res.headers()["content-encoding"], path).toBeUndefined();
   }
 });
+
+test("script-src is exactly self, the nonce, Stripe's origin and (E2E only) the local stand-in: nothing else", async ({ request }) => {
+  const csp = (await request.get("/")).headers()["content-security-policy"] ?? "";
+  const directive = (name: string) => (csp.split(";").map((d) => d.trim()).find((d) => d.startsWith(name + " ")) ?? "").split(/\s+/).slice(1);
+  const script = directive("script-src");
+  expect(script.filter((t) => !t.startsWith("'nonce-"))).toEqual(["'self'", "https://js.stripe.com", "http://localhost:5080"]);
+  expect(script.filter((t) => t.startsWith("'nonce-"))).toHaveLength(1);
+  expect(directive("frame-src")).toEqual(["https://js.stripe.com", "http://localhost:5080", "https://hooks.stripe.com"]);
+  expect(directive("connect-src")).toEqual(["'self'", "https://api.stripe.com"]);
+  expect(directive("img-src")).toEqual(["'self'", "data:", "https://*.stripe.com"]);
+});

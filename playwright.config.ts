@@ -33,6 +33,7 @@ export default defineConfig({
         SESSION_COOKIE_SECRET: "Pq8Vn2Ws6Zk0Jd4Lc9Rb3Hm7Ty1Fg5XeA8u",
         WEB_FORWARDING_KEY: FWD_KEY,
         STRIPE_JS_URL: "http://localhost:5080/__stripe/v3.js", // a stand-in for Stripe.js served by the mock API
+        ALLOW_STRIPE_STUB: "1", // the one way a non-Stripe script origin is accepted in a production build, and only when served from localhost
       },
     },
   ],

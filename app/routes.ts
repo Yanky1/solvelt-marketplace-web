@@ -44,6 +44,7 @@ export default [
   route("cart/items", "routes/cart.items.ts"),
   route("checkout", "routes/checkout.tsx"),
   route("checkout/confirmation/:number", "routes/checkout.confirmation.$number.tsx"),
+  route("orders/:number", "routes/orders.$number.tsx"),
   route("img/:id", "routes/img.ts"),
   route("styleguide", "routes/styleguide.tsx"),
   route("*", "routes/not-found.tsx"),

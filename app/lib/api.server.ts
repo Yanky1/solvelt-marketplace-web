@@ -1,3 +1,4 @@
+import { ALLOWED_API_HEADERS } from "./api-headers";
 import { createHmac } from "node:crypto";
 import { resolveClientIp } from "./client-ip.server";
 import type { AppConfig } from "./config.server";
@@ -34,7 +35,7 @@ export interface ApiCallOptions {
 /** The ONLY function that talks to the marketplace API. Client-supplied forwarding headers are never passed through. */
 export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxies" | "webForwardingKey" | "production">, ctx: ApiRequestContext, path: string, opts: ApiCallOptions = {}): Promise<Response> {
   const headers = new Headers({ Accept: "application/json" });
-  for (const [k, v] of Object.entries(opts.headers ?? {})) if (/^(idempotency-key|x-cart-token|x-guest-order)$/i.test(k)) headers.set(k, v);   // an allow-list: nothing else can be injected (the guest cart token is ours, from the sealed cookie)
+  for (const [k, v] of Object.entries(opts.headers ?? {})) if (ALLOWED_API_HEADERS.has(k.toLowerCase())) headers.set(k, v);   // an allow-list: nothing else can be injected (the guest cart token is ours, from the sealed cookie)
   if (opts.body !== undefined) headers.set("Content-Type", "application/json");
   if (ctx.sessionToken) headers.set("Authorization", `Bearer ${ctx.sessionToken}`);
   if (!ctx.socketAddress && !cfg.production) {

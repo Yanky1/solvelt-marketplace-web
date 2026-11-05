@@ -9,7 +9,7 @@ import { Button, Input, Select } from "~/components/ui/form";
 import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api, type Address, type Placed, type Quote } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, currentUser, formError, privateHeaders } from "~/lib/auth.server";
-import { carrierValue, deliveryField, estimateText, groupsOf, localValue, readCheckoutValues, readSelections, selectedValue, validateCheckout, type CheckoutValues } from "~/lib/checkout";
+import { carrierValue, deliveryField, estimateText, groupsOf, guestExpiry, publishableKeyOk, localValue, readCheckoutValues, readSelections, selectedValue, validateCheckout, type CheckoutValues } from "~/lib/checkout";
 import { readCart } from "~/lib/cart.server";
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
@@ -79,9 +79,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     });
     // A guest's order-access token goes into the sealed cookie (never into the page): the confirmation page follows the order with it.
     const headers: Record<string, string> = { ...privateHeaders };
-    if (guest && placed.guestOrderToken) headers["Set-Cookie"] = sessionCookie({ ...session, go: { n: placed.orderNumber, t: placed.guestOrderToken } }, getConfig());
-    const { guestOrderToken: _t, ...publicPlaced } = placed;
+    if (guest && placed.guestOrderToken) headers["Set-Cookie"] = sessionCookie({ ...session, go: { n: placed.orderNumber, t: placed.guestOrderToken, e: guestExpiry(placed.guestOrderTokenExpiresAt) } }, getConfig());
+    const { guestOrderToken: _t, ...rest } = placed;
     void _t;
+    // a key that is not a publishable test/live key (or a live key outside production) is never handed to the browser: the page then says payments are unavailable
+    const publicPlaced = rest.payment && !publishableKeyOk(rest.payment.publishableKey, getConfig().production) ? { ...rest, payment: { ...rest.payment, publishableKey: null } } : rest;
     return formError({ step: "pay", values, placed: publicPlaced } satisfies Result, 200, headers);
   } catch (e) {
     if (e instanceof ApiError) {

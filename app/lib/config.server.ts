@@ -74,12 +74,17 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   try {
     const u = new URL(stripeJsUrl);
     if (u.protocol !== "https:" && !(u.protocol === "http:" && LOCAL_HOSTS.has(u.hostname)) ) problems.push("STRIPE_JS_URL must be https (http only for localhost)");
-    if (production && u.origin !== "https://js.stripe.com" && !LOCAL_HOSTS.has(hostnameOf(publicOrigin) ?? "")) problems.push("STRIPE_JS_URL must be https://js.stripe.com/... in production");
+    // Production loads Stripe.js from Stripe's own origin only. The ONE exception is the E2E run: it must say so with ALLOW_STRIPE_STUB=1 AND be served from localhost (review L1).
+    const stubAllowed = env.ALLOW_STRIPE_STUB === "1" && LOCAL_HOSTS.has(hostnameOf(publicOrigin) ?? "");
+    if (production && u.origin !== "https://js.stripe.com" && !stubAllowed) problems.push("STRIPE_JS_URL must be https://js.stripe.com/... in production");
   } catch { problems.push("STRIPE_JS_URL must be a URL"); }
 
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
   return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, production };
 }
+
+/** The origins the checkout page may load Stripe.js from (script-src and frame-src): Stripe's own, plus the configured one when it differs (only possible for the E2E stand-in, see loadConfig). */
+export const stripeScriptOrigins = (stripeJsUrl: string): string[] => [...new Set(["https://js.stripe.com", new URL(stripeJsUrl).origin])];
 
 let cached: AppConfig | undefined;
 export function getConfig(): AppConfig {
