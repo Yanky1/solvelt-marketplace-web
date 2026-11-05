@@ -8,6 +8,7 @@ import { LinkButton } from "~/components/ui/form";
 import { useNonce } from "~/lib/nonce";
 import { isStaffPath } from "~/lib/staff-path";
 import { apiCtx, currentUser, ensureVisitor } from "~/lib/auth.server";
+import { healCartCount } from "~/lib/cart.server";
 import { demoMode } from "~/lib/demo.server";
 import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
 import { MergeGuestViews } from "~/components/RecentlyViewed";
@@ -30,13 +31,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
   const { user, expired } = await currentUser(request, context);
   const visitor = ensureVisitor(request, expired);
+  // A signed-in session with no remembered item count (the cart call at sign-in failed) is healed here, once: see healCartCount.
+  const healed = await healCartCount(request, context, visitor.session, user !== null);
   return data(
     {
       // Theme is a cookie, so SSR can emit data-theme and there is no flash of the wrong theme.
       theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref,
       csrf: visitor.csrf,
       // The item count the cart last reported (kept in the sealed session cookie, so no API call per page); never the guest cart token.
-      cartCount: visitor.session.cn ?? 0,
+      cartCount: healed?.cn ?? visitor.session.cn ?? 0,
       // Only what the header needs; never the token, email or addresses.
       // Opaque id (not secret) lets the browser notice a different or vanished user and clear user-scoped storage.
       user: user ? { id: user.id, displayName: user.displayName } : null,
@@ -44,7 +47,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       demo: await demoMode(apiCtx(request, context, null)),
     },
     // A new visitor (or a dead session) gets a fresh sealed cookie; the API token never leaves the server.
-    { headers: visitor.setCookie ? { "Set-Cookie": visitor.setCookie } : {} },
+    { headers: visitor.setCookie || healed ? { "Set-Cookie": (visitor.setCookie ?? healed?.setCookie) as string } : {} },
   );
 }
 

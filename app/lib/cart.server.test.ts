@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { EMPTY_CART, type Cart } from "./api-client.server";
-import { strip, cookieFor } from "./cart.server";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { EMPTY_CART, api, type Cart } from "./api-client.server";
+import { strip, cookieFor, healCartCount } from "./cart.server";
 import { newVisitor, open } from "./session.server";
 
 beforeAll(() => {
@@ -36,5 +36,37 @@ describe("cart helpers", () => {
   });
   it("without a session there is nothing to remember", () => {
     expect(cookieFor(null, cart({ cartToken: "x" }))).toEqual({});
+  });
+});
+
+describe("healCartCount", () => {
+  const req = () => new Request("http://localhost:3000/");
+  const ctx = () => ({ socketAddress: "127.0.0.1" }) as never;
+  const signedIn = { ...newVisitor(), token: "tok" };
+
+  it("asks the API once per request however many loaders ask, and remembers the count in the sealed cookie", async () => {
+    const spy = vi.spyOn(api, "cart").mockResolvedValue(cart({ itemCount: 3 }));
+    const c = ctx();
+    const [a, b] = await Promise.all([healCartCount(req(), c, signedIn, true), healCartCount(req(), c, signedIn, true)]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(a?.cn).toBe(3);
+    expect(b).toBe(a);
+    expect(valueOf(a!.setCookie)?.cn).toBe(3);
+    spy.mockRestore();
+  });
+
+  it("does nothing when the count is known, when nobody is signed in or when the session is a guest", async () => {
+    const spy = vi.spyOn(api, "cart").mockResolvedValue(cart({ itemCount: 3 }));
+    expect(await healCartCount(req(), ctx(), { ...signedIn, cn: 0 }, true)).toBeNull();
+    expect(await healCartCount(req(), ctx(), signedIn, false)).toBeNull();
+    expect(await healCartCount(req(), ctx(), newVisitor(), true)).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("a failing cart call heals nothing and never throws (the next page load tries again)", async () => {
+    const spy = vi.spyOn(api, "cart").mockRejectedValue(new Error("down"));
+    expect(await healCartCount(req(), ctx(), signedIn, true)).toBeNull();
+    spy.mockRestore();
   });
 });
