@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Form, Link, useLocation, useMatches, useRouteLoaderData } from "react-router";
 import { Logo } from "./Logo";
 import { Button } from "./ui/form";
+import { Badge } from "./ui/display";
 import { Modal } from "./ui/overlay";
 import type { loader as rootLoader } from "~/root";
 import type { ThemePref } from "~/lib/theme.server";
@@ -40,6 +41,7 @@ function ThemeSwitch({ theme }: { theme: ThemePref }) {
 export function Header() {
   const [open, setOpen] = useState(false);
   const user = useRootData()?.user;
+  const testMode = useRootData()?.demo?.badge === true;
   // a page that just emptied the cart (the paid confirmation) says so itself: the root loader ran against the old cookie in the same request
   const emptied = useMatches().some((m) => (m.data as { cartEmptied?: boolean } | undefined)?.cartEmptied === true);
   const rootCount = useRootData()?.cartCount ?? 0;
@@ -49,6 +51,7 @@ export function Header() {
       <div className="container topbar-inner">
         <Button className="nav-mobile-toggle" variant="ghost" aria-label="Open menu" onClick={() => setOpen(true)}>☰</Button>
         <Logo />
+        {testMode && <span className="test-mode" data-testid="test-mode-badge"><Badge tone="gold">TEST MODE</Badge></span>}
         <SearchBox />
         <nav className="nav-desktop" aria-label="Main">
           {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}

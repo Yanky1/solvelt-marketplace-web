@@ -80,3 +80,11 @@ describe("isCatalogKey (what may reach the API as a path segment)", () => {
   it.each(["classic-braided-challah", "11111111-1111-1111-1111-111111111111", "a", "A_b-c9", "a".repeat(160)])("accepts %s", (k) => expect(isCatalogKey(k)).toBe(true));
   it.each(["", "..", ".", "a/b", "a\\b", "a b", "a?b", "a#b", "%2e%2e", "a%2Fb", "-a", "_a", "a\u0000b", "a\nb", "é", "a".repeat(161)])("refuses %j", (k) => expect(isCatalogKey(k)).toBe(false));
 });
+
+describe("the demo flag of a listing (M9)", () => {
+  it("is true only for a real boolean true, and false when absent", () => {
+    expect(parseListingDetail({ ...good(), demo: true })!.demo).toBe(true);
+    for (const v of [false, undefined, "true", 1, null]) expect(parseListingDetail({ ...good(), demo: v })!.demo, String(v)).toBe(false);
+  });
+});
+

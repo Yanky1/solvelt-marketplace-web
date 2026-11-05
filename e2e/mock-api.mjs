@@ -8,6 +8,12 @@ import { catalogResponse, IMAGE_BAD, IMAGE_DOWN, imageInfo, variantInfo } from "
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
 
+// Test mode (M9). MOCK_DEMO=1 turns it on for this mock process only: the demo E2E starts its own mock and web server, so the default run stays in normal mode.
+const demoOn = process.env.MOCK_DEMO === "1";
+const demoData = new Set(); // userIds that have a demo batch
+const DEMO_COUNTS = { addresses: 1, carts: 1, cartLines: 3, orders: 3, bookings: 2, threads: 1, messages: 2, notifications: 5 };
+const ZERO_COUNTS = Object.fromEntries(Object.keys(DEMO_COUNTS).map((k) => [k, 0]));
+const demoCounts = (u) => (demoData.has(u.id) ? DEMO_COUNTS : ZERO_COUNTS);
 const users = new Map(); // email -> {id, email, displayName, password, verified}
 const sessions = new Map(); // token -> userId
 const addresses = new Map(); // addressId -> {userId, ...address}
@@ -212,6 +218,25 @@ http.createServer(async (req, res) => {
     if (!u || u.password !== body.password) { if (u) u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 400, { code: "invalid_token", message: "Invalid or expired" }); }
     u.verified = true; u.verifyToken = undefined;
     return send(res, 204);
+  }
+  if (path === "/api/v1/config" && req.method === "GET") return send(res, 200, { demoEnabled: demoOn });
+  if (path.startsWith("/api/v1/demo/")) {
+    if (!demoOn) return send(res, 404, { code: "not_found", message: "Not found" });          // while the flag is off every demo route is a 404, signed in or not
+    if (path === "/api/v1/demo/verify" && req.method === "POST") {
+      const u = users.get(String(body.email ?? "").toLowerCase());
+      if (u && (u.wrongPasswords ?? 0) >= 8) return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "60" });
+      if (!u || u.password !== body.password) { if (u) u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 401, { code: "invalid_credentials", message: "Invalid" }); }
+      u.verified = true; u.verifyToken = undefined;
+      return send(res, 204);
+    }
+    const du = userFor(req);
+    if (!du) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (path === "/api/v1/demo/status" && req.method === "GET") return send(res, 200, { hasDemoData: demoData.has(du.id), counts: demoCounts(du) });
+    if (path === "/api/v1/demo/fill" && req.method === "POST") {
+      const already = demoData.has(du.id); demoData.add(du.id);
+      return send(res, already ? 200 : 201, { batchId: randomBytes(8).toString("hex"), created: !already, counts: DEMO_COUNTS, notes: [] });
+    }
+    if (path === "/api/v1/demo/remove" && req.method === "POST") { const removed = demoCounts(du); demoData.delete(du.id); return send(res, 200, { removed }); }
   }
   if (path === "/api/v1/auth/sign-in" && req.method === "POST" && body.password === "trigger-429") return send(res, 429, { code: "rate_limited", message: "Slow down" }, { "Retry-After": "30" });
   if (path === "/api/v1/auth/sign-in" && req.method === "POST") {

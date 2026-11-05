@@ -39,6 +39,9 @@ for (let n = 1; n <= 26; n++) rows.push([`gift-box-${n}`, `Gift Box ${String(n).
 const unlisted = new Set(["retired-spice-gift-set"]); // 410
 const iso = (d) => new Date(Date.UTC(2026, 8, 1 + d, 9)).toISOString();
 
+/** Listings the mock portal marks as demo data (feed `demo: true`). */
+export const DEMO_SLUGS = new Set(["classic-braided-challah"]);
+
 const list = rows.map(([slug, title, type, brand, category, summary, description, variants, attrs, faqs, nImages], i) => {
   const b = brands.find((x) => x.slug === brand);
   const catPath = []; for (let c = categories.find((x) => x.slug === category); c; c = c.parent && categories.find((x) => x.slug === c.parent)) catPath.unshift({ id: gid(`cat:${c.slug}`), slug: c.slug, name: c.name });
@@ -48,7 +51,7 @@ const list = rows.map(([slug, title, type, brand, category, summary, description
     id: gid(`l:${slug}`), slug, type, title, summary, description,
     priceFromCents: Math.min(...buyable.map((v) => v.priceCents)), priceToCents: Math.max(...buyable.map((v) => v.priceCents)),
     compareAtFromCents: buyable.map((v) => v.compareAtCents).filter((x) => x && x > Math.min(...buyable.map((y) => y.priceCents))).sort((a, c) => a - c)[0] ?? null,
-    currency: "USD", available: vs.some((v) => v.available),
+    currency: "USD", available: vs.some((v) => v.available), demo: DEMO_SLUGS.has(slug),
     brand: { id: gid(`b:${brand}`), slug: brand, name: b.name }, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] },
     categoryPath: catPath, variants: vs,
     images: Array.from({ length: nImages }, (_, k) => ({ id: gid(`i:${slug}:${k}`), width: k === 0 ? 1200 : 1600, height: 1200, alt: `${title}, photo ${k + 1}` })),
@@ -59,7 +62,7 @@ const list = rows.map(([slug, title, type, brand, category, summary, description
 
 const card = (l) => ({
   id: l.id, slug: l.slug, type: l.type, title: l.title, summary: l.summary, priceFromCents: l.priceFromCents, priceToCents: l.priceToCents, compareAtFromCents: l.compareAtFromCents,
-  currency: l.currency, available: l.available, brand: l.brand, seller: l.seller, category: l.categoryPath.at(-1), image: l.images[0] ?? null,
+  currency: l.currency, available: l.available, demo: l.demo, brand: l.brand, seller: l.seller, category: l.categoryPath.at(-1), image: l.images[0] ?? null,
 });
 
 const descendants = (slug) => { const out = [slug]; for (let i = 0; i < out.length; i++) for (const c of categories) if (c.parent === out[i] && !out.includes(c.slug)) out.push(c.slug); return out; };

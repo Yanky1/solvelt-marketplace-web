@@ -8,6 +8,7 @@ import { ApiError, api } from "~/lib/api-client.server";
 import { afterSignIn } from "~/lib/cart.server";
 import { apiCtx, assertCsrf, currentUser, formError, revokePreviousSession, rotatedCookie } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
+import { demoMode } from "~/lib/demo.server";
 import { safeNext } from "~/lib/csrf.server";
 import { checkPasskeyChallenge, sessionCookie, withoutPasskeyChallenge } from "~/lib/session.server";
 import { getPasskey, usePasskeysSupported } from "~/lib/webauthn";
@@ -67,7 +68,11 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!password) fieldErrors.password = "Enter your password.";
     return formError({ fieldErrors, message: null, email });
   }
+  // Test mode only (M9): an unverified account cannot sign in, so "verify this account" takes the credentials, marks it verified at the API (same throttle as sign-in, same generic
+  // answer for wrong credentials), and carries straight on with the ordinary sign-in below. When test mode is not on the intent is ignored: it is just a sign-in.
+  const demoVerify = str(form, "intent") === "demo-verify" && (await demoMode(apiCtx(request, context, null))).buttons;
   try {
+    if (demoVerify) await api.demoVerify(apiCtx(request, context, null), { email, password });
     const { token } = await api.signIn(apiCtx(request, context, null), { email, password });
     await revokePreviousSession(request, context);
     // New session id on every sign-in (no fixation); the token lives only in the sealed HttpOnly cookie.
@@ -76,8 +81,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 403 && e.code === "email_not_verified") return formError({ fieldErrors: NONE, message: "Please verify your email address first. Check your inbox for the link.", email, unverified: true }, 403);
-      if (e.status === 429) return formError({ fieldErrors: NONE, message: "Too many attempts. Please wait a moment and try again.", email }, 429);
-      if (e.status === 401) return formError({ fieldErrors: NONE, message: "Email or password is incorrect.", email }, 401); // same text for unknown user and wrong password
+      // After a failed "verify this account" the button stays so the visitor can try again; the answer is the same for an unknown address and a wrong password, so this says nothing about any account.
+      if (e.status === 429) return formError({ fieldErrors: NONE, message: "Too many attempts. Please wait a moment and try again.", email, unverified: demoVerify }, 429);
+      if (e.status === 401) return formError({ fieldErrors: NONE, message: "Email or password is incorrect.", email, unverified: demoVerify }, 401); // same text for unknown user and wrong password
     }
     return formError({ fieldErrors: NONE, message: "We could not sign you in right now. Please try again.", email }, 503);
   }
@@ -92,6 +98,7 @@ export default function SignIn({ loaderData }: Route.ComponentProps) {
   const submit = useSubmit();
   const csrf = useRootData()?.csrf ?? "";
   const passkeys = usePasskeysSupported() === true;
+  const demoButtons = useRootData()?.demo?.buttons === true;
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
 
   async function signInWithPasskey() {
@@ -120,6 +127,12 @@ export default function SignIn({ loaderData }: Route.ComponentProps) {
         <Input label="Email" name="email" type="email" autoComplete="email" defaultValue={a?.email ?? ""} error={a?.fieldErrors?.email} required />
         <Input label="Password" name="password" type="password" autoComplete="current-password" error={a?.fieldErrors?.password} required />
         <Button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</Button>
+        {demoButtons && Boolean(a && "unverified" in a && a.unverified) && (
+          <div className="stack">
+            <p className="muted">Test mode: enter your password again to skip the email step.</p>
+            <Button type="submit" name="intent" value="demo-verify" variant="secondary" disabled={busy}>Verify this account and sign in</Button>
+          </div>
+        )}
         <p><Link to="/forgot-password">Forgot your password?</Link></p>
       </Form>
       {passkeys && (

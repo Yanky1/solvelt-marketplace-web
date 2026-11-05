@@ -1,7 +1,7 @@
 import { Form, Link } from "react-router";
 import { AccountNav } from "~/components/AccountNav";
 import type { Route } from "./+types/account";
-import { CsrfField } from "~/components/Shell";
+import { CsrfField, useRootData } from "~/components/Shell";
 import { Button } from "~/components/ui/form";
 import { Card } from "~/components/ui/display";
 import { clearUserScopedStorageInBrowser } from "~/lib/client-storage";
@@ -22,6 +22,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export default function Account({ loaderData }: Route.ComponentProps) {
+  const demoButtons = useRootData()?.demo?.buttons === true;
   return (
     <div className="stack">
       <h1>Hello, {loaderData.displayName}</h1>
@@ -29,6 +30,7 @@ export default function Account({ loaderData }: Route.ComponentProps) {
       <Card className="stack">
         <h2>Account</h2>
         <p>Manage your <Link to="/account/profile">profile</Link>, <Link to="/account/addresses">addresses</Link> and <Link to="/account/passkeys">passkeys</Link>.</p>
+        {demoButtons && <p>Test mode: add or remove <Link to="/account/demo">demo data</Link>.</p>}
         <div className="row">
           <Form method="post" action="/sign-out" onSubmit={clearUserScopedStorageInBrowser}>
             <CsrfField />

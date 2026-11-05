@@ -210,3 +210,12 @@ describe("a page that fixes the type (/services)", () => {
     expect(activeFilters(q, null, (c) => String(c), ["brand"])).toEqual([]);
   });
 });
+
+describe("the demo flag of a listing card (M9)", () => {
+  it("is true only for a real boolean true, and false when absent", () => {
+    const items = (over: Record<string, unknown>) => parseListingPage(page({ items: [card(over)] }))!.items[0]!;
+    expect(items({ demo: true }).demo).toBe(true);
+    for (const v of [false, undefined, "true", 1, null, "yes"]) expect(items({ demo: v }).demo, String(v)).toBe(false);
+  });
+});
+

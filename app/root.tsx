@@ -5,7 +5,8 @@ import { Footer, Header } from "~/components/Shell";
 import { ToastProvider } from "~/components/ui/overlay";
 import { LinkButton } from "~/components/ui/form";
 import { useNonce } from "~/lib/nonce";
-import { currentUser, ensureVisitor } from "~/lib/auth.server";
+import { apiCtx, currentUser, ensureVisitor } from "~/lib/auth.server";
+import { demoMode } from "~/lib/demo.server";
 import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
 import { parseTheme, type ThemePref } from "~/lib/theme.server";
 import "~/styles/app.css";
@@ -32,6 +33,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       // Only what the header needs; never the token, email or addresses.
       // Opaque id (not secret) lets the browser notice a different or vanished user and clear user-scoped storage.
       user: user ? { id: user.id, displayName: user.displayName } : null,
+      // Test mode (M9): the badge shows when the API says so; the demo buttons only when this server agrees too. Never anything secret.
+      demo: await demoMode(apiCtx(request, context, null)),
     },
     // A new visitor (or a dead session) gets a fresh sealed cookie; the API token never leaves the server.
     { headers: visitor.setCookie ? { "Set-Cookie": visitor.setCookie } : {} },

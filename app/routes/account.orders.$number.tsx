@@ -14,6 +14,7 @@ import {
   ATTEMPT_REASON, CANCEL_REASONS, CANCEL_STATUS, REFUND_STATUS, RETURN_REASONS, RETURN_STATUS, formatDate, formatWindow, progressSteps, safeHttps, statusLabel, statusTone, trackingLabel,
 } from "~/lib/orders";
 import { cleanField, str } from "~/lib/validation";
+import { DEMO_REFUSED_CODE, DEMO_REFUSED_TEXT } from "~/lib/demo";
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Order ${params.number} | Solvelt` }, { name: "robots", content: "noindex" }];
@@ -34,6 +35,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
 }
 
 const CONFLICT_TEXT: Record<string, string> = {
+  [DEMO_REFUSED_CODE]: DEMO_REFUSED_TEXT,
   not_cancellable: "This order can no longer be cancelled.",
   not_shipped: "This order has not shipped yet.",
   order_not_ready: "This order is not ready for that yet.",

@@ -11,6 +11,7 @@ import { apiLocation, badgeTone, bookingStatus, CALENDAR_STATUSES, CANCELLABLE, 
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
 import { formatDate } from "~/lib/orders";
+import { DEMO_REFUSED_CODE, DEMO_REFUSED_TEXT } from "~/lib/demo";
 
 export function meta() {
   return [{ title: "Your booking | Solvelt" }, { name: "robots", content: "noindex" }];
@@ -31,9 +32,10 @@ export const BOOKING_PAGE_MESSAGES: Record<string, string> = {
   no_proposal: "There is no suggested time to answer any more.",
   nothing_requested: "There is no additional amount to answer any more.",
   nothing_to_accept: "There is nothing to accept any more.",
+  [DEMO_REFUSED_CODE]: DEMO_REFUSED_TEXT,
   unavailable: "We could not do that just now. Please try again in a moment.",
 };
-const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|nothing_requested|invalid_state|slot_unavailable|reschedule_limit|too_late|no_proposal|nothing_to_accept)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
+const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|nothing_requested|invalid_state|slot_unavailable|reschedule_limit|too_late|no_proposal|nothing_to_accept|demo_data)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);

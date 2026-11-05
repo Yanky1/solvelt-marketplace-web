@@ -26,6 +26,11 @@ export interface PasskeyChallenge { challengeId: string; options: Record<string,
 
 export interface ApiUser { id: string; displayName: string; email?: string }
 
+// ---- demo data (test mode, M9; API repo docs/API.md "Demo data") ----
+export interface DemoCounts { addresses: number; carts: number; cartLines: number; orders: number; bookings: number; threads: number; messages: number; notifications: number }
+export interface DemoStatus { hasDemoData: boolean; counts: DemoCounts }
+export interface DemoFill { batchId: string; created: boolean; counts: DemoCounts; notes: string[] }
+
 /** Ids end up in URL paths: "." and ".." (or anything with separators) would be normalised by fetch onto other API routes. */
 function pid(id: string): string {
   if (!isSafeId(id)) throw new ApiError(404, "not_found", "Not found");
@@ -234,4 +239,10 @@ export const api = {
   deletePasskey: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/passkeys/${pid(id)}`, undefined, "DELETE"),
   passkeySignInOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/auth/passkey/options", {}),
   passkeySignIn: (ctx: ApiRequestContext, b: { challengeId: string; credential: unknown }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/passkey/sign-in", b),
+  // Demo data (404 from the API while its Demo:Enabled is off).
+  demoStatus: (ctx: ApiRequestContext) => call<DemoStatus>(ctx, "/api/v1/demo/status"),
+  demoFill: (ctx: ApiRequestContext) => call<DemoFill>(ctx, "/api/v1/demo/fill", {}),
+  demoRemove: (ctx: ApiRequestContext) => call<{ removed: DemoCounts }>(ctx, "/api/v1/demo/remove", {}),
+  /** Test-only: marks an unverified account verified. Takes the credentials because an unverified account has no session. */
+  demoVerify: (ctx: ApiRequestContext, b: { email: string; password: string }) => call<void>(ctx, "/api/v1/demo/verify", b),
 };
