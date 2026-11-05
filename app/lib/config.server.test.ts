@@ -100,3 +100,12 @@ describe("STRIPE_JS_URL (review M1: Stripe.js is loaded from Stripe's origin onl
     expect(stripeScriptOrigins(stub)).toEqual(["https://js.stripe.com", "http://localhost:5080"]);
   });
 });
+
+describe("ALLOW_LIVE_STRIPE_KEYS", () => {
+  it("is off by default, and is honoured only in production", () => {
+    expect(loadConfig(good).allowLiveStripeKeys).toBe(false);
+    expect(loadConfig({ ...good, ALLOW_LIVE_STRIPE_KEYS: "1" }).allowLiveStripeKeys).toBe(true);
+    expect(loadConfig({ ...good, ALLOW_LIVE_STRIPE_KEYS: "true" }).allowLiveStripeKeys).toBe(false);          // only the exact value 1
+    expect(loadConfig({ NODE_ENV: "development", ALLOW_LIVE_STRIPE_KEYS: "1" }).allowLiveStripeKeys).toBe(false);   // never outside production
+  });
+});

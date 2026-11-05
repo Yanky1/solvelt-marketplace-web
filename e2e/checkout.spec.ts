@@ -153,4 +153,47 @@ test.describe("checkout", () => {
     await expect(page).toHaveURL(new RegExp(`/orders/${mine!.number}$`));
     await expect(page.getByRole("heading", { name: "We can't show this order here" })).toBeVisible();
   });
+
+  test("a held payment_processing order is polled at most 40 times in two minutes, however the router's state flips", async ({ page }) => {
+    const email = newEmail();
+    await toPayStep(page, email);
+    const [mine] = await ordersOf(page, email);
+    await page.request.get(`${MOCK}/__test/pay?number=${encodeURIComponent(mine!.number)}&status=payment_processing`);
+    let asked = 0;
+    page.on("request", (r) => { if (r.url().includes(`/checkout/confirmation/${mine!.number}.data`)) asked++; });
+    await page.clock.install();
+    await page.goto(`/checkout/confirmation/${mine!.number}`);
+    await expect(page.getByTestId("order-status")).toHaveAttribute("data-status", "payment_processing");
+    for (let i = 0; i < 80; i++) { await page.clock.runFor(3000); await page.waitForTimeout(25); }   // four minutes of page time
+    expect(asked).toBeGreaterThan(5);                                                          // it did poll
+    expect(asked).toBeLessThanOrEqual(40);                                                     // and stopped at the cap (a count that restarts on each state change polls for ever)
+  });
+
+  test("a guest paying for two orders can read both, and the grant of an order that is final is dropped", async ({ page }) => {
+    const first = newEmail(), second = newEmail();
+    await toPayStep(page, first);
+    await toPayStep(page, second, false);                                                      // a second order (other address) in the same browser: the first grant must stay
+    const [a] = await ordersOf(page, first), [b] = await ordersOf(page, second);
+    expect(a!.number).not.toBe(b!.number);
+    for (const o of [a!, b!]) {
+      await page.goto(`/checkout/confirmation/${o.number}`);
+      await expect(page.getByTestId("order-status")).toHaveAttribute("data-status", "pending_payment");
+    }
+    await page.request.get(`${MOCK}/__test/pay?number=${encodeURIComponent(a!.number)}&status=placed`);
+    await page.goto(`/checkout/confirmation/${a!.number}`);
+    await expect(page.getByTestId("order-status")).toHaveAttribute("data-status", "placed");     // final: shown once
+    await page.goto(`/checkout/confirmation/${a!.number}`);
+    await expect(page.getByRole("heading", { name: "We can't show this order here" })).toBeVisible();   // its grant is gone (the emailed link remains)
+    await page.goto(`/checkout/confirmation/${b!.number}`);
+    await expect(page.getByTestId("order-status")).toHaveAttribute("data-status", "pending_payment");   // the other order's grant stays
+  });
+
+  test("a publishable key the web does not accept never reaches the browser: payments are unavailable", async ({ page }) => {
+    const email = newEmail();
+    await page.request.get(`${MOCK}/__test/bad-publishable-key?email=${encodeURIComponent(email)}`);   // the API hands out a LIVE key outside production's opt-in
+    await toReview(page, email);
+    await page.getByRole("button", { name: /^Place order and pay/ }).click();
+    await expect(page.getByTestId("payment-unavailable")).toBeVisible();
+    expect(await page.content()).not.toContain("pk_live_");
+  });
 });
