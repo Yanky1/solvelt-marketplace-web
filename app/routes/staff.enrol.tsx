@@ -9,6 +9,7 @@ import { ApiError } from "~/lib/api-client.server";
 import { checkPasskeyChallenge } from "~/lib/session.server";
 import { assertStaffCsrf, signedInCookie, staffCtx, staffForm, staffHeaders } from "~/lib/staff-auth.server";
 import { staffApi } from "~/lib/staff-api.server";
+import { tokenFromHash } from "~/lib/staff-enrol";
 import { createPasskey, usePasskeysSupported } from "~/lib/webauthn";
 
 export function meta() {
@@ -51,7 +52,15 @@ export default function StaffEnrol() {
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   // the link carries the secret after `#`, which no server or proxy ever sees
-  useEffect(() => { const h = window.location.hash.slice(1); const el = tokenInput(); if (h && el) { el.value = decodeURIComponent(h); history.replaceState(null, "", window.location.pathname); } }, []);
+  // The address is cleaned FIRST (so even a malformed secret does not stay in the address bar), then read; history.state is kept.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash) return;
+    history.replaceState(history.state, "", window.location.pathname + window.location.search);
+    const el = tokenInput();
+    const t = tokenFromHash(hash);
+    if (t && el) el.value = t;
+  }, []);
 
   async function enrol() {
     setError(null);

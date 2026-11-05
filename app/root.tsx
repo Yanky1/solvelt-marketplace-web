@@ -1,10 +1,12 @@
 import { useEffect } from "react";
-import { data, isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteLoaderData } from "react-router";
+import { data, isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation, useRouteLoaderData } from "react-router";
+import { Logo } from "~/components/Logo";
 import type { Route } from "./+types/root";
 import { Footer, Header } from "~/components/Shell";
 import { ToastProvider } from "~/components/ui/overlay";
 import { LinkButton } from "~/components/ui/form";
 import { useNonce } from "~/lib/nonce";
+import { isStaffPath } from "~/lib/staff-path";
 import { apiCtx, currentUser, ensureVisitor } from "~/lib/auth.server";
 import { demoMode } from "~/lib/demo.server";
 import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
@@ -23,7 +25,7 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   // The staff area (M7W-01) has its own session: no buyer visitor cookie, no buyer API call and no test-mode lookup on its pages.
-  if (new URL(request.url).pathname.startsWith("/staff")) {
+  if (isStaffPath(new URL(request.url).pathname)) {
     return data({ theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref, csrf: "", cartCount: 0, user: null, demo: { badge: false, buttons: false } });
   }
   const { user, expired } = await currentUser(request, context);
@@ -51,6 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const theme = data?.theme ?? "system";
   const nonce = useNonce();
   const userId = data?.user?.id ?? null;
+  const staff = isStaffPath(useLocation().pathname);
   useEffect(() => { reconcileUserStorageInBrowser(userId); }, [userId]);
   // A deterministic "React has hydrated" signal (tests wait for it before touching forms; nothing else uses it).
   useEffect(() => { document.documentElement.dataset.hydrated = "true"; }, []);
@@ -66,12 +69,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <a className="skip-link" href="#main">Skip to main content</a>
-        <ToastProvider>
-          <Header />
-          <MergeGuestViews />
-          <main id="main" tabIndex={-1} className="container">{children}</main>
-          <Footer theme={theme} />
-        </ToastProvider>
+        {staff ? (
+          // The staff area has its own minimal chrome (M7W-07): no buyer search, cart, sign-in or theme form (the buyer's theme form posts the BUYER's CSRF token, which a staff page does not have).
+          <>
+            <header className="topbar"><div className="container topbar-inner"><Logo /></div></header>
+            <main id="main" tabIndex={-1} className="container">{children}</main>
+          </>
+        ) : (
+          <ToastProvider>
+            <Header />
+            <MergeGuestViews />
+            <main id="main" tabIndex={-1} className="container">{children}</main>
+            <Footer theme={theme} />
+          </ToastProvider>
+        )}
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />
       </body>

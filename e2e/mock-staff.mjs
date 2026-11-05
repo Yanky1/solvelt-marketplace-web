@@ -68,7 +68,7 @@ export function createStaffMock({ send, users, buyerSessions }) {
     // ---- test hooks
     if (path === "/__test/staff-seed") {   // ?role=&tag= : a staff member with a one-time enrolment secret
       const role = url.searchParams.get("role") ?? "support", tag = url.searchParams.get("tag") ?? randomBytes(3).toString("hex");
-      const a = { id: randomUUID(), email: `${tag}@staff.example`, displayName: `Staff ${tag}`, role, disabled: false, enrolled: false, createdAt: new Date().toISOString() };
+      const a = { id: randomUUID(), email: `${tag}@staff.example`, displayName: `Staff ${tag}`, role, disabled: false, enrolled: false, createdAt: new Date().toISOString(), leak: url.searchParams.get("leak") === "1" };   // leak: this mock answers the Stripe block to ANY role (the page must not rely on the API for that)
       accounts.set(a.id, a);
       const secret = `ste_${randomBytes(16).toString("hex")}`;
       enrolments.set(secret, { staffId: a.id, used: false });
@@ -77,6 +77,11 @@ export function createStaffMock({ send, users, buyerSessions }) {
     }
     if (path === "/__test/staff-stale") {   // ?staffId= : the passkey check of that member's sessions is old
       for (const s of sessions.values()) if (s.staffId === url.searchParams.get("staffId")) s.authAt = Date.now() - 2 * STEP_UP_MS;
+      send(res, 204);
+      return true;
+    }
+    if (path === "/__test/staff-revoke") {   // ?staffId= : the API ends every session of that member (a dead token)
+      for (const [t, s] of [...sessions.entries()]) if (s.staffId === url.searchParams.get("staffId")) sessions.delete(t);
       send(res, 204);
       return true;
     }
@@ -171,7 +176,7 @@ export function createStaffMock({ send, users, buyerSessions }) {
       if (!reasonOk(reason)) return needReason(), true;
       if (body.number !== "MP-1001") return send(res, 404, { code: "not_found", message: "Not found." }), true;
       note(w, "order.lookup", "order", ORDER(false, w).id, reason);
-      send(res, 200, ORDER(can("payments.view"), w));
+      send(res, 200, ORDER(can("payments.view") || w.account.leak === true, w));
       return true;
     }
     if ((m = /^\/orders\/([^/]+)\/refunds\/([^/]+)\/retry$/.exec(p)) && method === "POST") {

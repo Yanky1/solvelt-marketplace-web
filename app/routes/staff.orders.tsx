@@ -17,7 +17,7 @@ export function headers() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { me } = await requireStaff(request, context);
   requirePermission(me, "orders.view");
-  return { canRetry: can(me, "refunds.retry") };
+  return { canRetry: can(me, "refunds.retry"), canPayments: can(me, "payments.view") };
 }
 
 type Result = { kind: "order"; order: StaffOrder } | { kind: "retried" } | { kind: "error"; message: string };
@@ -48,7 +48,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 }
 
-function OrderCard({ order, canRetry }: { order: StaffOrder; canRetry: boolean }) {
+// The Stripe block and the refund ids are shown only to a role that holds payments.view, whatever the API sent (M7W-07: the page does not rely only on the API answering payment: null).
+function OrderCard({ order, canRetry, canPayments }: { order: StaffOrder; canRetry: boolean; canPayments: boolean }) {
   const retry = useFetcher<Result>();
   const done = retry.data?.kind === "retried";
   return (
@@ -71,7 +72,7 @@ function OrderCard({ order, canRetry }: { order: StaffOrder; canRetry: boolean }
         <ul className="stack" style={{ listStyle: "none", padding: 0 }}>
           {order.refunds.map((r) => (
             <li key={r.id}>
-              <div>{money(r.amountCents, order.currency)} · <Badge tone={r.status === "succeeded" ? "ok" : r.status === "reserved" ? "gold" : "err"}>{r.status}</Badge> · {r.reason}{order.payment?.refunds.find((x) => x.id === r.id)?.stripeRefundId ? ` · ${order.payment.refunds.find((x) => x.id === r.id)?.stripeRefundId}` : ""}</div>
+              <div>{money(r.amountCents, order.currency)} · <Badge tone={r.status === "succeeded" ? "ok" : r.status === "reserved" ? "gold" : "err"}>{r.status}</Badge> · {r.reason}{canPayments && order.payment?.refunds.find((x) => x.id === r.id)?.stripeRefundId ? ` · ${order.payment.refunds.find((x) => x.id === r.id)?.stripeRefundId}` : ""}</div>
               {canRetry && r.retryable && !done && (
                 <retry.Form method="post" className="stack">
                   <StaffCsrf /><input type="hidden" name="intent" value="retry" /><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="refundId" value={r.id} />
@@ -85,7 +86,7 @@ function OrderCard({ order, canRetry }: { order: StaffOrder; canRetry: boolean }
       )}
       {done && <FormMessage kind="ok">Queued again. Stripe is asked under the same key as before, so the buyer is refunded once.</FormMessage>}
       {retry.data?.kind === "error" && <FormMessage kind="error">{retry.data.message}</FormMessage>}
-      {order.payment && (
+      {canPayments && order.payment && (
         <div className="stack"><h3>Payment</h3>
           <div>Intent: <code>{order.payment.paymentIntentId ?? "—"}</code></div>
           {order.payment.disputes.length > 0 && <ul>{order.payment.disputes.map((d) => <li key={d.disputeId}>Dispute {d.disputeId}: {d.lastEventType}{d.closed ? " (closed)" : ""}</li>)}</ul>}
@@ -108,7 +109,7 @@ export default function StaffOrders({ loaderData }: Route.ComponentProps) {
         <Button type="submit" disabled={busy}>Look up</Button>
       </Form></Card>
       {a?.kind === "error" && <FormMessage kind="error">{a.message}</FormMessage>}
-      {a?.kind === "order" && <OrderCard order={a.order} canRetry={loaderData.canRetry} />}
+      {a?.kind === "order" && <OrderCard order={a.order} canRetry={loaderData.canRetry} canPayments={loaderData.canPayments} />}
     </div>
   );
 }
