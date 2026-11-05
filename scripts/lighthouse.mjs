@@ -2,6 +2,7 @@
 // It starts the mock API and the built web server on its own ports, so it does not clash with `npm run e2e`.
 //   Fails if SEO, accessibility or best practices score under 95, or if layout shifts by more than 0.1 (deterministic).
 //   Performance is printed, not asserted: it depends on the machine, and the CI runner is not a phone.
+//   A measurement the browser failed to record (NO_NAVSTART) is repeated once; a score failure never is (scripts/lighthouse-measure.mjs).
 // Usage: npm run build && npm run lighthouse     (PW_CHROMIUM_PATH picks another Chromium)
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -9,6 +10,7 @@ import * as chromeLauncher from "chrome-launcher";
 import lighthouse from "lighthouse";
 import desktopConfig from "lighthouse/core/config/desktop-config.js";
 import { chromium } from "@playwright/test";
+import { measureWithRetry } from "./lighthouse-measure.mjs";
 
 const WEB = 3200, API = 5280;
 const FWD_KEY = "Mh3Xt7Bk1Qw5Zn9Vs2Dj6Lc0Rf4Pg8YaE1o";
@@ -45,8 +47,8 @@ try {
   for (const [name, path] of Object.entries(PAGES)) {
     for (const device of ["mobile", "desktop"]) {
       const flags = { port: chrome.port, output: "json", logLevel: "error", onlyCategories: ["performance", "accessibility", "best-practices", "seo"] };
-      const run = await lighthouse(`http://localhost:${WEB}${path}`, flags, device === "desktop" ? desktopConfig : undefined);
-      const lhr = run.lhr;
+      // a run the BROWSER failed to record (NO_NAVSTART) is measured once more; nothing else is ever repeated (see lighthouse-measure.mjs)
+      const lhr = await measureWithRetry(() => lighthouse(`http://localhost:${WEB}${path}`, flags, device === "desktop" ? desktopConfig : undefined), (m) => console.log(`${name} (${device})${m}`));
       writeFileSync(`lighthouse-report/${name.replace(" ", "-")}-${device}.json`, JSON.stringify(lhr));
       // A run Lighthouse could not complete is a failure that says why, not a crash on a missing number.
       if (lhr.runtimeError) {
