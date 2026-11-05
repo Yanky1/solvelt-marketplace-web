@@ -1,0 +1,148 @@
+name: Sweep
+
+# The UI sweep (decision M8W-07): every route, for every role (guest, buyer, support, finance, admin), at 320/375/768/1280/1920 px in Chromium and 375/1280 px in Firefox and WebKit, light and dark, plus
+# 1280 px at 200% zoom, against the REAL stack: the seller portal (Yanky1/Yanky1-test-login-backend, built and run, never changed), the marketplace API on PostgreSQL and this web app, all started by the
+# API repo's tools/journey/stack.sh. There is no mock anywhere in this job.
+# It is test tooling only and starts as an information job: the job is `continue-on-error`, so findings do not turn the workflow red yet. The report is the artifact "sweep-report" (open index.html: a
+# gallery of every screenshot with the findings next to it) and the run summary. The Playwright baselines of the first run on a runner are in the artifact too (see docs/DESIGN.md M8W-07).
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_ref:
+        description: "Ref of Yanky1/solvelt-marketplace-api to run against"
+        default: main
+      portal_ref:
+        description: "Ref of Yanky1/Yanky1-test-login-backend to run against"
+        default: main
+      browsers:
+        description: "Browsers to sweep (comma separated: chromium,firefox,webkit)"
+        default: "chromium,firefox,webkit"
+  push:
+    branches: ["main", "feat/m8-ui-sweep"]   # the branch entry is for the first validation runs and is removed before the merge
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: UI sweep (real stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PORTAL_DIR: ${{ runner.temp }}/portal
+      API_DIR: ${{ runner.temp }}/api
+      WEB_DIR: ${{ github.workspace }}
+      JOURNEY_RUN_DIR: ${{ runner.temp }}/journey-run
+      SWEEP_API_DIR: ${{ runner.temp }}/api
+      SWEEP_WEB_URL: http://localhost:3000
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The portal repo is public. BACKEND_REPO_TOKEN (read-only, only the owner can add it) is used when present, in case it becomes private again.
+      - name: Check out the seller-portal backend (read-only)
+        id: portal
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: Yanky1/Yanky1-test-login-backend
+          ref: ${{ inputs.portal_ref || 'main' }}
+          token: ${{ secrets.BACKEND_REPO_TOKEN || github.token }}
+          path: _portal
+          persist-credentials: false
+      - name: Fail clearly when the portal is missing
+        if: steps.portal.outcome != 'success'
+        run: |
+          echo "::error title=Seller portal not available::The sweep runs against the REAL seller portal (Yanky1/Yanky1-test-login-backend) and it could not be checked out. There is no mock fallback."
+          exit 1
+      - name: Check out the marketplace API (for the stack script and the journey helpers)
+        id: api
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: Yanky1/solvelt-marketplace-api
+          ref: ${{ inputs.api_ref || 'main' }}
+          path: _api
+          persist-credentials: false
+      - name: Fail clearly when the API is missing
+        if: steps.api.outcome != 'success'
+        run: |
+          echo "::error title=Marketplace API not available::Yanky1/solvelt-marketplace-api could not be checked out, so the sweep has no API to run against."
+          exit 1
+      # outside the workspace: the API repo's Directory.Build.props (warnings as errors) must not apply to the portal's projects
+      - name: Move the checkouts out of the workspace
+        run: |
+          mv _portal "$PORTAL_DIR"
+          mv _api "$API_DIR"
+          git -C "$PORTAL_DIR" log --oneline -1
+          git -C "$API_DIR" log --oneline -1
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Install the browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      # the staff and account areas make many requests from one address: the limits are not under test here (the journeys do the same for the auth and public limits)
+      - name: Start the real stack (portal, API on PostgreSQL, web)
+        run: "$API_DIR/tools/journey/stack.sh up"
+        env:
+          RateLimits__StaffPerMinute: "100000"
+          RateLimits__AccountPerMinute: "100000"
+          RateLimits__CartPerMinute: "100000"
+      - name: Build the world (a seller, products, a delivered order, a booking, and a session per role)
+        run: npm run sweep:setup
+      - name: Sweep
+        run: npm run sweep
+        env:
+          SWEEP_BROWSERS: ${{ inputs.browsers || 'chromium,firefox,webkit' }}
+      - name: Lighthouse (layout shift and LCP on home, search, product, cart, checkout)
+        if: always()
+        run: node scripts/sweep-lighthouse.mjs
+      - name: Report (gallery and run summary)
+        if: always()
+        run: npm run sweep:report
+
+      - name: Keep the report, the screenshots, the baselines and the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-report
+          path: |
+            sweep-out/index.html
+            sweep-out/summary.md
+            sweep-out/summary.json
+            sweep-out/lighthouse.json
+            sweep-out/shots
+            sweep-out/records
+            sweep-out/playwright-report
+            sweep-out/playwright-results.json
+            e2e/sweep/baselines
+            ${{ runner.temp }}/journey-run/*.log
+          retention-days: 14
+          if-no-files-found: warn

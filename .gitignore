@@ -7,3 +7,5 @@ test-results
 *.log
 
 lighthouse-report/
+sweep-out/
+sweep-report/

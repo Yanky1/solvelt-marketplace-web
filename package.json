@@ -13,6 +13,9 @@
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "sweep:setup": "node scripts/sweep-setup.mjs",
+    "sweep": "playwright test -c playwright.sweep.config.ts",
+    "sweep:report": "node scripts/sweep-report.mjs",
     "mock-api": "node e2e/mock-api.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "lighthouse": "node scripts/lighthouse.mjs"
