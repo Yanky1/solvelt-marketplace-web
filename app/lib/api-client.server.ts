@@ -106,7 +106,7 @@ export interface ReturnInput { sellerOrderNumber: string; reason: string; commen
 // ---- wishlists and recently viewed (M6; API docs "Wishlists and recently viewed") ----
 export interface WishlistList { limit: number; itemLimit: number; wishlists: WishlistSummary[] }
 export interface WishlistDetail { wishlist: WishlistSummary; items: WishlistItemView[] }
-export interface SharedWishlist { name: string; items: { addedAt: string; listing: ListCardView }[] }
+export interface SharedWishlist { name: string; items: { listing: ListCardView }[] }
 
 // ---- notifications (M5; API docs "Notifications") ----
 export interface NotificationItem { id: string; kind: string; category: string; orderNumber: string | null; sellerOrderNumber: string | null; parameters: Record<string, unknown> | null; createdAt: string; read: boolean }
@@ -271,7 +271,7 @@ export const api = {
   unshareWishlist: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/wishlists/${pid(id)}/share`, undefined, "DELETE"),
   sharedWishlist: async (ctx: ApiRequestContext, key: string): Promise<SharedWishlist> => {
     const r = await call<{ name?: unknown; items?: unknown[] }>(ctx, `/api/v1/shared-wishlists/${pid(key)}`);
-    const items = (r.items ?? []).flatMap((i) => { const o = i as { addedAt?: unknown; listing?: unknown }; const c = parseCard(o?.listing); return c ? [{ addedAt: typeof o.addedAt === "string" ? o.addedAt : "", listing: c }] : []; });
+    const items = (r.items ?? []).flatMap((i) => { const c = parseCard((i as { listing?: unknown })?.listing); return c ? [{ listing: c }] : []; });
     return { name: typeof r.name === "string" ? r.name.slice(0, 240) : "", items };
   },
   recentlyViewed: async (ctx: ApiRequestContext): Promise<ListCardView[]> => {

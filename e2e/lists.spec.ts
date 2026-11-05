@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { newVerifiedUser, signIn, waitHydrated } from "./helpers";
+import { csrfFor, newVerifiedUser, signIn, waitHydrated } from "./helpers";
 
 const A = "/p/classic-braided-challah";
 const GUEST_KEY = "solvelt.user.recently-viewed";
@@ -27,40 +27,71 @@ test("a guest's recently viewed lives in this browser, and a guest is asked to s
   await waitHydrated(page);
   await page.getByText("Save to a list", { exact: true }).click();
   await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible();
-  expect(await page.evaluate((k) => localStorage.getItem(k), GUEST_KEY)).toContain("classic-braided-challah");
+  expect(await page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY)).toContain("classic-braided-challah");
   await page.goto("/");
   await waitHydrated(page);
   const shelf = page.getByTestId("recently-viewed");
   await expect(shelf.getByRole("link", { name: /Classic Braided Challah/ })).toBeVisible();
   // only catalog data is kept: no name, email or token
-  const raw = await page.evaluate((k) => localStorage.getItem(k) ?? "", GUEST_KEY);
+  const raw = await page.evaluate((k) => sessionStorage.getItem(k) ?? "", GUEST_KEY);
   expect(raw).not.toMatch(/@|token|csrf/i);
 });
 
 test("signing in moves the guest's list into the account once and empties the browser copy", async ({ page }) => {
   await page.goto(A);
   await waitHydrated(page);
-  await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), GUEST_KEY)).not.toBeNull();
+  await expect.poll(() => page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY)).not.toBeNull();
   const email = await newVerifiedUser(page, "lmerge");
   await signIn(page, email);
   await expect(page).toHaveURL(/\/account$/);
-  await expect.poll(() => page.evaluate((k) => localStorage.getItem(k), GUEST_KEY)).toBeNull();
+  await expect.poll(() => page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY)).toBeNull();
   await page.goto("/");
   await expect(page.getByTestId("recently-viewed").getByRole("link", { name: /Classic Braided Challah/ })).toBeVisible();
 });
 
-test("signing out clears what this browser kept for the person, and the account's list does not follow to the next visitor", async ({ page }) => {
+test("the sign-out button itself clears what this browser kept (the request is blocked, so no later check can do it)", async ({ page }) => {
   await signedIn(page, "lout");
   await page.goto(A);
   await waitHydrated(page);
-  await page.evaluate((k) => localStorage.setItem(k, JSON.stringify([{ id: "x1", slug: "x", type: "product", title: "X", priceFromCents: 1, priceToCents: 1, currency: "USD", available: true, brandName: "", sellerName: "", image: null }])), GUEST_KEY);
+  await page.evaluate((k) => sessionStorage.setItem(k, JSON.stringify([{ id: "x1", slug: "x", type: "product", title: "X", priceFromCents: 1, priceToCents: 1, currency: "USD", available: true, brandName: "", sellerName: "", image: null }])), GUEST_KEY);
   await page.goto("/account");
+  await waitHydrated(page);
+  await page.route("**/sign-out*", (route) => route.abort());   // the page stays, the user is still signed in: only the button's own handler can have cleared the key
   await page.getByRole("button", { name: "Sign out", exact: true }).first().click();
-  await expect(page).toHaveURL(/\/$|\/sign-in/);
-  expect(await page.evaluate((k) => localStorage.getItem(k), GUEST_KEY)).toBeNull();
+  await expect.poll(() => page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY)).toBeNull();
+});
+
+test("a different person signing in on the same browser does not inherit the previous guest's list", async ({ page }) => {
+  await page.goto(A);
+  await waitHydrated(page);
+  await expect.poll(() => page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY)).not.toBeNull();
+  const email = await newVerifiedUser(page, "lshared");
+  await page.goto("/sign-in");
+  await waitHydrated(page);
+  // somebody else was signed in on this browser before (the marker names them), set right before this sign-in so only the order of the merge and the cleanup decides the outcome
+  await page.evaluate(() => localStorage.setItem("solvelt.device.storage-owner", "someone-else"));
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/account$/);
   await page.goto("/");
   await waitHydrated(page);
-  await expect(page.getByTestId("recently-viewed")).toHaveCount(0);   // the signed-in buyer's views are on the server, not shown to a guest
+  await expect(page.getByTestId("recently-viewed")).toHaveCount(0);
+  const mine = await page.request.get("/recently-viewed");
+  expect(((await mine.json()) as { items: unknown[] }).items).toEqual([]);
+});
+
+test("every wishlist and recently-viewed post is refused without a valid csrf token", async ({ page, baseURL }) => {
+  await signedIn(page, "lcsrf");
+  const csrf = await csrfFor(page.request, "/account/wishlists");
+  const body = { intent: "add", listingId: "x1", wishlistId: "w1", name: "n", ids: "a" };
+  for (const path of ["/wishlists/panel", "/recently-viewed", "/account/wishlists", "/account/wishlists/abc"]) {
+    const post = (api: typeof page.request, form: Record<string, string>, origin?: string) => api.post(path, { form, headers: origin ? { origin } : {}, maxRedirects: 0 });
+    expect((await post(page.request, body, baseURL!)).status(), `${path} no token`).toBe(403);
+    expect((await post(page.request, { ...body, csrf: "forged" }, baseURL!)).status(), `${path} forged`).toBe(403);
+    expect([400, 403], `${path} evil origin`).toContain((await post(page.request, { ...body, csrf }, "https://evil.example")).status());
+    expect((await post(page.request, { ...body, csrf })).status(), `${path} no origin`).toBe(403);
+  }
 });
 
 test("save a product to a new list, see it in the account, share it, view it anonymously, stop sharing", async ({ page, browser }) => {
@@ -144,6 +175,23 @@ for (const theme of ["light", "dark"] as const) {
     await check();
     await page.getByRole("link", { name: "Axe list" }).click();
     await expect(page.getByRole("link", { name: "Classic Braided Challah" })).toBeVisible();
-    await check();
+    await page.getByRole("button", { name: "Create a share link" }).click();
+    const shareUrl = await page.getByLabel("Share link").inputValue();
+    await check();                                              // the list page with its share link open
+    await page.goto(new URL(shareUrl).pathname);
+    await expect(page.getByRole("heading", { name: "Axe list" })).toBeVisible();
+    await check();                                              // the public shared page
+    await page.goto("/");
+    await waitHydrated(page);
+    await expect(page.getByTestId("recently-viewed")).toBeVisible();
+    await check();                                              // the shelf
+    await page.goto("/account/wishlists");
+    await page.getByRole("link", { name: "Axe list" }).click();
+    await page.getByRole("button", { name: /Remove Classic Braided Challah/ }).click();
+    await expect(page.getByRole("heading", { name: "This list is empty" })).toBeVisible();
+    await check();                                              // the empty list
+    await page.getByRole("button", { name: "Delete the list Axe list" }).click();
+    await expect(page.getByRole("heading", { name: "No lists yet" })).toBeVisible();
+    await check();                                              // the empty lists page
   });
 }

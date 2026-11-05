@@ -38,7 +38,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (intent === "create") {
       const created = await api.createWishlist(ctx, String(form.get("name") ?? "").slice(0, NAME_MAX * 4));
       if (!created) return json({ error: "Try again." }, 502);
-      await api.addWishlistItem(ctx, created.id, listingId);
+      try { await api.addWishlistItem(ctx, created.id, listingId); }
+      catch (e) { await api.deleteWishlist(ctx, created.id).catch(() => undefined); throw e; }   // no empty list is left behind when the item could not be added (review L4)
     } else if (isSafeId(wishlistId) && intent === "add") await api.addWishlistItem(ctx, wishlistId, listingId);
     else if (isSafeId(wishlistId) && intent === "remove") await api.removeWishlistItem(ctx, wishlistId, listingId);
     else return json({ error: "Bad request." }, 400);
