@@ -8,6 +8,7 @@ import { VariantPicker } from "~/components/VariantPicker";
 import { Badge, Breadcrumb, Price } from "~/components/ui/display";
 import { Link, useSearchParams } from "react-router";
 import { apiCtx } from "~/lib/auth.server";
+import { isQuoteOnly } from "~/lib/bookings";
 import { attributeLabel, attributeValues, deliveryLabels, pickVariant, serviceLocations, specAttributes, type ListingDetail } from "~/lib/catalog";
 import { catalog, catalogErrorResponse, GUID } from "~/lib/catalog.server";
 import { getConfig } from "~/lib/config.server";
@@ -127,7 +128,7 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
           )}
           {isService
             ? <BookingSlot listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency}
-                locations={serviceLocations(listing)} bookingMode={attributeValues(listing, "booking-mode")[0]} durationLabel={attributeValues(listing, "duration")[0]} available={variant.available} />
+                locations={serviceLocations(listing)} bookingMode={attributeValues(listing, "booking-mode")[0]} quoteOnly={isQuoteOnly(attributeValues(listing, "pricing-model")[0])} durationLabel={attributeValues(listing, "duration")[0]} available={variant.available} />
             : variant.available
               ? <AddToCart listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency} />
               : <p className="muted">This option is sold out. {listing.variants.some((v) => v.available) ? "Choose another option." : "Please check back later."}</p>}

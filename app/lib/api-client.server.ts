@@ -8,7 +8,7 @@ import { isSafeId } from "./passkey.server";
  * documented yet; shapes here are what the mock API in e2e/mock-api.mjs implements, to be confirmed by M1.
  */
 import { safeHttps } from "./orders";
-import type { Availability, BookingView, PolicyView } from "./bookings";
+import type { Availability, BookingView, PolicyView, QuoteView } from "./bookings";
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown) {
@@ -151,6 +151,13 @@ export const api = {
   booking: (ctx: ApiRequestContext, id: string) => call<BookingView>(ctx, `/api/v1/bookings/${pid(id)}`),
   checkoutBooking: (ctx: ApiRequestContext, id: string, b: { intake?: { id: string; answer: string }[]; phone?: string }) => call<{ booking: BookingView; payment: BookingPayment }>(ctx, `/api/v1/bookings/${pid(id)}/checkout`, b),
   cancelBookingPreview: (ctx: ApiRequestContext, id: string) => call<CancelPreview>(ctx, `/api/v1/bookings/${pid(id)}/cancel-preview`),
+  requestQuote: (ctx: ApiRequestContext, b: Record<string, unknown>, key: string) => call<{ created: boolean; quote: QuoteView }>(ctx, "/api/v1/quotes", b, undefined, { "Idempotency-Key": key }),
+  quoteRequests: (ctx: ApiRequestContext) => call<{ quotes: QuoteView[] }>(ctx, "/api/v1/quotes"),
+  quoteRequest: (ctx: ApiRequestContext, id: string) => call<QuoteView>(ctx, `/api/v1/quotes/${pid(id)}`),
+  acceptQuote: (ctx: ApiRequestContext, id: string, b: { start: string; phone?: string; intake?: { id: string; answer: string }[]; addOnIds?: string[] }) => call<{ created: boolean; quote: QuoteView; booking: BookingView }>(ctx, `/api/v1/quotes/${pid(id)}/accept`, b),
+  declineQuote: (ctx: ApiRequestContext, id: string, reason?: string) => call<{ quote: QuoteView }>(ctx, `/api/v1/quotes/${pid(id)}/decline`, reason ? { reason } : {}),
+  extraChargeAccept: (ctx: ApiRequestContext, id: string) => call<{ amountCents: number; payment: BookingPayment }>(ctx, `/api/v1/bookings/${pid(id)}/extra-charge/accept`, {}),
+  extraChargeDecline: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/bookings/${pid(id)}/extra-charge/decline`, {}),
   rescheduleBooking: (ctx: ApiRequestContext, id: string, newStart: string, key: string) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/reschedule`, { newStart }, undefined, { "Idempotency-Key": key }),
   bookingProposal: (ctx: ApiRequestContext, id: string, accept: boolean) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/proposal`, { accept }),
   acknowledgeReschedule: (ctx: ApiRequestContext, id: string) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/acknowledge-reschedule`, {}),

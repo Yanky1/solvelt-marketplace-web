@@ -115,3 +115,28 @@ export function pickAddOns(ids: Iterable<string>, offered: AddOn[]): string[] {
   const ok = new Set(offered.map((a) => a.id));
   return [...new Set(ids)].filter((i) => ok.has(i)).sort();
 }
+
+export interface QuoteView {
+  id: string; listingId: string; status: string; location: string; details: string; preferredTimes?: string[] | null; currency: string; priceCents: number | null; durationMinutes: number | null;
+  slots: string[]; providerId?: string | null; expiresAt: string | null; expired: boolean; note: string | null; declineReason: string | null; bookingId: string | null; createdAt: string;
+}
+export const QUOTE_STATUS: Record<string, { label: string; text: string; tone: Tone }> = {
+  Requested: { label: "Waiting for a quote", text: "The provider has your request and will send a price and times.", tone: "wait" },
+  Quoted: { label: "Quote received", text: "The provider sent a price. Choose one of the offered times to accept it.", tone: "good" },
+  Accepted: { label: "Accepted", text: "You accepted this quote. Your booking is on its page.", tone: "good" },
+  Declined: { label: "Declined by the provider", text: "The provider could not quote this job.", tone: "bad" },
+  Withdrawn: { label: "Declined", text: "You declined this quote.", tone: "neutral" },
+  Expired: { label: "Expired", text: "This quote is no longer valid. You can ask for a new one.", tone: "bad" },
+};
+export const quoteStatus = (s: string) => QUOTE_STATUS[s] ?? { label: s, text: "We are updating this quote.", tone: "neutral" as Tone };
+
+/** True when the listing's pricing model says the provider quotes each job (the catalog's `pricing-model` attribute; the case the portal uses is not relied on). */
+export const isQuoteOnly = (pricingModel: string | undefined): boolean => (pricingModel ?? "").trim().toLowerCase() === "quote";
+
+/** What the buyer sees for an extra amount the provider asked for after the work (the booking's `extraChargeState` and `additionalChargeCents`). */
+export const EXTRA_CHARGE_TEXT: Record<string, string> = {
+  requested: "The provider asks for an additional amount for this booking.",
+  consented: "You agreed to the additional amount. Payment is the last step.",
+  declined: "You declined the additional amount.",
+  paid: "The additional amount is paid.",
+};

@@ -80,6 +80,8 @@ const publicQuote = (q) => {
 };
 
 const bookingsDb = new Map();
+const quotesDb = new Map();
+const slotAt = (days, hour) => { const d = new Date(Date.now() + days * 86400000); d.setUTCHours(hour, 0, 0, 0); return d.toISOString(); };
 const POLICY = { cancelFreeHours: 24, cancelFeePercent: 50, noShowFeePercent: 100, maxReschedules: 2, approvalHours: null };
 const gidLine = () => `ln_${randomBytes(6).toString("hex")}`;
 
@@ -165,8 +167,9 @@ http.createServer(async (req, res) => {
       threads.set(id, t);
       return send(res, 200, { id });
     }
-    if (path === "/__test/book-set") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); for (const k of ["proposedStartAt", "requiresBuyerConsent", "startAt"]) { const v = url.searchParams.get(k); if (v !== null) b[k] = k === "requiresBuyerConsent" ? v === "true" : v; } return send(res, 204); }
+    if (path === "/__test/book-set") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); for (const k of ["proposedStartAt", "requiresBuyerConsent", "startAt", "extraChargeState", "additionalChargeCents"]) { const v = url.searchParams.get(k); if (v !== null) b[k] = k === "requiresBuyerConsent" ? v === "true" : k === "additionalChargeCents" ? Number(v) : v; } return send(res, 204); }
     if (path === "/__test/book-status") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); b.status = url.searchParams.get("status") ?? b.status; return send(res, 204); }
+    if (path === "/__test/quote-send") { const qq = quotesDb.get(url.searchParams.get("id") ?? ""); if (!qq) return send(res, 404, { code: "not_found" }); qq.status = url.searchParams.get("status") ?? "Quoted"; qq.priceCents = Number(url.searchParams.get("price") ?? "40000"); qq.durationMinutes = 180; qq.slots = [slotAt(3, 15), slotAt(4, 15)]; qq.expiresAt = new Date(Date.now() + 3 * 86400000).toISOString(); qq.note = "Bring your own tap please"; return send(res, 204); }
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
     if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
@@ -603,7 +606,6 @@ http.createServer(async (req, res) => {
   }
 
   // ---- services and bookings (M4; API repo docs/API.md "Services (M4)"): a small stateful stand-in ----
-  const slotAt = (days, hour) => { const d = new Date(Date.now() + days * 86400000); d.setUTCHours(hour, 0, 0, 0); return d.toISOString(); };
   const svc = /^\/api\/v1\/services\/([A-Za-z0-9_-]+)\/(availability|options)$/.exec(path);
   if (svc && req.method === "GET") {
     if (svc[2] === "options") return send(res, 200, { available: true, addOns: [{ id: "deep", name: "Deep clean", priceCents: 2500, extraMinutes: 30 }], intakeQuestions: [{ id: "pets", label: "Any pets at home?", kind: "yesNo", required: true }], providers: [{ providerId: "11111111-1111-4111-8111-111111111111", displayName: "Jane D." }], assignment: "buyerChoice", policy: POLICY });
@@ -614,7 +616,35 @@ http.createServer(async (req, res) => {
     const slots = [[2, 14], [2, 16], [3, 14]].map(([d, h]) => ({ startAt: slotAt(d, h), endAt: slotAt(d, h + 4), providerIds: ["pv1"] }));
     return send(res, 200, { durationMinutes: 240, priceCents: 24000, providers: [{ providerId: "pv1", timeZone: "America/New_York" }], slots, from: slotAt(0, 0), to: slotAt(14, 0), fetchedAt: new Date().toISOString() }, { "Cache-Control": "no-store" });
   }
-  const bookingView = (b) => ({ id: b.id, number: b.number, listingId: b.listingId, status: b.status, location: b.location, startAt: b.startAt, endAt: b.endAt, durationMinutes: 240, currency: "USD", priceCents: 24000, addOnsCents: 0, travelFeeCents: 0, totalCents: 24000, holdExpiresAt: b.status === "Hold" ? b.holdExpiresAt : null, holdExpired: b.status === "Hold" && Date.parse(b.holdExpiresAt) <= Date.now(), approvalDeadline: null, proposedStartAt: b.proposedStartAt ?? null, requiresBuyerConsent: !!b.requiresBuyerConsent, createdAt: b.createdAt, policy: b.status === "Hold" ? null : POLICY });
+  const bookingView = (b) => ({ id: b.id, number: b.number, listingId: b.listingId, status: b.status, location: b.location, startAt: b.startAt, endAt: b.endAt, durationMinutes: 240, currency: "USD", priceCents: 24000, addOnsCents: 0, travelFeeCents: 0, totalCents: 24000, holdExpiresAt: b.status === "Hold" ? b.holdExpiresAt : null, holdExpired: b.status === "Hold" && Date.parse(b.holdExpiresAt) <= Date.now(), approvalDeadline: null, proposedStartAt: b.proposedStartAt ?? null, requiresBuyerConsent: !!b.requiresBuyerConsent, createdAt: b.createdAt, policy: b.status === "Hold" ? null : POLICY, extraChargeState: b.extraChargeState ?? null, additionalChargeCents: b.additionalChargeCents ?? null });
+  if (path.startsWith("/api/v1/quotes")) {
+    const owner = userFor(req);
+    if (!owner) return send(res, 401, { code: "unauthorized" });
+    const quoteView = (qq) => ({ id: qq.id, listingId: qq.listingId, status: qq.status, location: qq.location, details: qq.details, preferredTimes: [], currency: "USD", priceCents: qq.priceCents ?? null, durationMinutes: qq.durationMinutes ?? null, slots: qq.slots ?? [], providerId: null, expiresAt: qq.expiresAt ?? null, expired: false, note: qq.note ?? null, declineReason: null, bookingId: qq.bookingId ?? null, createdAt: qq.createdAt });
+    if (path === "/api/v1/quotes" && req.method === "POST") {
+      const key = String(req.headers["idempotency-key"] ?? "");
+      if (!/^[A-Za-z0-9\-_.:]{8,100}$/.test(key)) return send(res, 422, { code: "validation_failed" });
+      const seen = [...quotesDb.values()].find((x) => x.owner === owner.id && x.key === key);
+      if (seen) return send(res, 200, { created: false, quote: quoteView(seen) });
+      if (String(body.details ?? "").trim().length < 10) return send(res, 422, { code: "validation_failed", errors: { details: "too short" } });
+      const qq = { id: `00000000-0000-4000-9000-${randomBytes(6).toString("hex")}`, owner: owner.id, key, listingId: String(body.listingId), status: "Requested", location: body.location, details: String(body.details), createdAt: new Date().toISOString() };
+      quotesDb.set(qq.id, qq);
+      return send(res, 201, { created: true, quote: quoteView(qq) });
+    }
+    if (path === "/api/v1/quotes" && req.method === "GET") return send(res, 200, { quotes: [...quotesDb.values()].filter((x) => x.owner === owner.id).reverse().map(quoteView) });
+    const qm = /^\/api\/v1\/quotes\/([A-Za-z0-9-]+)(?:\/(accept|decline))?$/.exec(path);
+    const qq = qm ? quotesDb.get(qm[1]) : undefined;
+    if (!qm || !qq || qq.owner !== owner.id) return send(res, 404, { code: "not_found" });
+    if (!qm[2] && req.method === "GET") return send(res, 200, quoteView(qq));
+    if (qm[2] === "decline" && req.method === "POST") { if (qq.status !== "Quoted") return send(res, 409, { code: "quote_not_open" }); qq.status = "Withdrawn"; return send(res, 200, { quote: quoteView(qq) }); }
+    if (qm[2] === "accept" && req.method === "POST") {
+      if (qq.status !== "Quoted") return send(res, 409, { code: "quote_not_open" });
+      if (!(qq.slots ?? []).includes(body.start)) return send(res, 422, { code: "slot_not_offered" });
+      const b = { id: `00000000-0000-4000-8000-${randomBytes(6).toString("hex")}`, owner: owner.id, key: `qa-${qq.id}`, number: `BK-MOCK-Q${bookingsDb.size}`, listingId: qq.listingId, status: "Hold", location: qq.location, startAt: body.start, endAt: new Date(Date.parse(body.start) + 3 * 3600000).toISOString(), holdExpiresAt: new Date(Date.now() + 10 * 60000).toISOString(), createdAt: new Date().toISOString() };
+      bookingsDb.set(b.id, b); qq.status = "Accepted"; qq.bookingId = b.id;
+      return send(res, 201, { created: true, quote: quoteView(qq), booking: bookingView(b) });
+    }
+  }
   if (path.startsWith("/api/v1/bookings")) {
     const owner = userFor(req);
     if (!owner) return send(res, 401, { code: "unauthorized" });
@@ -631,7 +661,7 @@ http.createServer(async (req, res) => {
       return send(res, 201, bookingView(b));
     }
     if (path === "/api/v1/bookings" && req.method === "GET") return send(res, 200, { bookings: [...bookingsDb.values()].filter((b) => b.owner === owner.id && b.status !== "Failed").reverse().map(bookingView) });
-    const bm = /^\/api\/v1\/bookings\/([A-Za-z0-9-]+)(?:\/(checkout|cancel|cancel-preview|reschedule|proposal|acknowledge-reschedule|calendar\.ics))?$/.exec(path);
+    const bm = /^\/api\/v1\/bookings\/([A-Za-z0-9-]+)(?:\/(checkout|cancel|cancel-preview|reschedule|proposal|acknowledge-reschedule|calendar\.ics|extra-charge\/accept|extra-charge\/decline))?$/.exec(path);
     const b = bm ? bookingsDb.get(bm[1]) : undefined;
     if (!bm || !b || b.owner !== owner.id) return send(res, 404, { code: "not_found" });
     if (!bm[2] && req.method === "GET") return send(res, 200, bookingView(b));
@@ -644,6 +674,8 @@ http.createServer(async (req, res) => {
     if (bm[2] === "proposal" && req.method === "POST") { if (!b.proposedStartAt) return send(res, 409, { code: "no_proposal" }); if (body.accept) { b.startAt = b.proposedStartAt; b.endAt = new Date(Date.parse(b.startAt) + 4 * 3600000).toISOString(); b.status = "Confirmed"; } b.proposedStartAt = null; return send(res, 200, { booking: bookingView(b) }); }
     if (bm[2] === "acknowledge-reschedule" && req.method === "POST") { if (!b.requiresBuyerConsent) return send(res, 409, { code: "nothing_to_accept" }); b.requiresBuyerConsent = false; return send(res, 200, { booking: bookingView(b) }); }
     if (bm[2] === "calendar.ics" && req.method === "GET") { if (!["Requested", "Confirmed", "Rescheduled", "InProgress"].includes(b.status)) return send(res, 404, { code: "not_found" }); res.writeHead(200, { "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": `attachment; filename="booking-${b.number}.ics"` }); return res.end(`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:Deep House Cleaning\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`); }
+    if (bm[2] === "extra-charge/accept" && req.method === "POST") { if (!["requested", "consented"].includes(b.extraChargeState ?? "")) return send(res, 409, { code: "nothing_requested" }); b.extraChargeState = "consented"; return send(res, 200, { amountCents: b.additionalChargeCents, payment: { provider: "stripe", clientSecret: `pi_mock_${b.id}_extra_secret_x`, publishableKey: "pk_test_mock" } }); }
+    if (bm[2] === "extra-charge/decline" && req.method === "POST") { if (b.extraChargeState !== "requested") return send(res, 409, { code: "nothing_requested" }); b.extraChargeState = "declined"; return send(res, 204); }
     if (bm[2] === "cancel" && req.method === "POST") { if (!["Hold", "Requested", "Confirmed"].includes(b.status)) return send(res, 409, { code: "invalid_state" }); b.status = "CancelledByBuyer"; return send(res, 200, { booking: bookingView(b) }); }
   }
 
