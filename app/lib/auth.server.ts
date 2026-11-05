@@ -2,7 +2,7 @@ import { data, redirect, type AppLoadContext } from "react-router";
 import type { ApiRequestContext } from "./api.server";
 import { ApiError, api, type ApiUser } from "./api-client.server";
 import { getConfig } from "./config.server";
-import { assertSameOrigin } from "./csrf.server";
+import { assertSameOrigin, logRefusal, refusal } from "./csrf.server";
 import { csrfTokenFor, csrfValid, newVisitor, readSession, sessionCookie, type SessionData } from "./session.server";
 
 export interface RequestAuth {
@@ -59,7 +59,8 @@ export function assertCsrf(request: Request, form: FormData): SessionData {
   const cfg = getConfig();
   assertSameOrigin(request, cfg.publicOrigin);
   const session = readSession(request, cfg);
-  if (!session || !csrfValid(session.sid, form.get("csrf"), cfg.sessionCookieSecret)) throw new Response("Forbidden", { status: 403 });
+  if (!session) { logRefusal("no_session", request.headers.get("origin"), cfg.publicOrigin); throw refusal("no_session"); }
+  if (!csrfValid(session.sid, form.get("csrf"), cfg.sessionCookieSecret)) { logRefusal("bad_token", request.headers.get("origin"), cfg.publicOrigin); throw refusal("bad_token"); }
   return session;
 }
 
