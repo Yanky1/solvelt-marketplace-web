@@ -23,7 +23,7 @@ const rows = [
     [["kosher-certification", "OU"], ["kosher-status", "pareve"], ["weight", "1 lb"], ["delivery", "ships"], ["delivery", "local"]],
     [["Is this kosher?", "Yes. It is certified by OU; the certification mark is on the packaging."], ["How is it shipped?", "Packed and shipped by the seller; delivery times are shown at checkout."]], 3],
   ["silver-plated-shabbat-candlesticks", "Silver-Plated Shabbat Candlesticks", "product", "brooklyn-judaica", "candlesticks", "Classic pair, 10 inches tall.",
-    "A classic pair of silver-plated candlesticks.", [["Pair", 8900, 10000, true]], [["material", "silver plated"], ["height", "10 in"], ["delivery", "ships"]], [], 2],
+    "A classic pair of silver-plated candlesticks.\n\n**Not bold** [not a link](https://example.test) <b>not bold either</b><img src=x onerror=\"window.__xss=1\"><script>window.__xss=1</script>", [["Pair", 8900, 10000, true]], [["material", "silver plated"], ["height", "10 in"], ["delivery", "ships"]], [], 2],
   ["cabernet-sauvignon-mevushal", "Cabernet Sauvignon, Mevushal", "product", "hudson-valley-vines", "wine-spirits", "Medium-bodied red from the Hudson Valley.",
     "Medium-bodied, with dark cherry and a soft finish.", [["750 ml", 2499, null, true], ["1.5 L", 4600, null, true]], [["kosher-certification", "OU"], ["kosher-status", "mevushal"], ["delivery", "ships"]], [], 1],
   ["sold-out-honey-cake", "Honey Cake for Rosh Hashanah", "product", "challah-corner", "bakery", "Moist spiced honey cake, baked to order.",

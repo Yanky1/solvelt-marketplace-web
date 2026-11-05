@@ -8,6 +8,14 @@ const CHALLAH = "/p/classic-braided-challah";
 const v = (slug: string, i: number) => gid(`v:${slug}:${i}`);
 
 test.describe("product page", () => {
+  test("a description is plain text: HTML and Markdown in it are shown as typed and nothing runs", async ({ page }) => {
+    await page.goto("/p/silver-plated-shabbat-candlesticks");
+    const text = page.locator("main");
+    await expect(text).toContainText("**Not bold** [not a link](https://example.test) <b>not bold either</b><img src=x onerror=\"window.__xss=1\"><script>window.__xss=1</script>");
+    await expect(page.locator("main b, main strong, main a[href='https://example.test'], main img[src='x']")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
+  });
+
   test("shows the product with price, stock, kosher info, delivery, details and questions", async ({ page }) => {
     await page.goto(CHALLAH);
     await expect(page.getByRole("heading", { level: 1, name: "Classic Braided Challah" })).toBeVisible();
