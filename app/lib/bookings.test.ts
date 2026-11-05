@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiLocation, bookingStatus, countdown, groupSlotsByDay, newHoldKey, safeReturnPath, safeZone, secondsLeft } from "./bookings";
+import { apiLocation, bookingStatus, countdown, groupSlotsByDay, newHoldKey, pickAddOns, policyLines, safeReturnPath, safeZone, secondsLeft } from "./bookings";
 
 const slot = (startAt: string) => ({ startAt, endAt: Number.isNaN(Date.parse(startAt)) ? startAt : new Date(Date.parse(startAt) + 3600_000).toISOString(), providerIds: ["p1"] });
 
@@ -50,5 +50,21 @@ describe("booking helpers", () => {
     const k = newHoldKey();
     expect(k).toMatch(/^[A-Za-z0-9\-_.:]{8,100}$/);
     expect(newHoldKey()).not.toBe(k);
+  });
+
+  it("says the policy in plain words, a sentence per known fact and nothing for an unknown one", () => {
+    expect(policyLines({ cancelFreeHours: 24, cancelFeePercent: 50, noShowFeePercent: 100, maxReschedules: 2, approvalHours: null })).toEqual([
+      "Free cancellation until 24 hours before the start; after that, 50% of the price is kept.", "If you do not show up, 100% of the price is kept.", "You can change the time up to 2 times.",
+    ]);
+    expect(policyLines({ cancelFreeHours: 72, cancelFeePercent: 0, maxReschedules: 0 })).toEqual(["Free cancellation at any time up to 3 days before the start.", "This booking cannot be moved to another time."]);
+    expect(policyLines({ cancelFreeHours: 1, cancelFeePercent: 100, maxReschedules: 1 })[0]).toContain("1 hour before");
+    expect(policyLines({ cancelFreeHours: null, cancelFeePercent: null, noShowFeePercent: null, maxReschedules: null, approvalHours: 12 })).toEqual([]);
+    expect(policyLines(null)).toEqual([]);
+  });
+
+  it("keeps only the add-ons the service offers, once each, in a stable order", () => {
+    const offered = [{ id: "b", name: "B", priceCents: 1, extraMinutes: 0 }, { id: "a", name: "A", priceCents: 1, extraMinutes: 0 }];
+    expect(pickAddOns(["b", "zzz", "a", "b"], offered)).toEqual(["a", "b"]);
+    expect(pickAddOns([], offered)).toEqual([]);
   });
 });
