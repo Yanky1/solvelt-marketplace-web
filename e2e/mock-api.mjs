@@ -848,6 +848,7 @@ http.createServer(async (req, res) => {
     const guest = key.startsWith("g:");
     if (guest && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(body.email ?? ""))) return send(res, 422, { code: "validation_failed", errors: { email: "Enter a valid email address." } });
     if ((carts.get(key) ?? []).length === 0) return send(res, 409, { code: "cart_not_ready", message: "Your cart is empty." });
+    if (body.address?.name === "Null Checkout") return send(res, 200, null);   // failure drill: a 2xx with no order in it (a bug on the web side must still end in a handled 503 with a reference)
     if (body.address?.name === "Explode Checkout") return send(res, 500, { code: "internal_error", message: "Something went wrong." }, { "X-Correlation-Id": "0HN7E2ECORR002" });   // failure drill (M8W-03)
     const a = body.address ?? {};
     const fresh = quoteFor(key, { address: a, selections: body.selections }, guest ? priceBump.get(String(body.email)) ?? 0 : 0);

@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
  */
 export interface ErrorRefHolder { id?: string }
 
-/** The short-lived cookie that carries the reference to the browser for a failed client-side (single-fetch) request. Not secret, not HttpOnly (the error page reads it). */
+/** The short-lived cookie that carries the reference to the browser for a failed client-side (single-fetch) request. Not a secret, but HttpOnly all the same (nothing in the page can read or forge it): the error page gets the id from the `/error-ref` resource route, which reads the cookie on the server and clears it. */
 export const REF_COOKIE = "sl_ref";
 export const REF_COOKIE_SECONDS = 120;
 
@@ -37,4 +37,7 @@ export function noteFailure(holder: ErrorRefHolder | undefined, info: FailureInf
   return id;
 }
 
-export const refCookie = (id: string, secure: boolean): string => `${REF_COOKIE}=${id}; Path=/; Max-Age=${REF_COOKIE_SECONDS}; SameSite=Lax${secure ? "; Secure" : ""}`;
+export const refCookie = (id: string, secure: boolean): string => `${REF_COOKIE}=${id}; Path=/; Max-Age=${REF_COOKIE_SECONDS}; SameSite=Lax; HttpOnly${secure ? "; Secure" : ""}`;
+export const clearRefCookie = (secure: boolean): string => `${REF_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly${secure ? "; Secure" : ""}`;
+/** The reference in a Cookie header, if any (cleaned). */
+export const refFromCookieHeader = (header: string | null): string | undefined => cleanRef(new RegExp(`(?:^|;\\s*)${REF_COOKIE}=([^;]*)`).exec(header ?? "")?.[1]);

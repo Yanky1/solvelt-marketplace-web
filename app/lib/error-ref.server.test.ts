@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api } from "./api-client.server";
-import { cleanRef, newRef, noteFailure, refCookie, routePattern } from "./error-ref.server";
+import { cleanRef, clearRefCookie, newRef, noteFailure, refCookie, refFromCookieHeader, routePattern } from "./error-ref.server";
 
 /** The reference on the error page (decision M8W-03): the API's correlation id for a server fault, one made here when there is no API answer, logged once without anything personal. */
 describe("routePattern", () => {
@@ -43,8 +43,13 @@ describe("noteFailure", () => {
     expect(holder.id).toMatch(/^W-/);
   });
   it("sets a short-lived cookie the error page can read, Secure on https only", () => {
-    expect(refCookie("W-abc1234567", false)).toBe("sl_ref=W-abc1234567; Path=/; Max-Age=120; SameSite=Lax");
+    expect(refCookie("W-abc1234567", false)).toBe("sl_ref=W-abc1234567; Path=/; Max-Age=120; SameSite=Lax; HttpOnly");
     expect(refCookie("W-abc1234567", true)).toContain("; Secure");
+    expect(refCookie("W-abc1234567", true)).toContain("; HttpOnly");
+    expect(clearRefCookie(true)).toBe("sl_ref=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly; Secure");
+    expect(refFromCookieHeader("a=b; sl_ref=W-abc1234567; c=d")).toBe("W-abc1234567");
+    expect(refFromCookieHeader("sl_ref=<script>")).toBeUndefined();
+    expect(refFromCookieHeader(null)).toBeUndefined();
   });
 });
 

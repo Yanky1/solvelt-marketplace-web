@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { waitHydrated } from "./helpers";
 
 // Decision M8W-03: an unexpected error shows "Reference: <id>": the API's correlation id for a server fault, one made by the web server when the API did not answer.
-// A failed page carries it in the root's data; a failed client-side request carries it in a short-lived cookie the error page reads once.
+// The failed request leaves it in a short-lived HttpOnly cookie; the error page fetches it once from /error-ref, which clears it.
 const reference = (page: Page) => page.getByTestId("error-reference");
 
 test.describe("the error reference", () => {
@@ -28,8 +28,24 @@ test.describe("the error reference", () => {
     await waitHydrated(page);
     await page.evaluate(() => (window as unknown as { __reactRouterDataRouter: { navigate: (to: string) => Promise<void> } }).__reactRouterDataRouter.navigate("/p/explode-500"));
     await expect(reference(page)).toContainText("Reference: 0HN7E2ECORR001");
-    // read once: the cookie is gone, so a later unrelated error cannot show an old reference
+    // read once: the cookie is HttpOnly (the page never sees it) and is gone after the read, so a later unrelated error cannot show an old reference
     expect(await page.evaluate(() => document.cookie)).not.toContain("sl_ref=");
+    expect((await page.context().cookies()).some((c) => c.name === "sl_ref")).toBe(false);
+    expect(await (await page.request.get("/error-ref")).json()).toEqual({ ref: null });
+  });
+
+  test("the reference cookie is HttpOnly and /error-ref hands the id over once", async ({ request }) => {
+    const failing = await request.get("/p/explode-500");
+    const set = failing.headersArray().filter((h) => h.name.toLowerCase() === "set-cookie").map((h) => h.value).find((v) => v.startsWith("sl_ref="));
+    expect(set, "the failed page sets sl_ref").toBeTruthy();
+    expect(set).toContain("HttpOnly");
+    expect(set).toContain("Max-Age=120");
+    const id = set!.split(";")[0]!.slice("sl_ref=".length);
+    const first = await request.get("/error-ref", { headers: { Cookie: `sl_ref=${id}` } });
+    expect(await first.json()).toEqual({ ref: id });
+    expect(first.headers()["cache-control"]).toContain("no-store");
+    expect(first.headersArray().some((h) => h.name.toLowerCase() === "set-cookie" && h.value.startsWith("sl_ref=;") && h.value.includes("Max-Age=0"))).toBe(true);
+    expect(await (await request.get("/error-ref", { headers: { Cookie: "sl_ref=<script>" } })).json()).toEqual({ ref: null });
   });
 
   test("the error page with its reference passes axe in light and dark", async ({ page, context }) => {
@@ -59,6 +75,26 @@ test.describe("the error reference", () => {
     await page.getByTestId("checkout-review").waitFor();
     await page.getByRole("button", { name: /^Place order and pay/ }).click();
     await expect(page.getByText("Reference: 0HN7E2ECORR002")).toBeVisible();
+  });
+
+  test("a checkout whose answer breaks this server's own code ends in the handled message with a W- reference, not a bare error", async ({ page }) => {
+    await page.goto("/p/classic-braided-challah");
+    await waitHydrated(page);
+    await page.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ }).click();
+    await expect(page).toHaveURL(/\/cart\?notice=added$/);
+    await page.goto("/checkout");
+    await waitHydrated(page);
+    await page.getByLabel("Email").fill(`guest-${Date.now()}@example.com`);
+    await page.getByLabel("Full name").fill("Null Checkout");
+    await page.getByLabel("Street address").fill("1 Main St");
+    await page.getByLabel("City").fill("Brooklyn");
+    await page.getByLabel("State / region").fill("NY");
+    await page.getByLabel("Postal code").fill("11201");       // phone and gift message stay empty, as on the owner's site
+    await page.getByRole("button", { name: "Continue to delivery" }).click();
+    await page.getByTestId("checkout-review").waitFor();
+    await page.getByRole("button", { name: /^Place order and pay/ }).click();
+    await expect(page.getByText(/Reference: W-[0-9a-f]{10}/)).toBeVisible();
+    await expect(page.getByText("Unexpected Server Error")).toHaveCount(0);
   });
 
   test("an ordinary missing page has no reference", async ({ page }) => {

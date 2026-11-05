@@ -94,16 +94,18 @@ export default function App() {
   return <Outlet />;
 }
 
-/** "Reference: <id>" with a copy button: what a buyer reads out so the failure can be found in the logs. The server sends it in a short-lived cookie (a failed page or a failed client-side request); it is read once, after hydration. */
+/** "Reference: <id>" with a copy button: what a buyer reads out so the failure can be found in the logs. The server leaves it in a short-lived HttpOnly cookie (a failed page or a failed client-side request); this asks the `/error-ref` route for it once, after hydration, and the route clears the cookie, so a later, unrelated error cannot show an old reference. */
 function ErrorReference() {
   const [ref, setRef] = useState<string | undefined>(undefined);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
-    if (ref) return;
-    const m = /(?:^|;\s*)sl_ref=([A-Za-z0-9._:-]{4,64})/.exec(document.cookie);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the cookie exists only in the browser: reading it during render would differ from the server's HTML (hydration)
-    if (m) { setRef(m[1]); document.cookie = "sl_ref=; Path=/; Max-Age=0"; }   // read once: a later, unrelated error must not show an old reference
-  }, [ref]);
+    let live = true;
+    fetch("/error-ref", { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { ref?: string | null } | null) => { if (live && typeof body?.ref === "string" && /^[A-Za-z0-9._:-]{4,64}$/.test(body.ref)) setRef(body.ref); })
+      .catch(() => { /* no reference to show: the page is still readable without it */ });
+    return () => { live = false; };
+  }, []);
   if (!ref) return null;
   return (
     <p className="muted" data-testid="error-reference">
