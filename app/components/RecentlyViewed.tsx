@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ListingGrid } from "./ListingGrid";
 import { useRootData } from "./Shell";
+import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
 import { GUEST_VIEWED_KEY, clearGuestViewed, guestViewedIds, parseCard, parseGuestViewed, recordGuestView, type ListCardView } from "~/lib/lists";
 
+// The guest list is kept in sessionStorage (this tab only, gone when it closes): on a shared computer the next person never inherits it (review MED-4).
 // These components call the site's own resource route `/recently-viewed` with plain `fetch`es (see SaveToList for why they are not router fetchers).
 
 function localStore(): Storage | null {
-  try { return typeof window === "undefined" ? null : window.localStorage; } catch { return null; }
+  try { return typeof window === "undefined" ? null : window.sessionStorage; } catch { return null; }
 }
 
 const VIEWED_EVENT = "solvelt:viewed-changed";
@@ -15,7 +17,7 @@ function subscribeViewed(cb: () => void): () => void {
   window.addEventListener(VIEWED_EVENT, cb);
   return () => { window.removeEventListener("storage", cb); window.removeEventListener(VIEWED_EVENT, cb); };
 }
-const rawViewed = (): string => { try { return window.localStorage.getItem(GUEST_VIEWED_KEY) ?? ""; } catch { return ""; } };
+const rawViewed = (): string => { try { return window.sessionStorage.getItem(GUEST_VIEWED_KEY) ?? ""; } catch { return ""; } };
 
 function post(fields: Record<string, string>): Promise<Response> {
   const f = new FormData();
@@ -78,6 +80,8 @@ export function MergeGuestViews() {
   const sent = useRef(false);
   useEffect(() => {
     if (!userId || sent.current) return;
+    // Children's effects run before the root's, so the "different person on this browser" check runs HERE first: another buyer's leftovers are cleared, never merged into this account.
+    reconcileUserStorageInBrowser(userId);
     const s = localStore();
     const ids = s ? guestViewedIds(s) : [];
     if (!s || !ids.length) return;

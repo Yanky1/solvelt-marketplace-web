@@ -461,7 +461,7 @@ http.createServer(async (req, res) => {
   if (sh && req.method === "GET") {
     const w = [...wishlists.values()].find((x) => x.shareHash && x.shareHash === sha(sh[1]));
     if (!w) return send(res, 404, { code: "not_found", message: "Not found" });
-    return send(res, 200, { name: w.name, items: w.items.map((id) => ({ addedAt: new Date().toISOString(), listing: listCard(id) })).filter((i) => i.listing) });
+    return send(res, 200, { name: w.name, items: w.items.map((id) => ({ listing: listCard(id) })).filter((i) => i.listing) });
   }
   const wm = /^\/api\/v1\/wishlists(?:\/(membership)|\/([^/]+)(?:\/(items)\/([^/]+)|\/(share))?)?$/.exec(path);
   if (wm) {
