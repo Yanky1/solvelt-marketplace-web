@@ -3,7 +3,7 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import sharp from "sharp";
-import { catalogResponse, IMAGE_BAD, IMAGE_DOWN, imageInfo, variantInfo } from "./mock-catalog.mjs";
+import { catalogResponse, gid, IMAGE_BAD, IMAGE_DOWN, imageInfo, variantInfo } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
@@ -82,6 +82,8 @@ const publicQuote = (q) => {
 
 const bookingsDb = new Map();
 const quotesDb = new Map();
+const SERVICE_SLUGS = ["deep-house-cleaning", "custom-kitchen-remodel"];
+const slugOf = (listingId) => SERVICE_SLUGS.find((x) => gid(`l:${x}`) === listingId) ?? null;
 const slotAt = (days, hour) => { const d = new Date(Date.now() + days * 86400000); d.setUTCHours(hour, 0, 0, 0); return d.toISOString(); };
 const POLICY = { cancelFreeHours: 24, cancelFeePercent: 50, noShowFeePercent: 100, maxReschedules: 2, approvalHours: null };
 const gidLine = () => `ln_${randomBytes(6).toString("hex")}`;
@@ -169,9 +171,9 @@ http.createServer(async (req, res) => {
       threads.set(id, t);
       return send(res, 200, { id });
     }
-    if (path === "/__test/book-set") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); for (const k of ["proposedStartAt", "requiresBuyerConsent", "startAt", "extraChargeState", "additionalChargeCents"]) { const v = url.searchParams.get(k); if (v !== null) b[k] = k === "requiresBuyerConsent" ? v === "true" : k === "additionalChargeCents" ? Number(v) : v; } return send(res, 204); }
+    if (path === "/__test/book-set") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); for (const k of ["proposedStartAt", "requiresBuyerConsent", "startAt", "extraChargeState", "additionalChargeCents", "number", "paymentDueAt", "holdExpiresAt"]) { const v = url.searchParams.get(k); if (v !== null) b[k] = k === "requiresBuyerConsent" ? v === "true" : k === "additionalChargeCents" ? Number(v) : v; } return send(res, 204); }
     if (path === "/__test/book-status") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); b.status = url.searchParams.get("status") ?? b.status; return send(res, 204); }
-    if (path === "/__test/quote-send") { const qq = quotesDb.get(url.searchParams.get("id") ?? ""); if (!qq) return send(res, 404, { code: "not_found" }); qq.status = url.searchParams.get("status") ?? "Quoted"; qq.priceCents = Number(url.searchParams.get("price") ?? "40000"); qq.durationMinutes = 180; qq.slots = [slotAt(3, 15), slotAt(4, 15)]; qq.expiresAt = new Date(Date.now() + 3 * 86400000).toISOString(); qq.note = "Bring your own tap please"; return send(res, 204); }
+    if (path === "/__test/quote-send") { const qq = quotesDb.get(url.searchParams.get("id") ?? ""); if (!qq) return send(res, 404, { code: "not_found" }); qq.status = url.searchParams.get("status") ?? "Quoted"; qq.priceCents = Number(url.searchParams.get("price") ?? "40000"); qq.durationMinutes = 180; qq.slots = [slotAt(3, 15), slotAt(4, 15)]; qq.expiresAt = new Date(Date.now() + 3 * 86400000).toISOString(); qq.note = "Bring your own tap please"; qq.legacy = url.searchParams.get("legacy") === "1"; return send(res, 204); }
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
     if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
@@ -624,7 +626,7 @@ http.createServer(async (req, res) => {
   // ---- services and bookings (M4; API repo docs/API.md "Services (M4)"): a small stateful stand-in ----
   const svc = /^\/api\/v1\/services\/([A-Za-z0-9_-]+)\/(availability|options)$/.exec(path);
   if (svc && req.method === "GET") {
-    if (svc[2] === "options") return send(res, 200, { available: true, addOns: [{ id: "deep", name: "Deep clean", priceCents: 2500, extraMinutes: 30 }], intakeQuestions: [{ id: "pets", label: "Any pets at home?", kind: "yesNo", required: true }], providers: [{ providerId: "11111111-1111-4111-8111-111111111111", displayName: "Jane D." }], assignment: "buyerChoice", policy: POLICY });
+    if (svc[2] === "options") return send(res, 200, { available: true, addOns: [{ id: "deep", name: "Deep clean", priceCents: 2500, extraMinutes: 30 }], intakeQuestions: [{ id: "pets", label: "Any pets at home?", kind: "yesNo", required: true }], providers: [{ providerId: "11111111-1111-4111-8111-111111111111", displayName: "Jane D." }], assignment: "buyerChoice", policy: POLICY, travelFeeCents: 1000 });
     const loc = url.searchParams.get("location"), postal = url.searchParams.get("postalCode");
     if (!["online", "customer", "seller"].includes(loc ?? "")) return send(res, 422, { code: "validation_failed", errors: { location: "required" } });
     if (loc === "customer" && !postal) return send(res, 422, { code: "validation_failed", errors: { postalCode: "required" } });
@@ -632,7 +634,9 @@ http.createServer(async (req, res) => {
     const slots = [[2, 14], [2, 16], [3, 14]].map(([d, h]) => ({ startAt: slotAt(d, h), endAt: slotAt(d, h + 4), providerIds: ["pv1"] }));
     return send(res, 200, { durationMinutes: 240, priceCents: 24000, providers: [{ providerId: "pv1", timeZone: "America/New_York" }], slots, from: slotAt(0, 0), to: slotAt(14, 0), fetchedAt: new Date().toISOString() }, { "Cache-Control": "no-store" });
   }
-  const bookingView = (b) => ({ id: b.id, number: b.number, listingId: b.listingId, status: b.status, location: b.location, startAt: b.startAt, endAt: b.endAt, durationMinutes: 240, currency: "USD", priceCents: 24000, addOnsCents: 0, travelFeeCents: 0, totalCents: 24000, holdExpiresAt: b.status === "Hold" ? b.holdExpiresAt : null, holdExpired: b.status === "Hold" && Date.parse(b.holdExpiresAt) <= Date.now(), approvalDeadline: null, proposedStartAt: b.proposedStartAt ?? null, requiresBuyerConsent: !!b.requiresBuyerConsent, createdAt: b.createdAt, policy: b.status === "Hold" ? null : POLICY, extraChargeState: b.extraChargeState ?? null, additionalChargeCents: b.additionalChargeCents ?? null });
+  const bookingView = (b) => ({ id: b.id, number: b.number, listingId: b.listingId, status: b.status, location: b.location, startAt: b.startAt, endAt: b.endAt, durationMinutes: 240, currency: "USD", priceCents: 24000, addOnsCents: 0, travelFeeCents: 0, totalCents: 24000, holdExpiresAt: b.status === "Hold" ? b.holdExpiresAt : null, holdExpired: b.status === "Hold" && Date.parse(b.holdExpiresAt) <= Date.now(), approvalDeadline: null, proposedStartAt: b.proposedStartAt ?? null, requiresBuyerConsent: !!b.requiresBuyerConsent, createdAt: b.createdAt, policy: b.status === "Hold" ? null : POLICY, extraChargeState: b.extraChargeState ?? null, additionalChargeCents: b.additionalChargeCents ?? null,
+    paymentDueAt: b.paymentDueAt && Date.parse(b.paymentDueAt) > Date.now() && ["Confirmed", "Requested", "Rescheduled"].includes(b.status) ? b.paymentDueAt : null,
+    needsPayment: !!b.paymentDueAt && Date.parse(b.paymentDueAt) > Date.now() && ["Confirmed", "Requested", "Rescheduled"].includes(b.status), listingSlug: slugOf(b.listingId) });
   if (path.startsWith("/api/v1/quotes")) {
     const owner = userFor(req);
     if (!owner) return send(res, 401, { code: "unauthorized" });
@@ -656,7 +660,7 @@ http.createServer(async (req, res) => {
     if (qm[2] === "accept" && req.method === "POST") {
       if (qq.status !== "Quoted") return send(res, 409, { code: "quote_not_open" });
       if (!(qq.slots ?? []).includes(body.start)) return send(res, 422, { code: "slot_not_offered" });
-      const b = { id: `00000000-0000-4000-8000-${randomBytes(6).toString("hex")}`, owner: owner.id, key: `qa-${qq.id}`, number: `BK-MOCK-Q${bookingsDb.size}`, listingId: qq.listingId, status: "Hold", location: qq.location, startAt: body.start, endAt: new Date(Date.parse(body.start) + 3 * 3600000).toISOString(), holdExpiresAt: new Date(Date.now() + 10 * 60000).toISOString(), createdAt: new Date().toISOString() };
+      const b = { id: `00000000-0000-4000-8000-${randomBytes(6).toString("hex")}`, owner: owner.id, key: `qa-${qq.id}`, number: `BK-MOCK-Q${bookingsDb.size}`, listingId: qq.listingId, status: qq.legacy ? "Confirmed" : "Hold", location: qq.location, startAt: body.start, endAt: new Date(Date.parse(body.start) + 3 * 3600000).toISOString(), holdExpiresAt: new Date(Date.now() + 10 * 60000).toISOString(), createdAt: new Date().toISOString(), ...(qq.legacy ? { paymentDueAt: new Date(Date.now() + 30 * 60000).toISOString() } : {}) };
       bookingsDb.set(b.id, b); qq.status = "Accepted"; qq.bookingId = b.id;
       return send(res, 201, { created: true, quote: quoteView(qq), booking: bookingView(b) });
     }
@@ -683,14 +687,15 @@ http.createServer(async (req, res) => {
     if (!bm[2] && req.method === "GET") return send(res, 200, bookingView(b));
     if (bm[2] === "cancel-preview" && req.method === "GET") return send(res, 200, { feeKnown: true, feeCents: 0, refundCents: 24000, totalCents: 24000, withinFreeWindow: true, currency: "USD" });
     if (bm[2] === "checkout" && req.method === "POST") {
-      if (b.status !== "Hold" || Date.parse(b.holdExpiresAt) <= Date.now()) return send(res, 409, { code: "hold_expired" });
+      const due = b.paymentDueAt && Date.parse(b.paymentDueAt) > Date.now() && b.status === "Confirmed";
+      if (!due && (b.status !== "Hold" || Date.parse(b.holdExpiresAt) <= Date.now())) return send(res, 409, { code: "hold_expired" });
       return send(res, 200, { booking: bookingView(b), payment: { provider: "stripe", clientSecret: `pi_mock_${b.id}_secret_x`, publishableKey: "pk_test_mock" } });
     }
     if (bm[2] === "reschedule" && req.method === "POST") { if (!["Confirmed", "Rescheduled", "Requested"].includes(b.status)) return send(res, 409, { code: "invalid_state" }); if (!String(req.headers["idempotency-key"] ?? "")) return send(res, 422, { code: "validation_failed" }); b.startAt = body.newStart; b.endAt = new Date(Date.parse(body.newStart) + 4 * 3600000).toISOString(); b.status = "Rescheduled"; return send(res, 200, { booking: bookingView(b) }); }
     if (bm[2] === "proposal" && req.method === "POST") { if (!b.proposedStartAt) return send(res, 409, { code: "no_proposal" }); if (body.accept) { b.startAt = b.proposedStartAt; b.endAt = new Date(Date.parse(b.startAt) + 4 * 3600000).toISOString(); b.status = "Confirmed"; } b.proposedStartAt = null; return send(res, 200, { booking: bookingView(b) }); }
     if (bm[2] === "acknowledge-reschedule" && req.method === "POST") { if (!b.requiresBuyerConsent) return send(res, 409, { code: "nothing_to_accept" }); b.requiresBuyerConsent = false; return send(res, 200, { booking: bookingView(b) }); }
     if (bm[2] === "calendar.ics" && req.method === "GET") { if (!["Requested", "Confirmed", "Rescheduled", "InProgress"].includes(b.status)) return send(res, 404, { code: "not_found" }); res.writeHead(200, { "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": `attachment; filename="booking-${b.number}.ics"` }); return res.end(`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:Deep House Cleaning\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`); }
-    if (bm[2] === "extra-charge/accept" && req.method === "POST") { if (!["requested", "consented"].includes(b.extraChargeState ?? "")) return send(res, 409, { code: "nothing_requested" }); b.extraChargeState = "consented"; return send(res, 200, { amountCents: b.additionalChargeCents, payment: { provider: "stripe", clientSecret: `pi_mock_${b.id}_extra_secret_x`, publishableKey: "pk_test_mock" } }); }
+    if (bm[2] === "extra-charge/accept" && req.method === "POST") { if (!["requested", "consented"].includes(b.extraChargeState ?? "")) return send(res, 409, { code: "nothing_requested" }); if (body.expectedAmountCents && body.expectedAmountCents !== b.additionalChargeCents) return send(res, 409, { code: "amount_changed" }); b.extraChargeState = "consented"; return send(res, 200, { amountCents: b.additionalChargeCents, payment: { provider: "stripe", clientSecret: `pi_mock_${b.id}_extra_secret_x`, publishableKey: "pk_test_mock" } }); }
     if (bm[2] === "extra-charge/decline" && req.method === "POST") { if (b.extraChargeState !== "requested") return send(res, 409, { code: "nothing_requested" }); b.extraChargeState = "declined"; return send(res, 204); }
     if (bm[2] === "cancel" && req.method === "POST") { if (!["Hold", "Requested", "Confirmed"].includes(b.status)) return send(res, 409, { code: "invalid_state" }); b.status = "CancelledByBuyer"; return send(res, 200, { booking: bookingView(b) }); }
   }

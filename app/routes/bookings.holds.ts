@@ -2,7 +2,8 @@ import { data, redirect } from "react-router";
 import type { Route } from "./+types/bookings.holds";
 import { ApiError, api, type HoldBody } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, privateHeaders, signInRedirect } from "~/lib/auth.server";
-import { newHoldKey, safeReturnPath } from "~/lib/bookings";
+import { newHoldKey } from "~/lib/bookings";
+import { safeNext } from "~/lib/csrf.server";
 import { isSafeId } from "~/lib/passkey.server";
 
 export function loader() {
@@ -24,7 +25,7 @@ function holdFailure(e: unknown): string {
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   const session = assertCsrf(request, form);
-  const returnTo = safeReturnPath(String(form.get("returnTo") ?? ""), "/");
+  const returnTo = safeNext(String(form.get("returnTo") ?? ""), "/");
   if (!session.token) {
     // signed out: sign in, then come back to the service page (the buyer picks the time again: nothing is held for a stranger)
     return signInRedirect(new Request(new URL(returnTo, request.url)));

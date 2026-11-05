@@ -43,6 +43,10 @@ export interface BookingView {
   priceCents: number; addOnsCents: number; travelFeeCents: number; totalCents: number; holdExpiresAt: string | null; holdExpired: boolean; approvalDeadline: string | null; proposedStartAt: string | null;
   cancellationFeeCents?: number | null; refundDueCents?: number | null; additionalChargeCents?: number | null; onlineInstructions?: string | null; failureCode?: string | null; createdAt: string;
   requiresBuyerConsent?: boolean; rescheduleRequestedStartAt?: string | null; extraChargeState?: string | null; policy?: PolicyView | null;
+  /** Set for a confirmed booking that is still unpaid (a quote accepted before the portal's hold change): pay by then or it is cancelled. */
+  paymentDueAt?: string | null; needsPayment?: boolean;
+  /** The service page is `/p/{slug}`. */
+  listingSlug?: string | null;
 }
 
 export type Tone = "good" | "wait" | "bad" | "neutral";
@@ -140,3 +144,6 @@ export const EXTRA_CHARGE_TEXT: Record<string, string> = {
   declined: "You declined the additional amount.",
   paid: "The additional amount is paid.",
 };
+
+/** A slug the API gave, only when it is a plain one (it ends up in a link). */
+export const servicePath = (slug: string | null | undefined): string | null => (slug && /^[a-z0-9][a-z0-9-]{0,200}$/i.test(slug) ? `/p/${slug}` : null);

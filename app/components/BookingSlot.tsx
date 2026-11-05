@@ -82,10 +82,12 @@ function QuoteForm({ listingId, title, locations }: BookingSlotProps) {
   const fetcher = useFetcher<{ error?: string }>();
   const here = useLocation();
   const [location, setLocation] = useState<ServiceLocation>(locations[0]!);
-  const [key] = useState(() => newHoldKey());
+  const [key, setKey] = useState(() => newHoldKey());
   const error = fetcher.data?.error ? (QUOTE_MESSAGES[fetcher.data.error] ?? QUOTE_MESSAGES["unavailable"]!) : null;
+  // One key per DIFFERENT request: after a refusal (an address the provider does not serve, say) any change the buyer makes is a new request, or the API would answer "same key, other details".
+  const renew = () => { if (fetcher.data?.error) setKey(newHoldKey()); };
   return (
-    <fetcher.Form method="post" action="/quotes/new" className="add-to-cart stack" data-testid="booking-slot" aria-label={`Ask for a quote for ${title}`}>
+    <fetcher.Form method="post" action="/quotes/new" className="add-to-cart stack" data-testid="booking-slot" aria-label={`Ask for a quote for ${title}`} onChange={renew}>
       <CsrfField />
       <input type="hidden" name="listingId" value={listingId} />
       <input type="hidden" name="location" value={apiLocation(location)} />
@@ -205,6 +207,7 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
           {opts.providers.map((p) => <option key={p.providerId} value={p.providerId}>{p.displayName}</option>)}
         </Select>
       )}
+      {atHome && opts?.travelFeeCents ? <p className="muted" style={{ margin: 0 }} data-testid="travel-fee">A travel fee of {formatMoney(opts.travelFeeCents, currency)} is added for visits at your home.</p> : null}
       {loading && <p className="muted" role="status">Finding times…</p>}
       {load.code && <p role="alert" data-testid="availability-error">{AVAILABILITY_MESSAGES[load.code] ?? AVAILABILITY_MESSAGES["availability_unavailable"]}</p>}
       {load.result && days.length === 0 && <p className="muted" data-testid="no-times">No times are open in the next two weeks. Please check back soon.</p>}
