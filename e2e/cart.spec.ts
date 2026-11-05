@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { csrfFor, newVerifiedUser, signIn, waitHydrated } from "./helpers";
+import { MOCK, csrfFor, newVerifiedUser, signIn, waitHydrated } from "./helpers";
 import { gid } from "./mock-catalog.mjs";
 
 const CHALLAH = "/p/classic-braided-challah";
@@ -91,6 +91,24 @@ test.describe("cart", () => {
     const page2 = await other.newPage();
     await signIn(page2, email);
     await expect(page2).toHaveURL(/\/account$/);
+    await expect(page2.getByTestId("cart-count")).toHaveText("1");
+    await other.close();
+  });
+
+  test("a cart call that failed at sign-in does not leave the header at 0: the count heals on the first page", async ({ page, browser, request }) => {
+    const email = await newVerifiedUser(page, "cartheal");
+    await signIn(page, email);
+    await expect(page).toHaveURL(/\/account$/);
+    await addChallah(page);
+    await expect(page.getByTestId("cart-count")).toHaveText("1");
+    const other = await browser.newContext({ baseURL: page.url() });
+    const page2 = await other.newPage();
+    // the cart call made at sign-in fails once (mock fault hook): the cookie gets no count
+    expect((await request.get(`${MOCK}/__test/fail-cart-once?email=${encodeURIComponent(email)}`)).status()).toBe(204);
+    await signIn(page2, email);
+    await expect(page2).toHaveURL(/\/account$/);
+    await expect(page2.getByTestId("cart-count")).toHaveText("1");
+    await page2.goto("/");
     await expect(page2.getByTestId("cart-count")).toHaveText("1");
     await other.close();
   });

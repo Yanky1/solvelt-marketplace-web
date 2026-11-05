@@ -48,6 +48,7 @@ const badPublishableKey = new Set(); // test hook: this guest email's PaymentInt
 const checkoutOrders = new Map(); // number -> {key, userId, guestEmail, token, status, lines, totalCents, createdAt}
 const carts = new Map(); // owner key ("u:<userId>" or "g:<token>") -> [{id, variantId, quantity, seenPrice}]
 // the API's own header name, spelled out here on purpose: the mock must not follow a wrong name in the web code (review H1)
+const failCartOnce = new Set();
 const cartKeyOf = (req) => { const t = bearer(req); const uid = t ? sessions.get(t) : undefined; if (t && !uid) return null; return uid ? `u:${uid}` : (req.headers["x-solvelt-cart-token"] ? `g:${req.headers["x-solvelt-cart-token"]}` : undefined); };
 function cartView(key, token) {
   const lines = carts.get(key) ?? [];
@@ -136,6 +137,7 @@ http.createServer(async (req, res) => {
     if (path === "/__test/bad-publishable-key") { badPublishableKey.add(url.searchParams.get("email") ?? ""); return send(res, 204); }
     if (path === "/__test/checkout-orders") return send(res, 200, [...checkoutOrders.entries()].map(([number, o]) => ({ number, status: o.status, key: o.key.slice(0, 2), guestEmail: o.guestEmail, token: o.token, address: o.address, giftMessage: o.giftMessage })));
     if (path === "/__test/outbox") return send(res, 200, outbox);
+    if (path === "/__test/fail-cart-once") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); if (u) failCartOnce.add(`u:${u.id}`); return send(res, 204); }   // the next cart read or merge of this account answers 503 (the sign-in cart call)
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
@@ -677,7 +679,7 @@ http.createServer(async (req, res) => {
     return res.end(bytes);
   }
 
-  if (path === "/api/v1/cart" && req.method === "GET") { const key = cartKeyOf(req); if (key === null) return send(res, 401, { code: "unauthorized" }); return send(res, 200, cartView(key ?? "none")); }
+  if (path === "/api/v1/cart" && req.method === "GET") { const key = cartKeyOf(req); if (key === null) return send(res, 401, { code: "unauthorized" }); if (key && failCartOnce.delete(key)) return send(res, 503, { code: "unavailable" }); return send(res, 200, cartView(key ?? "none")); }
   if (path === "/api/v1/cart/lines" && req.method === "POST") {
     let key = cartKeyOf(req);
     if (key === null) return send(res, 401, { code: "unauthorized" });
@@ -708,6 +710,7 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/cart/merge" && req.method === "POST") {
     const key = cartKeyOf(req);
     if (!key || key.startsWith("g:")) return send(res, 401, { code: "unauthorized" });
+    if (failCartOnce.delete(key)) return send(res, 503, { code: "unavailable" });
     const gk = `g:${body.guestToken}`;
     const mine = carts.get(key) ?? [];
     for (const l of carts.get(gk) ?? []) { const h = mine.find((x) => x.variantId === l.variantId); if (h) h.quantity = Math.min(20, h.quantity + l.quantity); else mine.push(l); }

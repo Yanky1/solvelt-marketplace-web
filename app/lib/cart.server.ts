@@ -53,3 +53,28 @@ export async function afterSignIn(request: Request, context: AppLoadContext, new
     return {};
   }
 }
+
+export type HealedCount = { cn: number; setCookie: string } | null;
+const healed = new WeakMap<object, Promise<HealedCount>>();
+
+/**
+ * Self-healing header count: a signed-in session whose cookie has no item count (the cart call at sign-in failed: afterSignIn is best effort) asks the API for the account's cart ONCE
+ * and remembers the count in the cookie. Memoised per request (the load context is one object per request), so however many loaders ask it is at most one API call; null when
+ * there is nothing to heal (not signed in, or the count is already known) or the API could not answer (the next page load tries again).
+ */
+export function healCartCount(request: Request, context: AppLoadContext, session: SessionData, signedIn: boolean): Promise<HealedCount> {
+  if (!signedIn || !session.token || session.cn !== undefined) return Promise.resolve(null);
+  const hit = healed.get(context);
+  if (hit) return hit;
+  const run = async (): Promise<HealedCount> => {
+    try {
+      const cart = await api.cart(apiCtx(request, context, session));
+      return { cn: cart.itemCount, setCookie: sessionCookie({ ...session, cn: cart.itemCount }, getConfig()) };
+    } catch {
+      return null;
+    }
+  };
+  const p = run();
+  healed.set(context, p);
+  return p;
+}
