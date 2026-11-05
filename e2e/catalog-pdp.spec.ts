@@ -73,11 +73,11 @@ test.describe("product page", () => {
     expect(crumbs.itemListElement.at(-1).item).toBe(`${baseURL}${CHALLAH}`);
   });
 
-  test("a service is a Service, offers booking later, and says how it is offered", async ({ page }) => {
+  test("a service is a Service, asks where the visitor is before offering times, and says how it is offered", async ({ page }) => {
     await page.goto("/p/deep-house-cleaning");
-    await expect(page.getByTestId("booking-slot")).toContainText("Online booking opens soon");
-    await expect(page.getByTestId("booking-slot").getByRole("button", { name: "Request a booking" })).toBeDisabled();
-    await expect(page.getByTestId("booking-slot").locator("form")).toHaveCount(0);
+    await expect(page.getByTestId("booking-slot")).toContainText("Your postal code");
+    await expect(page.getByTestId("booking-slot").getByRole("button", { name: "Show times" })).toBeVisible();
+    await expect(page.getByTestId("booking-slot").getByRole("form", { name: /^Book / })).toHaveCount(0);   // nothing to submit before a time is chosen
     await expect(page.getByTestId("add-to-cart-slot")).toHaveCount(0);
     await expect(page.getByRole("list", { name: "How this service is offered" })).toContainText("Comes to you");
     await expect(page.getByRole("heading", { name: "About this service" })).toBeVisible();
