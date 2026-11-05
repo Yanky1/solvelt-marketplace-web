@@ -88,6 +88,9 @@ for (const [form, device] of [["desktop", devices["Desktop Chrome"]], ["mobile",
       for (const d of await page.locator("details").all()) await d.evaluate((el) => { el.open = true; });
       await page.screenshot({ path: `docs/screenshots/${name}-${form}-${theme}.png`, fullPage: true });
     }
+    // Privacy (M5): download my data, delete my account
+    await page.goto(BASE + "/account/privacy", { waitUntil: "networkidle" });
+    await page.screenshot({ path: `docs/screenshots/privacy-${form}-${theme}.png`, fullPage: true });
     await context.close();
   }
 }

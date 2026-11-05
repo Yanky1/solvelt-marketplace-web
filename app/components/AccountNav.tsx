@@ -10,6 +10,7 @@ const LINKS = [
   { to: "/account/profile", label: "Profile" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/passkeys", label: "Passkeys" },
+  { to: "/account/privacy", label: "Privacy" },
 ];
 
 export function AccountNav() {

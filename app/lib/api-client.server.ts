@@ -105,6 +105,11 @@ async function raw(ctx: ApiRequestContext, path: string): Promise<Response> {
   try { return await apiFetch(getConfig(), ctx, path, { signal: AbortSignal.timeout(20000) }); } catch { throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again."); }
 }
 
+/** Raw POST (no body): the data export streams a file the caller sends on with its own safe headers. */
+async function rawPost(ctx: ApiRequestContext, path: string): Promise<Response> {
+  try { return await apiFetch(getConfig(), ctx, path, { method: "POST", signal: AbortSignal.timeout(30000) }); } catch { throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again."); }
+}
+
 // ---- cart (M3; API repo docs/API.md "Cart") ----
 export interface CartLine { id: string; listingId: string; variantId: string; slug: string; title: string; variantName: string; imageId: string | null; quantity: number; unitPriceCents: number; compareAtCents: number | null; lineTotalCents: number; status: "ok" | "unavailable"; previousUnitPriceCents: number | null }
 export interface CartGroup { sellerId: string; sellerName: string; brandId: string; brandName: string; subtotalCents: number; lines: CartLine[] }
@@ -204,6 +209,10 @@ export const api = {
   /** O-16: verifying also needs the password chosen at sign-up (a wrong one answers the same generic 400 and leaves the link valid). */
   verifyEmail: (ctx: ApiRequestContext, b: { token: string; password: string }) => call<void>(ctx, "/api/v1/auth/verify-email", b),
   /** Step-up: 204 = right password, and this API session's authenticated-at clock is now (a replayed cookie cannot reset it). */
+  /** "Download my data" (API M5-32): the buyer's own data as one JSON file. */
+  dataExport: (ctx: ApiRequestContext) => rawPost(ctx, "/api/v1/account/data-export"),
+  /** Deletes the account (soft delete now, erasure by the API's job): needs the password and a recent sign-in. */
+  deleteAccount: (ctx: ApiRequestContext, password: string) => call<void>(ctx, "/api/v1/account/delete", { password }),
   reauthenticate: (ctx: ApiRequestContext, password: string) => call<void>(ctx, "/api/v1/auth/reauthenticate", { password }),
   signIn: (ctx: ApiRequestContext, b: { email: string; password: string }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/sign-in", b),
   signOut: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/auth/sign-out", {}),

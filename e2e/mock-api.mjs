@@ -259,6 +259,22 @@ http.createServer(async (req, res) => {
     const u = userFor(req);
     return u ? send(res, 200, { id: u.id, displayName: u.displayName, email: u.email }) : send(res, 401, { code: "unauthorized", message: "Sign in required" });
   }
+  // ---- account: privacy (API M5-32 data export, M1 account deletion) ----
+  if (path === "/api/v1/account/data-export" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const body = JSON.stringify({ generatedAt: new Date().toISOString(), sections: { account: { profile: { email: u.email, displayName: u.displayName, phone: u.phone ?? null }, addresses: [] }, messages: [], notifications: { notifications: [], emailSettings: {} }, "cancellations-and-returns": { cancelRequests: [], returns: [] } } });
+    res.writeHead(200, { "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="solvelt-my-data.json"', "Cache-Control": "private, no-store" });
+    return res.end(body);
+  }
+  if (path === "/api/v1/account/delete" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (u.password !== body.password) return send(res, 401, { code: "invalid_credentials", message: "The password is not correct." });
+    for (const [t, id] of [...sessions]) if (id === u.id) sessions.delete(t);
+    users.delete(u.email);
+    return send(res, 204);
+  }
   // ---- account: profile ----
   if (path === "/api/v1/account/profile") {
     const u = userFor(req);
