@@ -6,9 +6,9 @@ const REASON = "ticket 4412: caller asked";
 const axe = (page: Page) => new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
 
 /** Makes a staff member in the mock and enrols a passkey through the real page; leaves the page signed in at /staff. */
-async function enrolAs(page: Page, role: "support" | "finance" | "admin", tag: string) {
+async function enrolAs(page: Page, role: "support" | "finance" | "admin", tag: string, leak = false) {
   await addVirtualAuthenticator(page);
-  const seed = (await (await page.request.get(`${MOCK}/__test/staff-seed?role=${role}&tag=${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)).json()) as { id: string; email: string; secret: string };
+  const seed = (await (await page.request.get(`${MOCK}/__test/staff-seed?role=${role}&leak=${leak ? 1 : 0}&tag=${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`)).json()) as { id: string; email: string; secret: string };
   await page.goto("/staff/enrol");
   await waitHydrated(page);
   await page.getByLabel("One-time secret").fill(seed.secret);
@@ -254,3 +254,108 @@ for (const theme of ["light", "dark"] as const) {
     if (shots) await page.screenshot({ path: `docs/screenshots/staff-sign-in-${form}-${theme}.png`, fullPage: true });
   });
 }
+
+// ---------- the web security review of 64c32be (decision M7W-07) ----------
+
+test("a forged POST to a staff action is refused with 403 and never reaches the API", async ({ page, request, baseURL }) => {
+  const seed = await enrolAs(page, "support", "csrf");
+  const ip = `10.77.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;   // the mock records the forwarded client address: ours is unique to this test
+  const buyerCsrf = await (async () => { const html = await (await request.get("/sign-in")).text(); return /name="csrf" value="([^"]+)"/.exec(html)![1]!; })();
+  const staffCsrf = await page.locator('input[name="csrf"]').first().inputValue().catch(() => "");
+  const other = await page.context().browser()!.newContext();
+  const otherPage = await other.newPage();
+  await enrolAs(otherPage, "support", "csrf-other");
+  const otherCsrf = await otherPage.evaluate(async () => /name="csrf" value="([^"]+)"/.exec(await (await fetch("/staff/buyers")).text())![1]!);
+  await other.close();
+  const send = (fields: Record<string, string>, origin: string | null = baseURL!) =>
+    page.request.post("/staff/buyers", { form: { intent: "find", key: "email", value: "x@example.test", reason: REASON, ...fields }, headers: { "x-forwarded-for": ip, ...(origin ? { origin } : {}) }, maxRedirects: 0 });
+  await page.goto("/staff/buyers");
+  const mine = await page.locator('input[name="csrf"]').first().inputValue();
+  expect(mine.length).toBeGreaterThan(20);
+  void staffCsrf;
+  for (const [what, r] of [
+    ["no token", await send({})],
+    ["a buyer's token", await send({ csrf: buyerCsrf })],
+    ["another session's token", await send({ csrf: otherCsrf })],
+    ["a foreign origin", await send({ csrf: mine }, "https://evil.example")],
+    ["no origin", await send({ csrf: mine }, null)],
+  ] as const) expect([400, 403], `${what}: refused (the framework's own origin check answers 400, ours 403)`).toContain(r.status());
+  const seen = (await (await page.request.get(`${MOCK}/__test/seen`)).json()) as { clientIp: string | null; path: string }[];
+  expect(seen.filter((x) => x.clientIp === ip && x.path.startsWith("/api/v1/staff/")), "no staff API call for a forged request").toEqual([]);
+  // the same request with the right token and origin works (so the refusals above were about the forgery, not the test)
+  const ok = await send({ csrf: mine });
+  expect([200, 400, 404]).toContain(ok.status());
+  expect(seed.id.length).toBeGreaterThan(10);
+});
+
+test("a dead staff token sends the person to sign-in and the cookie that held it is replaced", async ({ page, context }) => {
+  const seed = await enrolAs(page, "support", "dead");
+  const before = (await context.cookies()).find((c) => c.name === "solvelt_staff")!.value;
+  await page.request.get(`${MOCK}/__test/staff-revoke?staffId=${seed.id}`);
+  await page.goto("/staff/buyers");
+  await expect(page).toHaveURL(/\/staff\/sign-in\?next=/);
+  const after = (await context.cookies()).find((c) => c.name === "solvelt_staff")?.value;
+  expect(after, "the cookie that held the dead token was cleared (a fresh visitor cookie replaced it)").not.toBe(before);
+  await page.goto("/staff");
+  await expect(page).toHaveURL(/\/staff\/sign-in/);   // and nothing signs the person back in
+});
+
+test("the Stripe block and refund ids are shown only to a role with payments.view, whatever the API sends", async ({ page }) => {
+  await enrolAs(page, "support", "leak", true);   // this mock answers the Stripe block to a support member too
+  await page.goto("/staff/orders");
+  await waitHydrated(page);
+  await page.getByLabel("Order number").fill("MP-1001");
+  await page.getByLabel("Reason").fill(REASON);
+  await page.getByRole("button", { name: "Look up" }).click();
+  const card = page.getByTestId("order-card");
+  await expect(card.getByRole("heading", { name: "MP-1001" })).toBeVisible();
+  await expect(card).not.toContainText("pi_fake");
+  await expect(card).not.toContainText("Intent:");
+  await expect(card).not.toContainText("r-1");
+});
+
+test("the staff area has its own minimal chrome: no buyer search, cart, sign-in or theme form", async ({ page }) => {
+  await enrolAs(page, "admin", "chrome");
+  for (const path of ["/staff", "/staff/buyers", "/staff/sign-in"]) {
+    await page.goto(path);
+    await expect(page.getByRole("search")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /^Cart/ })).toHaveCount(0);
+    await expect(page.locator('form[action="/theme"]')).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Skip to main content" })).toBeVisible();
+    await expect(page.locator("main#main")).toHaveCount(1);
+  }
+  await page.goto("/");   // the buyer site keeps its chrome
+  await expect(page.getByRole("search")).toBeVisible();
+});
+
+test("a malformed enrolment fragment is removed from the address bar and never throws", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/staff/enrol#ste_abc%E0%A4%A");
+  await waitHydrated(page);
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe("");
+  expect(errors).toEqual([]);
+  await expect(page.getByLabel("One-time secret")).toHaveValue("ste_abc%E0%A4%A");
+  // and a good one is read, then removed (a link opened in a fresh page load)
+  await page.goto("/staff/sign-in");
+  await page.goto("/staff/enrol#ste_0123456789abcdef");
+  await waitHydrated(page);
+  await expect(page.getByLabel("One-time secret")).toHaveValue("ste_0123456789abcdef");
+  expect(await page.evaluate(() => window.location.hash)).toBe("");
+});
+
+test("staff responses carry one Cache-Control, a stricter CSP, and the enrolment page sends no Referer", async ({ request }) => {
+  for (const path of ["/staff/sign-in", "/staff/sign-in.data", "/staff.data", "/staff/buyers.data", "/staff/enrol"]) {
+    const r = await request.get(path, { maxRedirects: 0 });
+    expect(r.headers()["cache-control"], path).toBe("private, no-store");
+    expect(r.headers()["x-robots-tag"], path).toContain("noindex");
+    const csp = r.headers()["content-security-policy"]!;
+    expect(csp, path).not.toContain("stripe");
+    expect(csp, path).toContain("frame-src 'none'");
+  }
+  expect((await request.get("/staff/enrol")).headers()["referrer-policy"]).toBe("no-referrer");
+  expect((await request.get("/")).headers()["content-security-policy"]).toContain("js.stripe.com");   // the buyer site still allows Stripe
+  // a path that merely starts with the same letters is not the staff area
+  const near = await request.get("/staff-picks", { maxRedirects: 0 });
+  expect(near.headers()["cache-control"] ?? "").not.toBe("private, no-store");
+});

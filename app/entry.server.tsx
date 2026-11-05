@@ -5,6 +5,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter, type AppLoadContext, type EntryContext } from "react-router";
 import { getConfig, stripeScriptOrigins as originsFor } from "~/lib/config.server";
 import { NonceContext } from "~/lib/nonce";
+import { isStaffPath } from "~/lib/staff-path";
 
 // Fail at start-up (module load) when production config is missing.
 const config = getConfig();
@@ -38,7 +39,7 @@ export default function handleRequest(
           const stream = createReadableStreamFromReadable(body);
           responseHeaders.set("Content-Type", "text/html");
           responseHeaders.append("Vary", "Cookie"); // the theme is rendered from a cookie
-          if (new URL(request.url).pathname.startsWith("/staff")) { responseHeaders.set("Cache-Control", "private, no-store"); responseHeaders.set("X-Robots-Tag", "noindex, nofollow"); }   // the staff area: never stored, never indexed (M7W-02)
+          if (isStaffPath(new URL(request.url).pathname)) { responseHeaders.set("Cache-Control", "private, no-store"); responseHeaders.set("X-Robots-Tag", "noindex, nofollow"); }   // the staff area: never stored, never indexed (M7W-02)
           // Personalised pages must never be served from a shared cache; routes may override with something stricter.
           if (!responseHeaders.has("Cache-Control")) responseHeaders.set("Cache-Control", "private, no-cache");
           // Bots get onAllReady (complete HTML, no streaming), browsers onShellReady; both end the abort timer with the stream.
