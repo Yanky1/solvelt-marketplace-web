@@ -7,7 +7,7 @@ import { Badge, Card, formatMoney } from "~/components/ui/display";
 import { Button, Input, Select } from "~/components/ui/form";
 import { ApiError, api, type BookingPayment, type ServiceOptions } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, privateHeaders, requireAccount } from "~/lib/auth.server";
-import { apiLocation, badgeTone, bookingStatus, CALENDAR_STATUSES, CANCELLABLE, countdown, groupSlotsByDay, newHoldKey, policyLines, safeZone, secondsLeft, type Availability, type BookingView } from "~/lib/bookings";
+import { apiLocation, badgeTone, bookingStatus, CALENDAR_STATUSES, CANCELLABLE, countdown, EXTRA_CHARGE_TEXT, groupSlotsByDay, newHoldKey, policyLines, safeZone, secondsLeft, type Availability, type BookingView } from "~/lib/bookings";
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
 import { formatDate } from "~/lib/orders";
@@ -29,10 +29,11 @@ export const BOOKING_PAGE_MESSAGES: Record<string, string> = {
   reschedule_limit: "This booking cannot be moved again.",
   too_late: "It is too late to move this booking.",
   no_proposal: "There is no suggested time to answer any more.",
+  nothing_requested: "There is no additional amount to answer any more.",
   nothing_to_accept: "There is nothing to accept any more.",
   unavailable: "We could not do that just now. Please try again in a moment.",
 };
-const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|invalid_state|slot_unavailable|reschedule_limit|too_late|no_proposal|nothing_to_accept)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
+const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|nothing_requested|invalid_state|slot_unavailable|reschedule_limit|too_late|no_proposal|nothing_to_accept)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
@@ -73,6 +74,14 @@ export async function action({ request, context, params }: Route.ActionArgs) {
     }
     if (intent === "acknowledge") {
       await api.acknowledgeReschedule(ctx, params.id);
+      return redirect(`/bookings/${encodeURIComponent(params.id)}`, { headers: privateHeaders });
+    }
+    if (intent === "extra-accept") {
+      const r = await api.extraChargeAccept(ctx, params.id);
+      return data({ payment: r.payment as BookingPayment, error: null as string | null }, { headers: privateHeaders });
+    }
+    if (intent === "extra-decline") {
+      await api.extraChargeDecline(ctx, params.id);
       return redirect(`/bookings/${encodeURIComponent(params.id)}`, { headers: privateHeaders });
     }
     if (intent === "checkout") {
@@ -122,6 +131,7 @@ export default function BookingPage({ loaderData }: Route.ComponentProps) {
       </Card>
 
       {booking.status !== "Hold" && <ChangePanel booking={booking} />}
+      {booking.extraChargeState && booking.extraChargeState !== "none" && <ExtraChargePanel booking={booking} stripeJsUrl={stripeJsUrl} returnUrl={`${origin}/bookings/${encodeURIComponent(booking.id)}`} />}
       {policyLines(booking.policy).length > 0 && (
         <section aria-labelledby="policy-h" className="stack">
           <h2 id="policy-h" style={{ fontSize: "1rem", margin: 0 }}>Cancellation policy</h2>
@@ -281,5 +291,42 @@ function RescheduleForm({ booking, fetcher, busy, onClose }: { booking: BookingV
         <Button type="button" variant="secondary" onClick={onClose}>Never mind</Button>
       </div>
     </fetcher.Form>
+  );
+}
+
+
+/**
+ * An amount the provider asks for after the work (more time than booked, for instance). The buyer consents first (that creates the payment for exactly that amount) and pays with the same
+ * Payment Element as a booking; declining ends the request. The state and the amount come from the API.
+ */
+function ExtraChargePanel({ booking, stripeJsUrl, returnUrl }: { booking: BookingView; stripeJsUrl: string; returnUrl: string }) {
+  const fetcher = useFetcher<{ payment: BookingPayment | null; error: string | null }>();
+  const state = booking.extraChargeState ?? "";
+  const amount = booking.additionalChargeCents ?? 0;
+  const payment = fetcher.data?.payment ?? null;
+  const error = fetcher.data?.error ? BOOKING_PAGE_MESSAGES[fetcher.data.error] ?? BOOKING_PAGE_MESSAGES["unavailable"] : null;
+  const busy = fetcher.state !== "idle";
+  const text = EXTRA_CHARGE_TEXT[state];
+  if (!text) return null;
+  return (
+    <Card className="stack" data-testid="extra-charge">
+      <p style={{ margin: 0 }}>{text}{amount > 0 ? <> Amount: <strong>{formatMoney(amount, booking.currency)}</strong>.</> : null}</p>
+      {(state === "requested" || state === "consented") && !payment && (
+        <div className="row">
+          <fetcher.Form method="post" aria-label="Agree to the additional amount">
+            <CsrfField /><input type="hidden" name="intent" value="extra-accept" />
+            <Button type="submit" variant="primary" disabled={busy}>{state === "consented" ? "Continue to payment" : "Agree and pay"}</Button>
+          </fetcher.Form>
+          {state === "requested" && (
+            <fetcher.Form method="post" aria-label="Decline the additional amount">
+              <CsrfField /><input type="hidden" name="intent" value="extra-decline" />
+              <Button type="submit" variant="secondary" disabled={busy}>Decline</Button>
+            </fetcher.Form>
+          )}
+        </div>
+      )}
+      {payment && <PaymentStep clientSecret={payment.clientSecret} publishableKey={payment.publishableKey} stripeJsUrl={stripeJsUrl} returnUrl={returnUrl} totalLabel={formatMoney(amount, booking.currency)} />}
+      {error && <p role="alert" data-testid="extra-error">{error}</p>}
+    </Card>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiLocation, bookingStatus, countdown, groupSlotsByDay, newHoldKey, pickAddOns, policyLines, safeReturnPath, safeZone, secondsLeft } from "./bookings";
+import { apiLocation, bookingStatus, countdown, EXTRA_CHARGE_TEXT, isQuoteOnly, quoteStatus, groupSlotsByDay, newHoldKey, pickAddOns, policyLines, safeReturnPath, safeZone, secondsLeft } from "./bookings";
 
 const slot = (startAt: string) => ({ startAt, endAt: Number.isNaN(Date.parse(startAt)) ? startAt : new Date(Date.parse(startAt) + 3600_000).toISOString(), providerIds: ["p1"] });
 
@@ -66,5 +66,17 @@ describe("booking helpers", () => {
     const offered = [{ id: "b", name: "B", priceCents: 1, extraMinutes: 0 }, { id: "a", name: "A", priceCents: 1, extraMinutes: 0 }];
     expect(pickAddOns(["b", "zzz", "a", "b"], offered)).toEqual(["a", "b"]);
     expect(pickAddOns([], offered)).toEqual([]);
+  });
+
+  it("knows a service the provider prices per job, whatever the case the portal uses", () => {
+    expect([isQuoteOnly("quote"), isQuoteOnly("Quote"), isQuoteOnly(" QUOTE ")]).toEqual([true, true, true]);
+    expect([isQuoteOnly("fixed"), isQuoteOnly("hourly"), isQuoteOnly(undefined), isQuoteOnly("")]).toEqual([false, false, false, false]);
+  });
+
+  it("has words for every quote status and every extra-charge state, and a plain fallback", () => {
+    for (const s of ["Requested", "Quoted", "Accepted", "Declined", "Withdrawn", "Expired"]) expect(quoteStatus(s).text.length).toBeGreaterThan(10);
+    expect(quoteStatus("Quoted").tone).toBe("good");
+    expect(quoteStatus("Mystery").text).toMatch(/updating/);
+    expect(Object.keys(EXTRA_CHARGE_TEXT).sort()).toEqual(["consented", "declined", "paid", "requested"]);
   });
 });

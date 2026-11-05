@@ -31,6 +31,8 @@ export interface BookingSlotProps {
   bookingMode?: string | undefined;
   durationLabel?: string | undefined;
   available: boolean;
+  /** The provider prices each job (the catalog's pricing model is `quote`): the widget asks for a quote instead of offering times. */
+  quoteOnly?: boolean | undefined;
 }
 export type ServiceLocation = WidgetLocation;
 export const SERVICE_LOCATION_LABELS: Record<ServiceLocation, string> = { online: "Online", "at-home": "At your home", "at-seller": "At the provider" };
@@ -62,7 +64,61 @@ export function BookingSlot(props: BookingSlotProps) {
   if (props.locations.length === 0) {
     return <div className="add-to-cart" data-testid="booking-slot"><p className="muted">The provider has not said where this service takes place yet. Please check back soon.</p></div>;
   }
-  return <Widget {...props} />;
+  return props.quoteOnly ? <QuoteForm {...props} /> : <Widget {...props} />;
+}
+
+export const QUOTE_MESSAGES: Record<string, string> = {
+  details: "Please describe the job in 10 to 2000 characters.",
+  outside_service_area: "The provider does not come to that address.",
+  too_many_quotes: "You have several open quote requests. Please wait for answers first.",
+  conflict: "This request was already sent with different details. Please reload the page.",
+  invalid: "Please check your details and try again.",
+  not_found: "This service is no longer available.",
+  unavailable: "We could not send your request just now. Please try again.",
+};
+
+/** A service the provider prices per job: the buyer describes the job and the provider answers with a price and times (the quote page). */
+function QuoteForm({ listingId, title, locations }: BookingSlotProps) {
+  const fetcher = useFetcher<{ error?: string }>();
+  const here = useLocation();
+  const [location, setLocation] = useState<ServiceLocation>(locations[0]!);
+  const [key] = useState(() => newHoldKey());
+  const error = fetcher.data?.error ? (QUOTE_MESSAGES[fetcher.data.error] ?? QUOTE_MESSAGES["unavailable"]!) : null;
+  return (
+    <fetcher.Form method="post" action="/quotes/new" className="add-to-cart stack" data-testid="booking-slot" aria-label={`Ask for a quote for ${title}`}>
+      <CsrfField />
+      <input type="hidden" name="listingId" value={listingId} />
+      <input type="hidden" name="location" value={apiLocation(location)} />
+      <input type="hidden" name="key" value={key} />
+      <input type="hidden" name="returnTo" value={here.pathname + here.search} />
+      <p className="muted" style={{ margin: 0 }}>The provider prices each job. Tell them what you need and you get a price and times to choose from.</p>
+      {locations.length > 1 && (
+        <Select label="Where" name="where" value={location} onChange={(e) => setLocation(e.target.value as ServiceLocation)}>
+          {locations.map((l) => <option key={l} value={l}>{SERVICE_LOCATION_LABELS[l]}</option>)}
+        </Select>
+      )}
+      <div className="field">
+        <label htmlFor="quote-details">What do you need?</label>
+        <textarea id="quote-details" name="details" className="input" rows={4} minLength={10} maxLength={2000} required />
+      </div>
+      {location === "at-home" && (
+        <fieldset className="stack">
+          <legend>Where should they come?</legend>
+          <Input label="Name" name="address.name" autoComplete="name" required maxLength={200} />
+          <Input label="Street address" name="address.line1" autoComplete="address-line1" required maxLength={200} />
+          <Input label="Apartment, suite (optional)" name="address.line2" autoComplete="address-line2" maxLength={200} />
+          <Input label="City" name="address.city" autoComplete="address-level2" required maxLength={100} />
+          <Input label="State or region" name="address.region" autoComplete="address-level1" maxLength={100} />
+          <Input label="Postal code" name="address.postalCode" autoComplete="postal-code" required maxLength={20} />
+          <Input label="Country (2 letters)" name="address.country" defaultValue="US" autoComplete="country" required maxLength={2} minLength={2} />
+        </fieldset>
+      )}
+      <Input label="Phone (optional)" name="phone" type="tel" autoComplete="tel" maxLength={40} />
+      {error && <p role="alert" data-testid="quote-form-error">{error}</p>}
+      <Button type="submit" variant="primary" disabled={fetcher.state !== "idle"}>{fetcher.state !== "idle" ? "One moment…" : "Ask for a quote"}</Button>
+      <p className="muted" style={{ margin: 0 }}>You sign in first if you have not. Nothing is charged until you accept a quote.</p>
+    </fetcher.Form>
+  );
 }
 
 function Widget({ listingId, title, priceCents, currency, locations, bookingMode, durationLabel }: BookingSlotProps) {

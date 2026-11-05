@@ -160,4 +160,76 @@ test.describe("booking a service", () => {
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(axe.violations, JSON.stringify(axe.violations.map((v) => v.id))).toEqual([]);
   });
+
+  test("an extra amount the provider asks for can be agreed and paid, or declined", async ({ page }) => {
+    await signedIn(page, "extra");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Completed`);
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&extraChargeState=requested&additionalChargeCents=5000`);
+    await page.goto(`/bookings/${id}`);
+    const panel = page.getByTestId("extra-charge");
+    await expect(panel).toContainText("$50.00");
+    await panel.getByRole("button", { name: "Agree and pay" }).click();
+    await expect(panel.getByTestId("payment-step")).toBeVisible();
+    // a second request: declined
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&extraChargeState=requested`);
+    await page.goto(`/bookings/${id}`);
+    await page.getByTestId("extra-charge").getByRole("button", { name: "Decline" }).click();
+    await expect(page.getByTestId("extra-charge")).toContainText("You declined the additional amount");
+  });
+});
+
+test.describe("quotes", () => {
+  const KITCHEN = "/p/custom-kitchen-remodel";
+
+  test("a service priced per job asks for a quote, shows the answer, and accepting it leads to a held booking", async ({ page }) => {
+    await signedIn(page, "quote");
+    await page.goto(KITCHEN);
+    await waitHydrated(page);
+    const form = page.getByRole("form", { name: /^Ask for a quote/ });
+    await form.getByLabel("What do you need?").fill("New cabinets and a sink, about 12 feet of counter.");
+    await form.getByRole("button", { name: "Ask for a quote" }).click();
+    await expect(page).toHaveURL(/\/quotes\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await expect(page.getByTestId("quote-status")).toHaveAttribute("data-status", "Requested");
+    await page.request.get(`${MOCK}/__test/quote-send?id=${id}&price=40000`);
+    await page.goto(`/quotes/${id}`);
+    await expect(page.getByTestId("quote-status")).toHaveAttribute("data-status", "Quoted");
+    await expect(page.getByTestId("quote-price")).toHaveText("$400.00");
+    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+    expect(axe.violations, JSON.stringify(axe.violations.map((v) => v.id))).toEqual([]);
+    await page.getByLabel("Choose a time (UTC)").selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Accept and continue to payment" }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    await expect(page.getByTestId("booking-status")).toHaveAttribute("data-status", "Hold");
+    await page.goto("/account/quotes");
+    await expect(page.getByTestId("quote-list").getByRole("listitem")).toHaveCount(1);
+    await expect(page.getByText("Accepted", { exact: true })).toBeVisible();
+  });
+
+  test("a quote can be declined, and a visitor is sent to sign in first", async ({ page, browser }) => {
+    await signedIn(page, "qdecline");
+    await page.goto(KITCHEN);
+    await waitHydrated(page);
+    await page.getByLabel("What do you need?").fill("Replace the floor tiles in a small kitchen please.");
+    await page.getByRole("button", { name: "Ask for a quote" }).click();
+    await expect(page).toHaveURL(/\/quotes\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/quote-send?id=${id}`);
+    await page.goto(`/quotes/${id}`);
+    await page.getByRole("button", { name: "Decline this quote" }).click();
+    await expect(page.getByTestId("quote-status")).toHaveAttribute("data-status", "Withdrawn");
+    const anon = await browser.newPage();
+    await anon.goto(KITCHEN);
+    await waitHydrated(anon);
+    await anon.getByLabel("What do you need?").fill("Anything at all, ten characters.");
+    await anon.getByRole("button", { name: "Ask for a quote" }).click();
+    await expect(anon).toHaveURL(/\/sign-in\?next=%2Fp%2Fcustom-kitchen-remodel/);
+    await anon.close();
+  });
 });
