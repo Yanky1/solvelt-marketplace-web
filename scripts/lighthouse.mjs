@@ -41,6 +41,9 @@ try {
   });
   await waitFor(`http://localhost:${WEB}/healthz`);
 
+  // Warm the server first (the first request renders cold: route modules, the mock API, the image route): the first measurement in a fresh browser should not also be the first request the server ever saw.
+  for (const path of Object.values(PAGES)) await fetch(`http://localhost:${WEB}${path}`).then((r) => r.arrayBuffer()).catch(() => undefined);
+
   const chrome = await chromeLauncher.launch({ chromePath: process.env.PW_CHROMIUM_PATH || chromium.executablePath(), chromeFlags: ["--headless=new", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"] });
   mkdirSync("lighthouse-report", { recursive: true });
   console.log("page".padEnd(16), "device".padEnd(8), "seo", "a11y", "best", "perf", " CLS");
