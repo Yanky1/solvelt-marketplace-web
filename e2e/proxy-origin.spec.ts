@@ -39,6 +39,18 @@ test.describe("behind a TLS-terminating proxy", () => {
     }
   });
 
+  test("a request from ANOTHER https host (a second azurewebsites.net name) gets our readable refusal, not React Router's bare 400", async ({ request }) => {
+    const { csrf, cookie } = await formState(request);
+    const res = await request.post("/sign-in.data", {
+      headers: { Host: "other.example.test", Origin: "https://other.example.test", Cookie: cookie },
+      form: { csrf, email: "nobody@example.test", password: "Wrong-password-1" },
+    });
+    const body = await res.text();
+    expect(res.status()).toBe(403);                                        // assertCsrf's refusal, not the 400 of the single-fetch guard
+    expect(body).not.toContain("Unexpected Server Error");
+    expect(body).toContain("origin_mismatch");                             // the reason the page turns into "use the official address"
+  });
+
   test("X-Forwarded-Proto and X-Forwarded-Host from the peer change nothing", async ({ request }) => {
     const { csrf, cookie } = await formState(request);
     // a peer that claims to be http, or to be another host, must not move the request URL: the same-origin post still works, and a post "from" the claimed host does not

@@ -47,6 +47,9 @@ describe("loadConfig", () => {
     fails({ ...good, PUBLIC_ORIGIN: "http://evil.com:3000/localhost" }, /origin/);
     expect(loadConfig({ ...good, PUBLIC_ORIGIN: "http://localhost:3100" }).publicOrigin).toBe("http://localhost:3100");
     expect(loadConfig({ ...good, PUBLIC_ORIGIN: "http://127.0.0.1:3100" }).publicOrigin).toBe("http://127.0.0.1:3100");
+    // the canonical form: what the browser sends in Origin (lower-case host, default port dropped), review LOW-2
+    expect(loadConfig({ ...good, PUBLIC_ORIGIN: "https://Shop.Example.test" }).publicOrigin).toBe("https://shop.example.test");
+    expect(loadConfig({ ...good, PUBLIC_ORIGIN: "https://shop.example.test:443/" }).publicOrigin).toBe("https://shop.example.test");
   });
   it("uses development defaults only in development or test", () => {
     const c = loadConfig({ NODE_ENV: "development" });
