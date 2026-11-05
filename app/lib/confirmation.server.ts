@@ -1,7 +1,7 @@
 import { data, redirect, type AppLoadContext } from "react-router";
 import { ApiError, api, type CheckoutOrder } from "~/lib/api-client.server";
 import { apiCtx, privateHeaders } from "~/lib/auth.server";
-import { FINAL_ORDER_STATUSES, guestTokenFor, hasReturnParams } from "~/lib/checkout";
+import { FINAL_ORDER_STATUSES, guestTokenFor, hasReturnParams, withoutGrant } from "~/lib/checkout";
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
 import { readSession, sessionCookie } from "~/lib/session.server";
@@ -39,7 +39,8 @@ export async function loadConfirmation(request: Request, context: AppLoadContext
     if (session && ((done && session.cn !== 0) || dropGrant)) {
       const { go: _go, ...rest } = session;
       void _go;
-      headers["Set-Cookie"] = sessionCookie({ ...(dropGrant ? rest : session), ...(done ? { cn: 0 } : {}) }, cfg);
+      const left = dropGrant ? withoutGrant(session.go, number) : session.go;
+      headers["Set-Cookie"] = sessionCookie({ ...rest, ...(left ? { go: left } : {}), ...(done ? { cn: 0 } : {}) }, cfg);
     }
     return data({ order, lost: false, cartEmptied: done } satisfies ConfirmationData, { headers });
   } catch (e) {

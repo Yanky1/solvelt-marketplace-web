@@ -25,7 +25,8 @@ const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
 const unsubCalls = new Map(); // token -> number of calls (the specs run in parallel on one mock)
 const seen = []; // recorded request metadata (no bodies)
-const forcePriceChange = new Set(); // test hook: the next checkout of this guest email answers price_changed once, with a dearer quote and no order (per email: specs run in parallel)
+const priceBump = new Map(); // test hook: this guest email's checkout is priced dearer than the quote it was shown (per email: specs run in parallel); the mock's own hash comparison then answers 409
+const badPublishableKey = new Set(); // test hook: this guest email's PaymentIntent comes with a publishable key the web must refuse
 const checkoutOrders = new Map(); // number -> {key, userId, guestEmail, token, status, lines, totalCents, createdAt}
 const carts = new Map(); // owner key ("u:<userId>" or "g:<token>") -> [{id, variantId, quantity, seenPrice}]
 // the API's own header name, spelled out here on purpose: the mock must not follow a wrong name in the web code (review H1)
@@ -55,7 +56,7 @@ const IP = { ANON_RPID_EVIL: "198.51.100.61", ANON_BOTH_DIFFER: "198.51.100.62",
 
 
 // ---- checkout (assumed shapes follow the API repo docs/API.md "Checkout"; the mock prices flat: standard 500, overnight 1800, free over 5000, no tax) ----
-function quoteFor(key, body) {
+function quoteFor(key, body, bump = 0) {
   const a = body.address ?? {};
   const view = cartView(key);
   const picks = new Map((body.selections ?? []).map((x) => [`${x.sellerId}:${x.brandId}`, x]));
@@ -69,9 +70,9 @@ function quoteFor(key, body) {
     return { sellerId: g.sellerId, sellerName: g.sellerName, brandId: g.brandId, brandName: g.brandName, lines: g.lines.map((l) => ({ lineId: l.id, listingId: l.listingId, variantId: l.variantId, title: l.title, variantName: l.variantName, quantity: l.quantity, unitPriceCents: l.unitPriceCents, lineTotalCents: l.lineTotalCents, taxCents: 0 })),
       itemsCents: g.subtotalCents, shippingOptions: options, unavailableSpeeds: [], local: null, selected: chosen ? { kind: "carrier", speed: chosen.speed, windowId: null, date: null, shippingCents: shipping } : null, shippingCents: shipping, shippingTaxCents: 0, taxCents: 0, totalCents: g.subtotalCents + shipping };
   });
-  const total = groups.reduce((n, g) => n + g.totalCents, 0);
-  const sig = JSON.stringify([groups.map((g) => [g.sellerId, g.brandId, g.selected?.speed, g.totalCents, g.lines.map((l) => [l.variantId, l.quantity, l.unitPriceCents])]), a.country, a.region, a.postalCode]);
-  return { currency: "USD", groups, itemsCents: groups.reduce((n, g) => n + g.itemsCents, 0), shippingCents: groups.reduce((n, g) => n + g.shippingCents, 0), taxCents: 0, totalCents: total, canPay: groups.length > 0 && groups.every((g) => g.selected), quoteHash: `${Math.floor(Date.now() / 1000) + 900}.${createHash("sha256").update(sig).digest("hex")}`, expiresAt: new Date(Date.now() + 900_000).toISOString(), _sig: sig };
+  const total = groups.reduce((n, g) => n + g.totalCents, 0) + bump;   // `bump`: a price that moved since the buyer's quote (test hook), part of the hash like any price
+  const sig = JSON.stringify([bump, groups.map((g) => [g.sellerId, g.brandId, g.selected?.speed, g.totalCents, g.lines.map((l) => [l.variantId, l.quantity, l.unitPriceCents])]), a.country, a.region, a.postalCode]);
+  return { currency: "USD", groups, itemsCents: groups.reduce((n, g) => n + g.itemsCents, 0) + bump, shippingCents: groups.reduce((n, g) => n + g.shippingCents, 0), taxCents: 0, totalCents: total, canPay: groups.length > 0 && groups.every((g) => g.selected), quoteHash: `${Math.floor(Date.now() / 1000) + 900}.${createHash("sha256").update(sig).digest("hex")}`, expiresAt: new Date(Date.now() + 900_000).toISOString(), _sig: sig };
 }
 const publicQuote = (q) => {
   const out = { ...q };
@@ -108,7 +109,8 @@ http.createServer(async (req, res) => {
 
   if (path.startsWith("/__test/")) {
     if (path === "/__test/pay") { const o = checkoutOrders.get(url.searchParams.get("number") ?? ""); if (!o) return send(res, 404, { code: "not_found" }); o.status = url.searchParams.get("status") ?? "placed"; if (o.status === "placed") carts.set(o.key, []); return send(res, 200, { status: o.status }); }
-    if (path === "/__test/force-price-change") { forcePriceChange.add(url.searchParams.get("email") ?? ""); return send(res, 204); }
+    if (path === "/__test/force-price-change") { priceBump.set(url.searchParams.get("email") ?? "", 100); return send(res, 204); }
+    if (path === "/__test/bad-publishable-key") { badPublishableKey.add(url.searchParams.get("email") ?? ""); return send(res, 204); }
     if (path === "/__test/checkout-orders") return send(res, 200, [...checkoutOrders.entries()].map(([number, o]) => ({ number, status: o.status, key: o.key.slice(0, 2), guestEmail: o.guestEmail, token: o.token, address: o.address, giftMessage: o.giftMessage })));
     if (path === "/__test/outbox") return send(res, 200, outbox);
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
@@ -568,26 +570,22 @@ http.createServer(async (req, res) => {
     if (guest && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(body.email ?? ""))) return send(res, 422, { code: "validation_failed", errors: { email: "Enter a valid email address." } });
     if ((carts.get(key) ?? []).length === 0) return send(res, 409, { code: "cart_not_ready", message: "Your cart is empty." });
     const a = body.address ?? {};
-    const fresh = quoteFor(key, { address: a, selections: body.selections });
+    const fresh = quoteFor(key, { address: a, selections: body.selections }, guest ? priceBump.get(String(body.email)) ?? 0 : 0);
     if (!fresh.canPay) return send(res, 409, { code: "delivery_unavailable", message: "We can't deliver part of your cart to that address." });
     const given = String(body.quoteHash ?? "");
     const ok = given.slice(given.indexOf(".") + 1) === fresh.quoteHash.slice(fresh.quoteHash.indexOf(".") + 1) && Number(given.split(".")[0]) > Date.now() / 1000;
     if (!ok) return send(res, 409, { code: "price_changed", message: "The price changed.", quote: publicQuote(fresh) });
-    if (guest && forcePriceChange.delete(String(body.email))) {
-      const dearer = publicQuote(fresh);
-      return send(res, 409, { code: "price_changed", message: "The price changed.", quote: { ...dearer, itemsCents: dearer.itemsCents + 100, totalCents: dearer.totalCents + 100 } });
-    }
     // the API's double-submit rule: the same checkout again (same cart, address, delivery, price) is the SAME order, never a second one
     const fingerprint = JSON.stringify([key, a, body.selections ?? [], body.giftMessage ?? "", body.email ?? "", fresh.totalCents]);
     const same = [...checkoutOrders.entries()].find(([, o]) => o.fingerprint === fingerprint && o.status === "pending_payment");
     if (same) {
       const [sn, so] = same;
-      return send(res, 200, { orderNumber: sn, status: so.status, quote: publicQuote(fresh), payment: { provider: "stripe", clientSecret: `pi_mock_${sn}_secret_x`, publishableKey: "pk_test_mockkey12345678" }, ...(so.token ? { guestOrderToken: so.token, guestOrderTokenExpiresAt: so.tokenExpiresAt } : {}) });
+      return send(res, 200, { orderNumber: sn, status: so.status, quote: publicQuote(fresh), payment: { provider: "stripe", clientSecret: `pi_mock_${sn}_secret_x`, publishableKey: guest && badPublishableKey.has(String(body.email)) ? "pk_live_notallowed12345678" : "pk_test_mockkey12345678" }, ...(so.token ? { guestOrderToken: so.token, guestOrderTokenExpiresAt: so.tokenExpiresAt } : {}) });
     }
     const number = `MP-MOCK-${randomBytes(4).toString("hex").toUpperCase()}`;
     const token = guest ? `g1.${number}.${randomBytes(12).toString("hex")}` : undefined;
     checkoutOrders.set(number, { fingerprint, tokenExpiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(), key, guest, guestEmail: guest ? body.email : null, token, status: "pending_payment", totalCents: fresh.totalCents, createdAt: new Date().toISOString(), groups: fresh.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, lines: g.lines })), address: a, giftMessage: body.giftMessage ?? null });
-    return send(res, 200, { orderNumber: number, status: "pending_payment", quote: publicQuote(fresh), payment: { provider: "stripe", clientSecret: `pi_mock_${number}_secret_x`, publishableKey: "pk_test_mockkey12345678" }, ...(token ? { guestOrderToken: token, guestOrderTokenExpiresAt: checkoutOrders.get(number).tokenExpiresAt } : {}) });
+    return send(res, 200, { orderNumber: number, status: "pending_payment", quote: publicQuote(fresh), payment: { provider: "stripe", clientSecret: `pi_mock_${number}_secret_x`, publishableKey: guest && badPublishableKey.has(String(body.email)) ? "pk_live_notallowed12345678" : "pk_test_mockkey12345678" }, ...(token ? { guestOrderToken: token, guestOrderTokenExpiresAt: checkoutOrders.get(number).tokenExpiresAt } : {}) });
   }
   const co = /^\/api\/v1\/checkout\/orders\/([A-Za-z0-9_-]+)$/.exec(path);
   if (co && req.method === "GET") {

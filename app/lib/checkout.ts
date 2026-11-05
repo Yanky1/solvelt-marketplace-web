@@ -73,12 +73,30 @@ const RETURN_PARAMS = ["payment_intent", "payment_intent_client_secret", "redire
 export const hasReturnParams = (url: URL): boolean => RETURN_PARAMS.some((p) => url.searchParams.has(p));
 
 export interface GuestOrderGrant { n: string; t: string; e?: number }
+const MAX_GRANTS = 5;
 
-/** The token for THIS order, or undefined: it is bound to one order number and to the expiry the API gave (unix seconds). */
-export function guestTokenFor(go: GuestOrderGrant | undefined, number: string, now = Date.now() / 1000): string | undefined {
-  if (!go || go.n !== number) return undefined;
-  if (go.e !== undefined && go.e <= now) return undefined;
-  return go.t;
+/** The token for THIS order, or undefined: grants are bound to one order number each and to the expiry the API gave (unix seconds). */
+export function guestTokenFor(go: readonly GuestOrderGrant[] | undefined, number: string, now = Date.now() / 1000): string | undefined {
+  const g = go?.find((x) => x.n === number);
+  if (!g) return undefined;
+  if (g.e !== undefined && g.e <= now) return undefined;
+  return g.t;
+}
+
+/** The grants with this one added or replaced (one per order number, the newest last, at most five): a guest paying for A who opens the link of B keeps A. */
+export const withGrant = (go: readonly GuestOrderGrant[] | undefined, grant: GuestOrderGrant): GuestOrderGrant[] => [...(go ?? []).filter((x) => x.n !== grant.n), grant].slice(-MAX_GRANTS);
+
+/** The grants without the one of this order (it is final: the emailed link remains). Undefined when none is left. */
+export function withoutGrant(go: readonly GuestOrderGrant[] | undefined, number: string): GuestOrderGrant[] | undefined {
+  const rest = (go ?? []).filter((x) => x.n !== number);
+  return rest.length > 0 ? rest : undefined;
+}
+
+/** The expiry in a token the API issued (`g1.<id>.<unixSeconds>.<mac>`), never more than a week ahead; a day when the token has none. */
+export function expiryFromToken(token: string, now = Date.now() / 1000): number {
+  const seconds = token.split(".")[2];
+  const t = seconds && /^[0-9]{9,11}$/.test(seconds) ? Number(seconds) : NaN;
+  return Number.isFinite(t) && t > now ? Math.min(t, Math.floor(now) + 7 * 24 * 3600) : Math.floor(now) + 24 * 3600;
 }
 
 /** The API's `guestOrderTokenExpiresAt` (ISO) in unix seconds; a missing or unreadable value means one day, never longer than the API's own date. */
@@ -108,8 +126,8 @@ export function startPolling(revalidate: () => void, isIdle: () => boolean, inte
 }
 
 /**
- * The publishable key the API hands over with a PaymentIntent. It must look like one (`pk_test_` or `pk_live_`), and outside production only a TEST key is ever used: a live key in a development or
- * test run is a misconfiguration that must not put the Payment Element on a real account (review: pk_test guard; decision M3W-09).
+ * The publishable key the API hands over with a PaymentIntent. It must look like one (`pk_test_` or `pk_live_`), and a LIVE key is used only behind the explicit opt-in `ALLOW_LIVE_STRIPE_KEYS=1` (and only in production, see config.server.ts); anything else, a live key in a development or test run included, is a
+ * misconfiguration that must not put the Payment Element on a real account (review: pk_test guard; decision M3W-15).
  */
-export const publishableKeyOk = (key: string | null | undefined, production: boolean): key is string =>
-  typeof key === "string" && (production ? /^pk_(test|live)_[A-Za-z0-9]{8,200}$/ : /^pk_test_[A-Za-z0-9]{8,200}$/).test(key);
+export const publishableKeyOk = (key: string | null | undefined, allowLive: boolean): key is string =>
+  typeof key === "string" && (allowLive ? /^pk_(test|live)_[A-Za-z0-9]{8,200}$/ : /^pk_test_[A-Za-z0-9]{8,200}$/).test(key);
