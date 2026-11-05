@@ -84,6 +84,10 @@ test("buyer lookup is masked, and the break-glass reveal sends a stale passkey c
   const card = page.getByTestId("buyer-card");
   await expect(card.getByRole("heading", { name: "Dana L." })).toBeVisible();
   await expect(card).not.toContainText(buyer);
+  await expect(card).not.toContainText("relay-");   // the relay address is masked too
+  // the lookup went to the API as a POST with a body: nothing typed is ever in a URL (API M7-17)
+  const seen = (await (await page.request.get(`${MOCK}/__test/seen`)).json()) as { method: string; path: string }[];
+  expect(seen.filter((x) => x.path.startsWith("/api/v1/staff/buyers") || x.path.startsWith("/api/v1/staff/orders")).every((x) => x.method !== "GET")).toBe(true);
   expect((await axe(page)).violations).toEqual([]);
   // reveal: the passkey check is old, so the page sends the person to confirm first
   await stale(page, seed.id);

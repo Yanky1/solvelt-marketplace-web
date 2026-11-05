@@ -53,11 +53,11 @@ export function createStaffMock({ send, users, buyerSessions }) {
     } catch { return null; }
   };
   const masked = (e) => { const [l, d] = e.split("@"); const i = d.lastIndexOf("."); return `${l[0]}***@${d[0]}***${d.slice(i)}`; };
-  const buyerView = (u) => ({ id: u.id, email: masked(u.email), name: u.displayName.split(" ")[0] + (u.displayName.includes(" ") ? ` ${u.displayName.split(" ").at(-1)[0]}.` : ""), relayEmail: `relay-${u.id.slice(0, 8)}@relay.test`, emailVerified: !!u.verified, locked: locked.has(u.id), lockedAt: null, deleted: false, redacted: false, createdAt: new Date().toISOString(), passkeys: 0, activeSessions: 1, addresses: 0, orders: 1, hasPassword: true, demo: u.email.includes("demo") });
+  const buyerView = (u) => ({ id: u.id, email: masked(u.email), name: u.displayName.split(" ")[0] + (u.displayName.includes(" ") ? ` ${u.displayName.split(" ").at(-1)[0]}.` : ""), relayEmail: masked(`relay-${u.id.slice(0, 8)}@relay.test`), emailVerified: !!u.verified, locked: locked.has(u.id), lockedAt: null, deleted: false, redacted: false, createdAt: new Date().toISOString(), passkeys: 0, activeSessions: 1, addresses: 0, orders: 1, hasPassword: true, demo: u.email.includes("demo") });
   const ORDER = (payments, w) => ({
     id: "11111111-1111-1111-1111-111111111111", number: "MP-1001", status: "paid", createdAt: "2026-11-05T10:00:00Z", paidAt: "2026-11-05T10:01:00Z", placedAt: null, failureCode: null, currency: "USD", demo: false,
     itemsCents: 9000, shippingCents: 700, taxCents: 300, totalCents: 10000, paidCents: 10000, refundedCents: 2500,
-    buyer: { accountId: null, name: "Jane B.", guestEmail: "g***@e***.com", relayEmail: "relay-abc@relay.test", shipCountry: "US" }, lines: 2,
+    buyer: { accountId: null, name: "Jane B.", guestEmail: "g***@e***.com", relayEmail: "r***@r***.test", shipCountry: "US" }, lines: 2,
     groups: [{ id: "g1", sellerOrderNumber: "SO-77", totalCents: 10000, refundedCents: 2500 }],
     refunds: [{ id: "22222222-2222-2222-2222-222222222222", amountCents: 2500, status: refunds.get("22222222-2222-2222-2222-222222222222") ?? "reserved", reason: "seller_cancel", attempt: 0, createdAt: "2026-11-05T11:00:00Z", updatedAt: "2026-11-05T11:00:00Z", retryable: !retried.has(`${w?.account.id}:refund`) }],
     payment: payments ? { paymentIntentId: "pi_fake_000001", disputes: [], refunds: [{ id: "22222222-2222-2222-2222-222222222222", stripeRefundId: null, portalRefundId: "r-1", key: "portal:r-1" }] } : null,
@@ -135,11 +135,11 @@ export function createStaffMock({ send, users, buyerSessions }) {
     }
 
     // ---- buyers
-    if (p === "/buyers" && method === "GET") {
+    if (p === "/buyers/lookup" && method === "POST") {
       if (!can("buyers.view")) return forbid(), true;
-      const q = url.searchParams, reason = q.get("reason");
+      const reason = body.reason;
       if (!reasonOk(reason)) return needReason(), true;
-      const email = q.get("email"), u = email ? users.get(email.trim().toLowerCase()) : q.get("id") ? [...users.values()].find((x) => x.id === q.get("id")) : null;
+      const email = body.email, u = email ? users.get(String(email).trim().toLowerCase()) : body.id ? [...users.values()].find((x) => x.id === body.id) : null;
       note(w, u ? "buyer.lookup" : "buyer.lookup_miss", u ? "buyer" : null, u?.id ?? null, reason);
       if (!u) return send(res, 404, { code: "not_found", message: "Not found." }), true;
       send(res, 200, buyerView(u));
@@ -150,7 +150,7 @@ export function createStaffMock({ send, users, buyerSessions }) {
       const u = [...users.values()].find((x) => x.id === m[1]);
       const need = { reveal: "buyers.reveal", lock: "buyers.lock", unlock: "buyers.lock", "sign-out": "buyers.sign_out", orders: "orders.view" }[m[2]];
       if (!can(need)) return forbid(), true;
-      const reason = m[2] === "orders" ? url.searchParams.get("reason") : body.reason;
+      const reason = body.reason;
       if (!reasonOk(reason)) return needReason(), true;
       if (m[2] !== "orders" && !fresh(w)) return needStepUp(), true;
       if (!u) return send(res, 404, { code: "not_found", message: "Not found." }), true;
@@ -165,11 +165,11 @@ export function createStaffMock({ send, users, buyerSessions }) {
     }
 
     // ---- orders and queues
-    if (p === "/orders" && method === "GET") {
+    if (p === "/orders/lookup" && method === "POST") {
       if (!can("orders.view")) return forbid(), true;
-      const reason = url.searchParams.get("reason");
+      const reason = body.reason;
       if (!reasonOk(reason)) return needReason(), true;
-      if (url.searchParams.get("number") !== "MP-1001") return send(res, 404, { code: "not_found", message: "Not found." }), true;
+      if (body.number !== "MP-1001") return send(res, 404, { code: "not_found", message: "Not found." }), true;
       note(w, "order.lookup", "order", ORDER(false, w).id, reason);
       send(res, 200, ORDER(can("payments.view"), w));
       return true;
