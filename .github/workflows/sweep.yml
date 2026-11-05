@@ -48,17 +48,20 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      PORTAL_DIR: ${{ runner.temp }}/portal
-      API_DIR: ${{ runner.temp }}/api
-      WEB_DIR: ${{ github.workspace }}
-      JOURNEY_RUN_DIR: ${{ runner.temp }}/journey-run
-      SWEEP_API_DIR: ${{ runner.temp }}/api
       SWEEP_WEB_URL: http://localhost:3000
       CI: "true"
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      # (the `runner` context is not available in a job's `env`, so the paths are set here)
+      - name: Where the checkouts and the logs go
+        run: |
+          echo "PORTAL_DIR=$RUNNER_TEMP/portal" >> "$GITHUB_ENV"
+          echo "API_DIR=$RUNNER_TEMP/api" >> "$GITHUB_ENV"
+          echo "SWEEP_API_DIR=$RUNNER_TEMP/api" >> "$GITHUB_ENV"
+          echo "WEB_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "JOURNEY_RUN_DIR=$RUNNER_TEMP/journey-run" >> "$GITHUB_ENV"
 
       # The portal repo is public. BACKEND_REPO_TOKEN (read-only, only the owner can add it) is used when present, in case it becomes private again.
       - name: Check out the seller-portal backend (read-only)
