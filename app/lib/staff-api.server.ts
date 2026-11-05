@@ -74,13 +74,14 @@ export const staffApi = {
   signOut: (ctx: ApiRequestContext) => call<void>(ctx, "/auth/sign-out", { method: "POST", body: {} }),
   me: (ctx: ApiRequestContext) => call<StaffMe>(ctx, "/me"),
   // ---- buyers
-  findBuyer: (ctx: ApiRequestContext, key: "email" | "order" | "id", value: string, reason: string) => call<StaffBuyer>(ctx, `/buyers${qs({ [key]: value, reason })}`),
+  // lookups are POSTs with a body: what was typed and the reason must never travel in a URL (API decision M7-17)
+  findBuyer: (ctx: ApiRequestContext, key: "email" | "order" | "id", value: string, reason: string) => call<StaffBuyer>(ctx, "/buyers/lookup", { body: { [key]: value, reason } }),
   reveal: (ctx: ApiRequestContext, buyerId: string, fields: string[], reason: string) => call<StaffRevealed>(ctx, `/buyers/${id(buyerId)}/reveal`, { body: { fields, reason } }),
   lock: (ctx: ApiRequestContext, buyerId: string, locked: boolean, reason: string) => call<void>(ctx, `/buyers/${id(buyerId)}/${locked ? "lock" : "unlock"}`, { body: { reason } }),
   signOutBuyer: (ctx: ApiRequestContext, buyerId: string, reason: string) => call<void>(ctx, `/buyers/${id(buyerId)}/sign-out`, { body: { reason } }),
-  buyerOrders: (ctx: ApiRequestContext, buyerId: string, reason: string) => call<StaffBuyerOrder[]>(ctx, `/buyers/${id(buyerId)}/orders${qs({ reason })}`),
+  buyerOrders: (ctx: ApiRequestContext, buyerId: string, reason: string) => call<StaffBuyerOrder[]>(ctx, `/buyers/${id(buyerId)}/orders`, { body: { reason } }),
   // ---- orders and payments
-  findOrder: (ctx: ApiRequestContext, number: string, reason: string) => call<StaffOrder>(ctx, `/orders${qs({ number, reason })}`),
+  findOrder: (ctx: ApiRequestContext, number: string, reason: string) => call<StaffOrder>(ctx, "/orders/lookup", { body: { number, reason } }),
   retryRefund: (ctx: ApiRequestContext, orderId: string, refundId: string, reason: string) => call<void>(ctx, `/orders/${id(orderId)}/refunds/${id(refundId)}/retry`, { body: { reason } }),
   // ---- queues
   ingests: (ctx: ApiRequestContext) => call<{ stuckAfterMinutes: number; orders: StaffIngest[] }>(ctx, "/ingests"),
