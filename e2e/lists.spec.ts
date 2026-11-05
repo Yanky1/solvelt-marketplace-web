@@ -58,7 +58,8 @@ test("the sign-out button itself clears what this browser kept (the request is b
   await waitHydrated(page);
   await page.route("**/sign-out*", (route) => route.abort());   // the page stays, the user is still signed in: only the button's own handler can have cleared the key
   await page.getByRole("button", { name: "Sign out", exact: true }).first().click();
-  await expect.poll(() => page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY)).toBeNull();
+  // the aborted request can make the page reload: a poll that lands in the middle of that retries (and the key is still gone afterwards: nothing but the button's handler cleared it)
+  await expect.poll(async () => { try { return await page.evaluate((k) => sessionStorage.getItem(k), GUEST_KEY); } catch { return "navigating"; } }).toBeNull();
 });
 
 test("a different person signing in on the same browser does not inherit the previous guest's list", async ({ page }) => {
