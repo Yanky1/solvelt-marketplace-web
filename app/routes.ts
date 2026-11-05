@@ -30,6 +30,8 @@ export default [
   route("account/messages/:id", "routes/account.messages.$id.tsx"),
   route("account/notifications", "routes/account.notifications.tsx"),
   route("account/notifications/preferences", "routes/account.notifications.preferences.tsx"),
+  route("account/demo", "routes/account.demo.tsx"),
+  route("account/demo/remove", "routes/account.demo.remove.tsx"),
   route("account/passkeys", "routes/account.passkeys.tsx"),
   route("account/passkeys/options", "routes/account.passkeys.options.ts"),
   route("passkeys/sign-in-options", "routes/passkeys.sign-in-options.ts"),

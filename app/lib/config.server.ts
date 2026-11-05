@@ -14,6 +14,8 @@ export interface AppConfig {
   stripeJsUrl: string;
   /** A live Stripe publishable key reaches the browser only with ALLOW_LIVE_STRIPE_KEYS=1, and only in production (decision M3W-15). */
   allowLiveStripeKeys: boolean;
+  /** Test mode (M9): the demo-data buttons. The server refuses to start with this on in production, with no override. */
+  demoEnabled: boolean;
   production: boolean;
 }
 
@@ -24,6 +26,17 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 /** Anything except an explicit development/test run is treated as production (NODE_ENV unset included). */
 export function isProduction(env: Record<string, string | undefined>): boolean {
   return env.NODE_ENV !== "development" && env.NODE_ENV !== "test";
+}
+
+/**
+ * What this deployment is called: the web's counterpart of the API's ASPNETCORE_ENVIRONMENT. `APP_ENV` names it (production, staging, ...); unset it is "production" for a
+ * production build and "development" for a development or test run. A build with NODE_ENV=production is not enough to say "this is the production site": the test site is a
+ * production build too, and it says so with APP_ENV=staging. Only the name "production" refuses demo mode (below).
+ */
+export function deploymentOf(env: Record<string, string | undefined>): string {
+  const named = (env.APP_ENV ?? "").trim().toLowerCase();
+  if (named) return named;
+  return isProduction(env) ? "production" : "development";
 }
 
 /** Why a secret is too weak, or null. Never includes the secret itself. */
@@ -81,8 +94,12 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     if (production && u.origin !== "https://js.stripe.com" && !stubAllowed) problems.push("STRIPE_JS_URL must be https://js.stripe.com/... in production");
   } catch { problems.push("STRIPE_JS_URL must be a URL"); }
 
+  // Demo data is test-mode data: never in production, whatever else is set (M9). Only "true" or "1" switch it on, so a typo cannot silently enable it.
+  const demoEnabled = ["true", "1"].includes((env.DEMO_ENABLED ?? "").trim().toLowerCase());
+  if (demoEnabled && deploymentOf(env) === "production") problems.push("DEMO_ENABLED must not be true in production: demo data is test-mode data and cannot be switched on here (a test site runs with APP_ENV=staging)");
+
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
-  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, allowLiveStripeKeys: production && env.ALLOW_LIVE_STRIPE_KEYS === "1", production };
+  return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, allowLiveStripeKeys: production && env.ALLOW_LIVE_STRIPE_KEYS === "1", demoEnabled, production };
 }
 
 /** The origins the checkout page may load Stripe.js from (script-src and frame-src): Stripe's own, plus the configured one when it differs (only possible for the E2E stand-in, see loadConfig). */

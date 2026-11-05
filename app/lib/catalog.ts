@@ -12,6 +12,8 @@ export interface ListingDetail {
   id: string; slug: string; type: "product" | "service";
   title: string; summary: string; description: string;
   priceFromCents: number; priceToCents: number; compareAtFromCents: number | null; currency: string; available: boolean;
+  /** The portal marks it as demo data (M9): shown with a "Demo" pill. */
+  demo: boolean;
   brand: Brand; seller: Seller; categoryPath: CategoryCard[];
   variants: Variant[]; images: ImageRef[]; attributes: Attribute[]; faqs: Faq[];
   createdAt: string; updatedAt: string;
@@ -63,7 +65,7 @@ export function parseListingDetail(json: unknown): ListingDetail | null {
   const createdAt = str(json.createdAt, 40), updatedAt = str(json.updatedAt, 40);
   if (!id || !slug || !title || summary === null || description === null || !type || !currency || from === null || to === null || (json.compareAtFromCents != null && was === null)
     || !b || !s || !path || !variants || variants.length === 0 || !images || !attributes || !faqs || !createdAt || !updatedAt || typeof json.available !== "boolean") return null;
-  return { id, slug, type, title, summary, description, priceFromCents: from, priceToCents: to, compareAtFromCents: was, currency, available: json.available, brand: b, seller: s, categoryPath: path, variants, images, attributes, faqs, createdAt, updatedAt };
+  return { id, slug, type, title, summary, description, priceFromCents: from, priceToCents: to, compareAtFromCents: was, currency, available: json.available, demo: json.demo === true, brand: b, seller: s, categoryPath: path, variants, images, attributes, faqs, createdAt, updatedAt };
 }
 
 /** The variant shown: the one asked for (by id) when it exists, else the first one that can be bought, else the first. */

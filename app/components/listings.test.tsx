@@ -8,7 +8,7 @@ import { emptyQuery, type ListingCardData, type ListingPageData, type ListingQue
 const withRouter = (ui: React.ReactElement, path = "/search") => render(<RouterProvider router={createMemoryRouter([{ path: "*", element: ui }], { initialEntries: [path] })} />);
 
 const card = (over: Partial<ListingCardData> = {}): ListingCardData => ({
-  id: "i1", slug: "classic-braided-challah", type: "product", title: "Classic Braided Challah", summary: "s", priceFromCents: 650, priceToCents: 1250, compareAtFromCents: 750, currency: "USD", available: true,
+  id: "i1", slug: "classic-braided-challah", type: "product", title: "Classic Braided Challah", summary: "s", priceFromCents: 650, priceToCents: 1250, compareAtFromCents: 750, currency: "USD", available: true, demo: false,
   brand: { slug: "challah-corner", name: "Challah Corner" }, seller: { id: "s", displayName: "Mazel" }, category: { slug: "bakery", name: "Bakery" }, image: { id: "im", width: 1200, height: 1200, alt: "Photo" }, ...over,
 });
 const data = (over: Partial<ListingPageData> = {}): ListingPageData => ({

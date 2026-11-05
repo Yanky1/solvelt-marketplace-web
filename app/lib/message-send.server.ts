@@ -1,5 +1,6 @@
 import type { ApiRequestContext } from "./api.server";
 import { ApiError, api, type SendMessageInput } from "./api-client.server";
+import { DEMO_REFUSED_CODE, DEMO_REFUSED_TEXT } from "./demo";
 import { MAX_TEXT } from "./messages";
 
 export interface SendFailure { text: string; message: string | null; fieldErrors: Record<string, string>; warning: string[] | null; status: number }
@@ -15,6 +16,7 @@ export async function trySend(ctx: ApiRequestContext, input: SendMessageInput): 
   } catch (e) {
     if (e instanceof ApiError && e.status === 409 && e.code === "contact_details_warning")
       return { ok: false, failure: { text: input.text, message: null, fieldErrors: {}, warning: Object.keys(e.fieldErrors ?? {}).slice(0, 6), status: 409 } };
+    if (e instanceof ApiError && e.status === 409 && e.code === DEMO_REFUSED_CODE) return { ok: false, failure: { text: input.text, message: DEMO_REFUSED_TEXT, fieldErrors: {}, warning: null, status: 409 } };   // test mode: a demo conversation sends nothing
     if (e instanceof ApiError && e.status === 409) return { ok: false, failure: { text: input.text, message: "This conversation has been closed.", fieldErrors: {}, warning: null, status: 409 } };
     if (e instanceof ApiError && e.status === 422) return { ok: false, failure: { text: input.text, message: null, fieldErrors: { text: "Check your message and try again." }, warning: null, status: 422 } };
     if (e instanceof ApiError && e.status === 429) return { ok: false, failure: { text: input.text, message: "You are sending messages too quickly. Please wait a minute.", fieldErrors: {}, warning: null, status: 429 } };

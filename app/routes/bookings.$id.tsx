@@ -11,6 +11,7 @@ import { badgeTone, bookingStatus, CANCELLABLE, countdown, secondsLeft, type Boo
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
 import { formatDate } from "~/lib/orders";
+import { DEMO_REFUSED_CODE, DEMO_REFUSED_TEXT } from "~/lib/demo";
 
 export function meta() {
   return [{ title: "Your booking | Solvelt" }, { name: "robots", content: "noindex" }];
@@ -25,9 +26,10 @@ export const BOOKING_PAGE_MESSAGES: Record<string, string> = {
   already_paid: "This booking is already paid.",
   invalid: "Please check your answers and try again.",
   invalid_state: "This booking can no longer be changed.",
+  [DEMO_REFUSED_CODE]: DEMO_REFUSED_TEXT,
   unavailable: "We could not do that just now. Please try again in a moment.",
 };
-const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|invalid_state)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
+const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|invalid_state|demo_data)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);

@@ -17,6 +17,7 @@ export function ListingCard({ item, priority = false }: { item: ListingCardData;
             <span className="listing-card-noimage" aria-hidden="true" />
           )}
           {!item.available && <span className="listing-card-flag"><Badge tone="neutral">Sold out</Badge></span>}
+          {item.demo && <span className="listing-card-demo" data-testid="demo-pill"><Badge tone="gold">Demo</Badge></span>}
         </div>
         <span className="listing-card-brand">{item.brand.name}</span>
         <span className="listing-card-title">{item.title}</span>

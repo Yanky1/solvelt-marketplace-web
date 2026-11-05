@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEV_FORWARDING_KEY, isProduction, loadConfig, weakSecretReason, stripeScriptOrigins } from "./config.server";
+import { DEV_FORWARDING_KEY, deploymentOf, isProduction, loadConfig, weakSecretReason, stripeScriptOrigins } from "./config.server";
 
 const SECRET = "Xk9#Qz3vLp7Xw2Rt8YbN4mHc6Jd1Fs5GaU0e";
 const KEY = "Tn4Wb8Ke2Vr6Pj0Hs3Dy7Lc9Mf1Ga5QxZu8o";
@@ -107,5 +107,42 @@ describe("ALLOW_LIVE_STRIPE_KEYS", () => {
     expect(loadConfig({ ...good, ALLOW_LIVE_STRIPE_KEYS: "1" }).allowLiveStripeKeys).toBe(true);
     expect(loadConfig({ ...good, ALLOW_LIVE_STRIPE_KEYS: "true" }).allowLiveStripeKeys).toBe(false);          // only the exact value 1
     expect(loadConfig({ NODE_ENV: "development", ALLOW_LIVE_STRIPE_KEYS: "1" }).allowLiveStripeKeys).toBe(false);   // never outside production
+  });
+});
+
+describe("demo data (test mode, M9)", () => {
+  it("is off by default and in every spelling that is not an explicit yes", () => {
+    expect(loadConfig(good).demoEnabled).toBe(false);
+    for (const v of [undefined, "", "false", "0", "yes", "enabled", "tru"]) expect(loadConfig({ ...good, DEMO_ENABLED: v }).demoEnabled, String(v)).toBe(false);
+  });
+  it("a production build with it off or unset starts normally, on production and on the test site alike", () => {
+    expect(() => loadConfig(good)).not.toThrow();
+    expect(() => loadConfig({ ...good, DEMO_ENABLED: "false" })).not.toThrow();
+    expect(() => loadConfig({ ...good, APP_ENV: "staging" })).not.toThrow();
+  });
+  it("refuses to start on the production site with it on, however it is spelled, and with no override", () => {
+    for (const v of ["true", "TRUE", " True ", "1"]) fails({ ...good, DEMO_ENABLED: v }, /DEMO_ENABLED must not be true in production/);
+    fails({ ...good, DEMO_ENABLED: "true", APP_ENV: "production" }, /DEMO_ENABLED must not be true in production/);
+    fails({ ...good, DEMO_ENABLED: "true", APP_ENV: " Production " }, /DEMO_ENABLED must not be true in production/);
+    fails({ ...good, DEMO_ENABLED: "true", ALLOW_DEMO: "1", DEMO_FORCE: "true", ALLOW_DEMO_IN_PRODUCTION: "1", DEMO_ALLOW: "1" }, /DEMO_ENABLED must not be true in production/);
+    fails({ ...good, NODE_ENV: undefined, DEMO_ENABLED: "true" }, /DEMO_ENABLED must not be true in production/);                  // an unset NODE_ENV is production
+    fails({ NODE_ENV: "development", APP_ENV: "production", DEMO_ENABLED: "true" }, /DEMO_ENABLED must not be true in production/);   // a development run that says it is production is production
+  });
+  it("the test site is a production build named staging, and may use it", () => {
+    expect(loadConfig({ ...good, DEMO_ENABLED: "true", APP_ENV: "staging" }).demoEnabled).toBe(true);
+    expect(loadConfig({ ...good, DEMO_ENABLED: "1", APP_ENV: "Staging" }).demoEnabled).toBe(true);
+    expect(loadConfig({ ...good, DEMO_ENABLED: "true", APP_ENV: "demo" }).demoEnabled).toBe(true);                                // every name but production
+  });
+  it("may be on in development and test", () => {
+    expect(loadConfig({ NODE_ENV: "development", DEMO_ENABLED: "true" }).demoEnabled).toBe(true);
+    expect(loadConfig({ NODE_ENV: "test", DEMO_ENABLED: "1" }).demoEnabled).toBe(true);
+  });
+  it("names the deployment: APP_ENV, else production for a production build and development otherwise", () => {
+    expect(deploymentOf({})).toBe("production");
+    expect(deploymentOf({ NODE_ENV: "production" })).toBe("production");
+    expect(deploymentOf({ NODE_ENV: "development" })).toBe("development");
+    expect(deploymentOf({ NODE_ENV: "test" })).toBe("development");
+    expect(deploymentOf({ NODE_ENV: "production", APP_ENV: " Staging " })).toBe("staging");
+    expect(deploymentOf({ NODE_ENV: "production", APP_ENV: "   " })).toBe("production");
   });
 });

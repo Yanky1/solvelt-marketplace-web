@@ -111,6 +111,7 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
           <div>
             <p className="muted pdp-brand"><Link to={brandPath(listing.brand.slug)}>{listing.brand.name}</Link>{" · "}Sold by <Link to={sellerPath(listing.seller.id)}>{listing.seller.displayName}</Link></p>
             <h1>{listing.title}</h1>
+            {listing.demo && <p data-testid="demo-pill"><Badge tone="gold">Demo</Badge></p>}
             {listing.summary && <p className="lead">{listing.summary}</p>}
           </div>
           <KosherBadges listing={listing} />
