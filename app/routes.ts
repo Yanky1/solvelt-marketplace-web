@@ -31,6 +31,8 @@ export default [
   route("account/notifications", "routes/account.notifications.tsx"),
   route("account/notifications/preferences", "routes/account.notifications.preferences.tsx"),
   route("account/passkeys", "routes/account.passkeys.tsx"),
+  route("account/privacy", "routes/account.privacy.tsx"),
+  route("account/privacy/export", "routes/account.privacy.export.ts"),
   route("account/passkeys/options", "routes/account.passkeys.options.ts"),
   route("passkeys/sign-in-options", "routes/passkeys.sign-in-options.ts"),
   route("p/:slug", "routes/product.tsx"),
