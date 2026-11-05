@@ -6,6 +6,8 @@ const LINKS = [
   { to: "/account/bookings", label: "Bookings" },
   { to: "/account/quotes", label: "Quotes" },
   { to: "/account/wishlists", label: "Wishlists" },
+  { to: "/account/reviews", label: "Reviews" },
+  { to: "/account/questions", label: "Questions" },
   { to: "/account/messages", label: "Messages" },
   { to: "/account/notifications", label: "Notifications" },
   { to: "/account/profile", label: "Profile" },

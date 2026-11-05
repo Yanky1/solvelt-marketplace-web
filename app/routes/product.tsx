@@ -4,7 +4,9 @@ import { AddToCart } from "~/components/AddToCart";
 import { BookingSlot } from "~/components/BookingSlot";
 import { Gallery } from "~/components/Gallery";
 import { JsonLd } from "~/components/JsonLd";
+import { AskQuestion } from "~/components/AskQuestion";
 import { RecentlyViewedShelf, RecordView } from "~/components/RecentlyViewed";
+import { ReviewsSection } from "~/components/ReviewsSection";
 import { SaveToList } from "~/components/SaveToList";
 import { VariantPicker } from "~/components/VariantPicker";
 import { Badge, Breadcrumb, Price } from "~/components/ui/display";
@@ -14,6 +16,8 @@ import { isQuoteOnly } from "~/lib/bookings";
 import { attributeLabel, attributeValues, deliveryLabels, pickVariant, serviceLocations, specAttributes, type ListingDetail } from "~/lib/catalog";
 import { catalog, catalogErrorResponse, GUID } from "~/lib/catalog.server";
 import { getConfig } from "~/lib/config.server";
+import { api } from "~/lib/api-client.server";
+import { reviewJsonLd, reviewQuery } from "~/lib/reviews";
 import { breadcrumbJsonLd, clipText, imageUrl, listingJsonLd, priceString } from "~/lib/seo";
 import { brandPath, categoryPath, listingPath, sellerPath } from "~/lib/urls";
 
@@ -40,7 +44,10 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     throw redirect(listingPath(listing.slug) + url.search, { status: GUID.test(slug) ? 301 : 302 });
   }
   const origin = getConfig().publicOrigin;
-  return { listing, origin };
+  // The reviews are public data like the listing: no session reaches the API. A failure leaves the page without them rather than without the product.
+  const query = reviewQuery(new URL(request.url).searchParams);
+  const reviews = await api.reviews(apiCtx(request, context, null), listing.id, query).catch(() => null);
+  return { listing, origin, reviews, reviewQuery: query };
 }
 
 /** Choosing a variant only changes the query string: the listing is already here, so do not ask the API again. */
@@ -97,7 +104,7 @@ function KosherBadges({ listing }: { listing: ListingDetail }) {
 }
 
 export default function ProductPage({ loaderData }: Route.ComponentProps) {
-  const { listing, origin } = loaderData;
+  const { listing, origin, reviews, reviewQuery: rq } = loaderData;
   // The choice lives in the address, not in loader data: choosing an option does not reload the listing (shouldRevalidate), so only the address changes.
   const [params] = useSearchParams();
   const variant = pickVariant(listing, params.get("variant"));
@@ -164,7 +171,9 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
       <RecordView card={{ id: listing.id, slug: listing.slug, type: listing.type, title: listing.title, priceFromCents: listing.priceFromCents, priceToCents: listing.priceToCents, currency: listing.currency, available: listing.available,
         brandName: listing.brand.name, sellerName: listing.seller.displayName, image: listing.images[0] ? { id: listing.images[0].id, width: listing.images[0].width, height: listing.images[0].height, alt: listing.images[0].alt } : null }} />
       <RecentlyViewedShelf exclude={listing.id} />
-      <JsonLd data={listingJsonLd(listing, origin)} />
+      {reviews && <ReviewsSection listingId={listing.id} data={reviews} query={rq} />}
+      <AskQuestion listingId={listing.id} />
+      <JsonLd data={{ ...listingJsonLd(listing, origin), ...(reviews ? reviewJsonLd(reviews) : {}) }} />
       <JsonLd data={breadcrumbJsonLd(origin, [{ name: "Home", path: "/" }, ...listing.categoryPath.map((c) => ({ name: c.name, path: categoryPath(c.slug) })), { name: listing.title, path: listingPath(listing.slug) }])} />
     </article>
   );

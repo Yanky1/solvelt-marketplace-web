@@ -26,6 +26,17 @@ function endAllSessionsAndIssue(u, res, send) {
 const addresses = new Map(); // addressId -> {userId, ...address}
 const wishlists = new Map(); // id -> {userId, name, shareHash, items: [listingId]}
 const viewed = new Map(); // userId -> [listingId] newest first (the mock stamps no times: order is the list)
+// ---- reviews, photos and questions (M6; the API's docs/API.md sections) ----
+const reviews = new Map(); // id -> {id, userId, listingId, kind, targetId, rating, text, name, status, createdAt, editedAt, helpers:Set, photos:[{id,width,height}], reply}
+const eligibleBy = new Map(); // userId -> [{kind, id, listingId, label}]
+const reviewReports = []; // {reviewId, userId, reason, kind}
+const questionsDb = []; // {id, userId, listingId, text, status, createdAt}
+const PHOTO = await sharp({ create: { width: 40, height: 30, channels: 3, background: "#4a7" } }).png().toBuffer();
+const CONTACT = /\+?\d[\d\s().-]{7,}\d|[\w.+-]+@[\w-]+\.[\w.]+|https?:\/\/|www\./i;
+const textProblemMock = (t) => { const x = String(t ?? "").trim(); if (!x) return "Write a few words about it."; if ([...x].length > 2000) return "Use at most 2000 characters."; if (CONTACT.test(x)) return "Please leave out phone numbers, email addresses and links."; return null; };
+const shortName = (n) => { const p = String(n).split(/\s+/).filter(Boolean); return p.length > 1 ? `${p[0]} ${[...p.at(-1)][0]}.` : (p[0] ?? "A customer"); };
+const reviewView = (r, mine = false) => ({ id: r.id, listingId: r.listingId, rating: r.rating, text: r.status === "published" || mine ? r.text : "", displayName: r.name, verified: true, createdAt: r.createdAt, editedAt: r.editedAt, helpfulCount: r.helpers.size, photos: r.photos, status: mine ? r.status : null, moderationNote: null, canEdit: mine && r.status === "published", reply: r.reply && r.status === "published" ? r.reply : null });
+const summaryFor = (listingId) => { const rs = [...reviews.values()].filter((r) => r.listingId === listingId && r.status === "published"); const d = [1, 2, 3, 4, 5].map((n) => rs.filter((r) => r.rating === n).length); return { count: rs.length, average: rs.length ? Math.round((rs.reduce((t, r) => t + r.rating, 0) / rs.length) * 10) / 10 : null, distribution: d }; };
 const sha = (t) => createHash("sha256").update(t).digest("hex");
 const listCard = (id) => { const l = listingById(id); return l ? { id: l.id, slug: l.slug, type: l.type, title: l.title, priceFromCents: l.priceFromCents, priceToCents: l.priceToCents, currency: l.currency, available: l.available, brandName: l.brand.name, sellerName: l.seller.displayName, image: l.images[0] ?? null } : null; };
 const passkeys = new Map(); // credentialId -> {id, userId, name, createdAt, lastUsedAt}
@@ -111,9 +122,9 @@ const send = (res, status, body, extra = {}) => {
   res.end(body === undefined ? "" : JSON.stringify(body));
 };
 const readBody = (req) => new Promise((resolve) => {
-  let raw = "";
-  req.on("data", (c) => (raw += c));
-  req.on("end", () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); } });
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => { req.rawBody = Buffer.concat(chunks); const raw = req.rawBody.toString("utf8"); try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve({}); } });   // rawBody: a multipart upload is looked at byte by byte
 });
 const bearer = (req) => /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
 const userFor = (req) => { const id = sessions.get(bearer(req) ?? ""); return id ? [...users.values()].find((u) => u.id === id) : undefined; };
@@ -199,9 +210,19 @@ http.createServer(async (req, res) => {
     if (path === "/__test/book-set") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); for (const k of ["proposedStartAt", "requiresBuyerConsent", "startAt", "extraChargeState", "additionalChargeCents", "number", "paymentDueAt", "holdExpiresAt"]) { const v = url.searchParams.get(k); if (v !== null) b[k] = k === "requiresBuyerConsent" ? v === "true" : k === "additionalChargeCents" ? Number(v) : v; } return send(res, 204); }
     if (path === "/__test/book-status") { const b = bookingsDb.get(url.searchParams.get("id") ?? ""); if (!b) return send(res, 404, { code: "not_found" }); b.status = url.searchParams.get("status") ?? b.status; return send(res, 204); }
     if (path === "/__test/quote-send") { const qq = quotesDb.get(url.searchParams.get("id") ?? ""); if (!qq) return send(res, 404, { code: "not_found" }); qq.status = url.searchParams.get("status") ?? "Quoted"; qq.priceCents = Number(url.searchParams.get("price") ?? "40000"); qq.durationMinutes = 180; qq.slots = [slotAt(3, 15), slotAt(4, 15)]; qq.expiresAt = new Date(Date.now() + 3 * 86400000).toISOString(); qq.note = "Bring your own tap please"; qq.legacy = url.searchParams.get("legacy") === "1"; return send(res, 204); }
+    if (path === "/__test/seed-eligible") {
+      const u = users.get((url.searchParams.get("email") ?? "").toLowerCase());
+      const l = (await import("./mock-catalog.mjs")).listingById(gid(`l:${url.searchParams.get("slug") ?? "classic-braided-challah"}`));
+      if (!u || !l) return send(res, 404, { code: "not_found" });
+      const id = randomBytes(6).toString("hex");
+      eligibleBy.set(u.id, [...(eligibleBy.get(u.id) ?? []), { kind: url.searchParams.get("kind") ?? "order_line", id, listingId: l.id, label: `${l.title} (order MP-E2E-${id.slice(0, 4)})` }]);
+      return send(res, 200, { id, listingId: l.id });
+    }
+    if (path === "/__test/review-set") { const r = reviews.get(url.searchParams.get("id") ?? ""); if (!r) return send(res, 404, { code: "not_found" }); if (url.searchParams.get("status")) r.status = url.searchParams.get("status"); if (url.searchParams.get("reply")) r.reply = { id: "RP-1", text: url.searchParams.get("reply"), at: new Date().toISOString() }; return send(res, 204); }
+    if (path === "/__test/reviews") return send(res, 200, { reviews: [...reviews.values()].map((r) => ({ ...reviewView(r, true), userId: r.userId })), reports: reviewReports, questions: questionsDb });
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -454,6 +475,99 @@ http.createServer(async (req, res) => {
       return send(res, 202, { returnId: `RT-${g.returns.length}`, status: "pending" });
     }
     if (om[3]) { const r = g.returns.find((x) => x.returnId === om[3]); if (!r) return send(res, 404, { code: "not_found" }); r.label = { url: "https://portal.example/api/v1/shipping/public/labels/L1?exp=9999999999&sig=x", expiresAt: new Date(Date.now() + 86400000).toISOString(), carrier: "USPS", trackingNumber: "RT1", trackingUrl: null }; return send(res, 200, { labelUrl: r.label.url, labelUrlExpiresAt: r.label.expiresAt }); }
+  }
+
+  // ---- reviews, photos and questions (M6) ----
+  const rvPhoto = /^\/api\/v1\/reviews\/photos\/([^/]+)$/.exec(path);
+  if (rvPhoto && req.method === "GET") {
+    const owner = [...reviews.values()].find((r) => r.photos.some((p) => p.id === rvPhoto[1]));
+    if (!owner || owner.status !== "published") return send(res, 404, { code: "not_found", message: "Not found." });
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": PHOTO.length, "Cache-Control": "public, max-age=86400" });
+    return res.end(PHOTO);
+  }
+  const rvw = /^\/api\/v1\/reviews(?:\/(eligible)|\/([^/]+?)(?:\/(helpful|report|reply\/report|photos)(?:\/([^/]+))?)?)?$/.exec(path);
+  if (rvw) {
+    if (!rvw[1] && !rvw[2] && req.method === "GET") {
+      const lid = url.searchParams.get("listingId");
+      let rs = [...reviews.values()].filter((r) => r.listingId === lid && r.status === "published");
+      const star = Number(url.searchParams.get("rating") ?? 0);
+      if (star) rs = rs.filter((r) => r.rating === star);
+      const sort = url.searchParams.get("sort");
+      rs.sort((a, b) => sort === "helpful" ? b.helpers.size - a.helpers.size : sort === "high" ? b.rating - a.rating : sort === "low" ? a.rating - b.rating : b.createdAt.localeCompare(a.createdAt));
+      const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+      return send(res, 200, { summary: summaryFor(lid), reviews: rs.slice((page - 1) * 10, page * 10).map((r) => reviewView(r)), page, pageSize: 10, total: rs.length });
+    }
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (rvw[1]) return send(res, 200, { items: (eligibleBy.get(u.id) ?? []).filter((e) => e.listingId === url.searchParams.get("listingId") && ![...reviews.values()].some((r) => r.targetId === e.id)).map((e) => ({ kind: e.kind, id: e.id, label: e.label, at: new Date().toISOString() })) });
+    if (!rvw[2] && req.method === "POST") {
+      const errors = {};
+      if (!(body.rating >= 1 && body.rating <= 5)) errors.rating = "Choose 1 to 5 stars.";
+      const tp = textProblemMock(body.text); if (tp) errors.text = tp;
+      if (Object.keys(errors).length) return send(res, 422, { code: "validation_failed", message: "Invalid", errors });
+      const e = (eligibleBy.get(u.id) ?? []).find((x) => x.id === body.targetId && x.kind === body.kind);
+      if (!e) return send(res, 404, { code: "not_found", message: "Not found." });
+      if ([...reviews.values()].some((r) => r.targetId === e.id)) return send(res, 409, { code: "already_reviewed", message: "You have already reviewed this." });
+      const id = randomBytes(8).toString("hex");
+      const r = { id, userId: u.id, listingId: e.listingId, kind: e.kind, targetId: e.id, rating: body.rating, text: String(body.text).trim(), name: shortName(u.displayName), status: "published", createdAt: new Date().toISOString(), editedAt: null, helpers: new Set(), photos: [], reply: null };
+      reviews.set(id, r);
+      return send(res, 201, reviewView(r, true));
+    }
+    const r = reviews.get(rvw[2] ?? "");
+    if (!r) return send(res, 404, { code: "not_found", message: "Not found." });
+    if (!rvw[3]) {
+      if (req.method !== "PATCH" || r.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found." });
+      if (r.status !== "published") return send(res, 422, { code: "review_locked", message: "Locked." });
+      const errors = {};
+      if (!(body.rating >= 1 && body.rating <= 5)) errors.rating = "Choose 1 to 5 stars.";
+      const tp = textProblemMock(body.text); if (tp) errors.text = tp;
+      if (Object.keys(errors).length) return send(res, 422, { code: "validation_failed", message: "Invalid", errors });
+      r.rating = body.rating; r.text = String(body.text).trim(); r.editedAt = new Date().toISOString();
+      return send(res, 200, reviewView(r, true));
+    }
+    if (rvw[3] === "helpful") {
+      if (r.userId === u.id) return send(res, 422, { code: "own_review", message: "Not your own review." });
+      if (req.method === "PUT") r.helpers.add(u.id); else r.helpers.delete(u.id);
+      return send(res, 204);
+    }
+    if (rvw[3] === "report" || rvw[3] === "reply/report") {
+      if (r.userId === u.id) return send(res, 422, { code: "own_review", message: "Not your own review." });
+      if (!["spam", "personal_information", "offensive", "fake", "off_topic", "other"].includes(body.reason)) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { reason: "Choose a reason." } });
+      reviewReports.push({ reviewId: r.id, userId: u.id, reason: body.reason, kind: rvw[3] === "report" ? "review" : "review_reply" });
+      return send(res, 204);
+    }
+    if (rvw[3] === "photos") {
+      if (r.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found." });
+      if (req.method === "DELETE") { r.photos = r.photos.filter((p) => p.id !== rvw[4]); return send(res, 204); }
+      const raw = req.rawBody ?? Buffer.alloc(0);
+      const isImage = raw.includes(Buffer.from([0x89, 0x50, 0x4e, 0x47])) || raw.includes(Buffer.from([0xff, 0xd8, 0xff]));
+      if (!isImage) return send(res, 422, { code: "bad_photo", message: "Use a JPEG, PNG or WebP picture of up to 5 MB." });
+      if (r.photos.length >= 5) return send(res, 422, { code: "too_many_photos", message: "A review can have up to 5 photos." });
+      const p = { id: randomBytes(8).toString("hex"), width: 40, height: 30 };
+      r.photos.push(p);
+      return send(res, 201, p);
+    }
+  }
+  if (path === "/api/v1/account/reviews" && req.method === "GET") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    return send(res, 200, { reviews: [...reviews.values()].filter((r) => r.userId === u.id).map((r) => { const l = listingById(r.listingId); return { review: reviewView(r, true), listing: l ? { title: l.title, slug: l.slug } : null }; }) });
+  }
+  if (path === "/api/v1/questions" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const errors = {}; const tp = textProblemMock(body.text); if (tp) errors.text = tp;
+    if (Object.keys(errors).length) return send(res, 422, { code: "validation_failed", message: "Invalid", errors });
+    if (!listingById(body.listingId)) return send(res, 404, { code: "not_found", message: "Not found." });
+    if (questionsDb.filter((q) => q.userId === u.id).length >= 10) return send(res, 429, { code: "too_many_questions", message: "Too many." });
+    const q = { id: "Q-" + randomBytes(8).toString("hex"), userId: u.id, listingId: body.listingId, text: String(body.text).trim(), status: "sent", createdAt: new Date().toISOString() };
+    questionsDb.push(q);
+    return send(res, 202, { id: q.id, status: "sending", createdAt: q.createdAt });
+  }
+  if (path === "/api/v1/account/questions" && req.method === "GET") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    return send(res, 200, { questions: questionsDb.filter((q) => q.userId === u.id).map((q) => { const l = listingById(q.listingId); return { id: q.id, text: q.text, status: q.status, rejectedReason: null, createdAt: q.createdAt, listing: l ? { title: l.title, slug: l.slug } : null }; }) });
   }
 
   // ---- wishlists and recently viewed (M6; the API's docs/API.md section) ----

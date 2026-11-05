@@ -9,6 +9,7 @@ import { isSafeId } from "./passkey.server";
  */
 import { safeHttps } from "./orders";
 import type { Availability, BookingView, PolicyView, QuoteView } from "./bookings";
+import { parseQuestions, parseReview, parseReviewPage, parseReviewable, type QuestionView, type ReviewPage, type ReviewView, type Reviewable } from "./reviews";
 import { parseCard, parseItems, parseSummary, type ListCardView, type WishlistItemView, type WishlistSummary } from "./lists";
 
 export class ApiError extends Error {
@@ -48,10 +49,10 @@ export function tokenOf(answer: unknown): string | undefined {
   return typeof t === "string" && t.length >= 8 && t.length <= 512 && /^[\x21-\x7e]+$/.test(t) ? t : undefined;
 }
 
-async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string, headers?: Record<string, string>): Promise<T> {
+async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string, headers?: Record<string, string>, form?: FormData): Promise<T> {
   let res: Response;
   try {
-    res = await apiFetch(getConfig(), ctx, path, { ...(body !== undefined ? { body } : {}), ...(method ? { method } : {}), ...(headers ? { headers } : {}), signal: AbortSignal.timeout(8000) });
+    res = await apiFetch(getConfig(), ctx, path, { ...(body !== undefined ? { body } : {}), ...(form ? { form } : {}), ...(method ? { method } : {}), ...(headers ? { headers } : {}), signal: AbortSignal.timeout(8000) });
   } catch {
     throw new ApiError(503, "unavailable", "The service is temporarily unavailable. Please try again.");
   }
@@ -244,6 +245,23 @@ export const api = {
   me: (ctx: ApiRequestContext) => call<ApiUser>(ctx, "/api/v1/account/me"),
   profile: (ctx: ApiRequestContext) => call<Profile>(ctx, "/api/v1/account/profile"),
   updateProfile: (ctx: ApiRequestContext, b: { displayName: string; phone: string }) => call<Profile>(ctx, "/api/v1/account/profile", b, "PUT"),
+  reviews: async (ctx: ApiRequestContext, listingId: string, q: { sort: string; rating: number | null; page: number }): Promise<ReviewPage> =>
+    parseReviewPage(await call<unknown>(ctx, `/api/v1/reviews?listingId=${pid(listingId)}&sort=${encodeURIComponent(q.sort)}${q.rating ? `&rating=${q.rating}` : ""}&page=${q.page}`)),
+  reviewable: async (ctx: ApiRequestContext, listingId: string): Promise<Reviewable[]> => parseReviewable((await call<{ items?: unknown }>(ctx, `/api/v1/reviews/eligible?listingId=${pid(listingId)}`)).items),
+  createReview: (ctx: ApiRequestContext, b: { kind: string; targetId: string; rating: number; text: string }) => call<unknown>(ctx, "/api/v1/reviews", b).then(parseReview),
+  editReview: (ctx: ApiRequestContext, id: string, b: { rating: number; text: string }) => call<unknown>(ctx, `/api/v1/reviews/${pid(id)}`, b, "PATCH").then(parseReview),
+  voteReview: (ctx: ApiRequestContext, id: string, on: boolean) => call<void>(ctx, `/api/v1/reviews/${pid(id)}/helpful`, undefined, on ? "PUT" : "DELETE"),
+  reportReview: (ctx: ApiRequestContext, id: string, b: { reason: string; note?: string }, reply = false) => call<void>(ctx, `/api/v1/reviews/${pid(id)}/${reply ? "reply/" : ""}report`, b),
+  uploadReviewPhoto: (ctx: ApiRequestContext, id: string, form: FormData) => call<{ id: string }>(ctx, `/api/v1/reviews/${pid(id)}/photos`, undefined, "POST", undefined, form),
+  deleteReviewPhoto: (ctx: ApiRequestContext, id: string, photoId: string) => call<void>(ctx, `/api/v1/reviews/${pid(id)}/photos/${pid(photoId)}`, undefined, "DELETE"),
+  myReviews: async (ctx: ApiRequestContext): Promise<{ review: ReviewView; listing: { title: string; slug: string } | null }[]> => {
+    const r = await call<{ reviews?: { review?: unknown; listing?: { title?: unknown; slug?: unknown } | null }[] }>(ctx, "/api/v1/account/reviews");
+    return (r.reviews ?? []).flatMap((x) => { const v = parseReview(x.review); return v ? [{ review: v, listing: x.listing && typeof x.listing.title === "string" && typeof x.listing.slug === "string" ? { title: x.listing.title, slug: x.listing.slug } : null }] : []; });
+  },
+  askQuestion: (ctx: ApiRequestContext, b: { listingId: string; text: string }) => call<unknown>(ctx, "/api/v1/questions", b),
+  myQuestions: async (ctx: ApiRequestContext): Promise<QuestionView[]> => parseQuestions((await call<{ questions?: unknown }>(ctx, "/api/v1/account/questions")).questions),
+  reviewPhoto: (ctx: ApiRequestContext, photoId: string) => apiFetch(getConfig(), ctx, `/api/v1/reviews/photos/${pid(photoId)}`, { signal: AbortSignal.timeout(8000) }),
+
   wishlists: async (ctx: ApiRequestContext): Promise<WishlistList> => {
     const r = await call<{ limit?: number; itemLimit?: number; wishlists?: unknown[] }>(ctx, "/api/v1/wishlists");
     return { limit: r.limit ?? 20, itemLimit: r.itemLimit ?? 200, wishlists: (r.wishlists ?? []).map(parseSummary).filter((w): w is WishlistSummary => w !== null) };
