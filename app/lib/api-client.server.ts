@@ -8,7 +8,7 @@ import { isSafeId } from "./passkey.server";
  * documented yet; shapes here are what the mock API in e2e/mock-api.mjs implements, to be confirmed by M1.
  */
 import { safeHttps } from "./orders";
-import type { Availability, BookingView } from "./bookings";
+import type { Availability, BookingView, PolicyView } from "./bookings";
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown) {
@@ -135,7 +135,7 @@ export interface CheckoutOrder { number: string; status: string; currency?: stri
 export interface ServiceOptions {
   available: boolean; addOns: { id: string; name: string; description?: string; priceCents: number; extraMinutes: number }[];
   intakeQuestions: { id: string; label: string; kind: "text" | "longText" | "choice" | "yesNo" | "number"; required: boolean; choices?: string[]; maxLength?: number }[];
-  providers: { providerId: string; displayName: string }[]; assignment?: string; policy?: Record<string, number | null>;
+  providers: { providerId: string; displayName: string }[]; assignment?: string | null; policy?: PolicyView | null; travelFeeCents?: number | null;
 }
 export interface BookingPayment { provider: string; clientSecret: string; publishableKey: string | null }
 export interface HoldBody { listingId: string; start: string; location: string; durationMinutes?: number; providerId?: string; addOnIds?: string[]; phone?: string; address?: Record<string, string> }
@@ -151,6 +151,10 @@ export const api = {
   booking: (ctx: ApiRequestContext, id: string) => call<BookingView>(ctx, `/api/v1/bookings/${pid(id)}`),
   checkoutBooking: (ctx: ApiRequestContext, id: string, b: { intake?: { id: string; answer: string }[]; phone?: string }) => call<{ booking: BookingView; payment: BookingPayment }>(ctx, `/api/v1/bookings/${pid(id)}/checkout`, b),
   cancelBookingPreview: (ctx: ApiRequestContext, id: string) => call<CancelPreview>(ctx, `/api/v1/bookings/${pid(id)}/cancel-preview`),
+  rescheduleBooking: (ctx: ApiRequestContext, id: string, newStart: string, key: string) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/reschedule`, { newStart }, undefined, { "Idempotency-Key": key }),
+  bookingProposal: (ctx: ApiRequestContext, id: string, accept: boolean) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/proposal`, { accept }),
+  acknowledgeReschedule: (ctx: ApiRequestContext, id: string) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/acknowledge-reschedule`, {}),
+  bookingCalendar: (ctx: ApiRequestContext, id: string) => raw(ctx, `/api/v1/bookings/${pid(id)}/calendar.ics`),
   cancelBooking: (ctx: ApiRequestContext, id: string, reason?: string) => call<{ booking: BookingView }>(ctx, `/api/v1/bookings/${pid(id)}/cancel`, reason ? { reason } : {}),
   threads: (ctx: ApiRequestContext, cursor?: { before: string; beforeId: string }) =>
     call<ThreadList>(ctx, `/api/v1/messages/threads${cursor ? `?before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}` : ""}`),

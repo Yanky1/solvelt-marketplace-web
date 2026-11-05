@@ -115,4 +115,49 @@ test.describe("booking a service", () => {
     await expect(anon).toHaveURL(/\/sign-in\?next=/);
     await anon.close();
   });
+
+  test("a confirmed booking shows its policy and calendar file, can be moved, and answers the provider's suggestion and move", async ({ page }) => {
+    await signedIn(page, "change");
+    await chooseTime(page);
+    // the service's options: an extra, a choice of provider and the policy
+    const slot = page.getByTestId("booking-slot");
+    await slot.getByRole("checkbox", { name: /Deep clean/ }).check();
+    await slot.getByLabel("Who").selectOption({ label: "Jane D." });
+    await pickFirst(page);
+    await expect(slot.getByTestId("policy")).toContainText("Free cancellation until 24 hours before the start");
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Confirmed`);
+    await page.goto(`/bookings/${id}`);
+    await expect(page.getByTestId("booking-policy")).toContainText("50% of the price is kept");
+    // the calendar file is a download of text/calendar
+    const ics = await page.request.get(`/bookings/${id}/calendar.ics`);
+    expect(ics.status()).toBe(200);
+    expect(ics.headers()["content-type"]).toContain("text/calendar");
+    expect(ics.headers()["content-disposition"]).toMatch(/^attachment; filename="booking-[A-Za-z0-9-]+\.ics"$/);
+    expect(await ics.text()).toContain("BEGIN:VCALENDAR");
+    // ask for another time (at-home: the postal code again)
+    await page.getByRole("button", { name: "Change the time" }).click();
+    const form = page.getByRole("form", { name: "Choose another time" });
+    await form.getByLabel("Your postal code").fill("11201");
+    await form.getByRole("button", { name: "Show times" }).click();
+    await form.getByLabel(/^New time/).selectOption({ index: 2 });
+    await form.getByRole("button", { name: "Ask for this time" }).click();
+    await expect(page.getByTestId("booking-status")).toHaveAttribute("data-status", "Rescheduled");
+    // the provider suggests a time; the buyer accepts it
+    const proposed = new Date(Date.now() + 5 * 86400000).toISOString();
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&proposedStartAt=${encodeURIComponent(proposed)}`);
+    await page.reload();
+    await page.getByRole("button", { name: "Accept this time" }).click();
+    await expect(page.getByText("The provider suggested")).toHaveCount(0);
+    // the provider moves the booking; the buyer accepts the new time
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&requiresBuyerConsent=true`);
+    await page.reload();
+    await page.getByRole("button", { name: "Accept the new time" }).click();
+    await expect(page.getByRole("button", { name: "Accept the new time" })).toHaveCount(0);
+    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+    expect(axe.violations, JSON.stringify(axe.violations.map((v) => v.id))).toEqual([]);
+  });
 });

@@ -12,7 +12,13 @@ const slots = [
 ];
 const availability = (over: object = {}) => ({ durationMinutes: 240, priceCents: 24000, providers: [{ providerId: "p1", timeZone: "America/Los_Angeles" }], slots, from: "2026-11-09", to: "2026-11-23", fetchedAt: "2026-11-05T10:00:00Z", ...over });
 
+const OPTIONS = {
+  available: true, addOns: [{ id: "deep", name: "Deep clean", priceCents: 2500, extraMinutes: 30 }], intakeQuestions: [], providers: [{ providerId: "pv-1", displayName: "Jane D." }], assignment: "buyerChoice",
+  policy: { cancelFreeHours: 24, cancelFeePercent: 50, noShowFeePercent: 100, maxReschedules: 2, approvalHours: null },
+};
 let fetchMock: ReturnType<typeof vi.fn>;
+let optionsReply: () => Promise<Response>;
+const availCalls = () => fetchMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes("/availability"));
 const reply = (json: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(json) } as unknown as Response);
 
 function setup(over: Partial<typeof props> = {}, action?: () => unknown) {
@@ -24,7 +30,11 @@ function setup(over: Partial<typeof props> = {}, action?: () => unknown) {
   return { user: userEvent.setup(), router };
 }
 
-beforeEach(() => { fetchMock = vi.fn(() => reply(availability())); vi.stubGlobal("fetch", fetchMock); });
+beforeEach(() => {
+  optionsReply = () => reply({ available: false, addOns: [], intakeQuestions: [], providers: [], assignment: null, policy: null });
+  fetchMock = vi.fn((url: string) => (String(url).includes("/options") ? optionsReply() : reply(availability())));
+  vi.stubGlobal("fetch", fetchMock);
+});
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("BookingSlot", () => {
@@ -41,8 +51,7 @@ describe("BookingSlot", () => {
   it("asks for online times at once, shows them by day in the provider's zone, and posts the chosen one", async () => {
     const { user } = setup();
     await screen.findByRole("group", { name: "Choose a day" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]![0])).toBe(`/services/${props.listingId}/availability?location=online`);
+    expect(availCalls()).toEqual([`/services/${props.listingId}/availability?location=online`]);
     expect(screen.getByText(/Times are shown in America\/Los Angeles/)).toBeInTheDocument();
     const days = within(screen.getByRole("group", { name: "Choose a day" })).getAllByRole("button");
     expect(days.map((d) => d.textContent)).toEqual(["Mon, Nov 9", "Tue, Nov 10"]);
@@ -65,11 +74,11 @@ describe("BookingSlot", () => {
 
   it("asks an at-home buyer for the postal code first and then for the address of the chosen time", async () => {
     const { user } = setup({ locations: ["at-home", "online"] });
-    expect(fetchMock).not.toHaveBeenCalled();                                   // nothing is asked without a postal code
+    expect(availCalls()).toEqual([]);                                           // no times are asked without a postal code
     await user.type(screen.getByLabelText("Your postal code"), "78701");
     await user.click(screen.getByRole("button", { name: "Show times" }));
     await screen.findByRole("group", { name: "Choose a day" });
-    expect(String(fetchMock.mock.calls[0]![0])).toBe(`/services/${props.listingId}/availability?location=customer&postalCode=78701`);
+    expect(availCalls()).toEqual([`/services/${props.listingId}/availability?location=customer&postalCode=78701`]);
     await user.click(screen.getAllByRole("button", { name: "Mon, Nov 9" })[0]!);
     await user.click(screen.getByRole("button", { name: "9:00 AM" }));
     const form = screen.getByRole("form", { name: "Book Deep Cleaning" });
@@ -100,5 +109,42 @@ describe("BookingSlot", () => {
     await user.click(screen.getByRole("button", { name: "9:00 AM" }));
     await act(async () => { await user.click(screen.getByRole("button", { name: /Hold Deep Cleaning/ })); });
     await waitFor(() => expect(screen.getByTestId("hold-error")).toHaveTextContent(HOLD_MESSAGES["slot_taken"]!));
+  });
+
+  it("offers the service's extras, asks for times with them, sends them with the hold, and shows the cancellation policy", async () => {
+    optionsReply = () => reply(OPTIONS);
+    const { user } = setup();
+    await user.click(await screen.findByRole("checkbox", { name: /Deep clean \(\+\$25\.00, \+30 min\)/ }));
+    await waitFor(() => expect(availCalls().at(-1)).toBe(`/services/${props.listingId}/availability?location=online&addOns=deep`));
+    await user.click((await screen.findAllByRole("button", { name: "Mon, Nov 9" }))[0]!);
+    await user.click(screen.getByRole("button", { name: "9:00 AM" }));
+    const form = screen.getByRole("form", { name: "Book Deep Cleaning" });
+    expect(Array.from(form.querySelectorAll('[name="addOnIds"]')).map((i) => (i as HTMLInputElement).value)).toEqual(["deep"]);
+    const policy = within(form).getByTestId("policy");
+    expect(policy).toHaveTextContent("Free cancellation until 24 hours before the start; after that, 50% of the price is kept.");
+    expect(policy).toHaveTextContent("You can change the time up to 2 times.");
+  });
+
+  it("lets the buyer choose a provider only when the service says so, and asks for that provider's times", async () => {
+    optionsReply = () => reply(OPTIONS);
+    const { user } = setup();
+    await user.selectOptions(await screen.findByLabelText("Who"), "pv-1");
+    await waitFor(() => expect(availCalls().at(-1)).toBe(`/services/${props.listingId}/availability?location=online&providerId=pv-1`));
+    await user.click((await screen.findAllByRole("button", { name: "Mon, Nov 9" }))[0]!);
+    await user.click(screen.getByRole("button", { name: "9:00 AM" }));
+    expect((screen.getByRole("form", { name: "Book Deep Cleaning" }).querySelector('[name="providerId"]') as HTMLInputElement).value).toBe("pv-1");
+  });
+
+  it("shows no provider choice when the portal assigns, and still books when the options cannot be read", async () => {
+    optionsReply = () => reply({ ...OPTIONS, assignment: "leastBusy" });
+    const { unmount } = render(<RouterProvider router={createMemoryRouter([{ path: "*", element: <BookingSlot {...props} /> }])} />);
+    await screen.findByRole("group", { name: "Choose a day" });
+    await screen.findByRole("checkbox", { name: /Deep clean/ });
+    expect(screen.queryByLabelText("Who")).toBeNull();
+    unmount();
+    optionsReply = () => Promise.reject(new Error("offline"));
+    render(<RouterProvider router={createMemoryRouter([{ path: "*", element: <BookingSlot {...props} /> }])} />);
+    expect(await screen.findByRole("group", { name: "Choose a day" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });
