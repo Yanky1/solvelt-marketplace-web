@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLocation } from "react-router";
 import { CsrfField } from "./Shell";
 import { formatMoney } from "./ui/display";
-import { Button, Input, Select } from "./ui/form";
-import { apiLocation, groupSlotsByDay, newHoldKey, safeZone, type Availability, type WidgetLocation } from "~/lib/bookings";
+import { Button, Checkbox, Input, Select } from "./ui/form";
+import { apiLocation, groupSlotsByDay, newHoldKey, pickAddOns, policyLines, safeZone, type Availability, type ServiceOptionsView, type WidgetLocation } from "~/lib/bookings";
 
 /**
  * THE BOOKING SLOT: the one component boundary the services/bookings workstream (M4) fills on a service page (/p/:slug for a listing of type `service`).
@@ -74,9 +74,15 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [picked, setPicked] = useState<{ key: string; day: string | null; start: string | null }>({ key: "", day: null, start: null });
   const [key, setKey] = useState(() => newHoldKey());
+  const [opts, setOpts] = useState<ServiceOptionsView | null>(null);       // add-ons, who can be chosen, the policy: nice to have, never needed to book
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [provider, setProvider] = useState("");
   const atHome = location === "at-home";
   const needsPostal = atHome && !applied;
-  const reqKey = needsPostal ? null : `${location}|${applied}`;
+  const addOnIds = pickAddOns(ticked, opts?.addOns ?? []);
+  const chooser = opts?.assignment === "buyerChoice" && (opts.providers.length > 0);
+  const providerId = chooser && opts.providers.some((p) => p.providerId === provider) ? provider : "";
+  const reqKey = needsPostal ? null : `${location}|${applied}|${addOnIds.join(",")}|${providerId}`;
   const current = reqKey !== null && loaded?.key === reqKey ? loaded : null;
   const loading = reqKey !== null && current === null;
   const load = { result: current && "result" in current ? current.result : null, code: current && "code" in current ? current.code : null };
@@ -88,6 +94,8 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
     const ctrl = new AbortController();
     const q = new URLSearchParams({ location: apiLocation(location) });
     if (atHome) q.set("postalCode", applied);
+    if (addOnIds.length) q.set("addOns", addOnIds.join(","));
+    if (providerId) q.set("providerId", providerId);
     fetch(`/services/${encodeURIComponent(listingId)}/availability?${q}`, { signal: ctrl.signal, headers: { Accept: "application/json" } })
       .then(async (r) => {
         const body = (await r.json().catch(() => ({}))) as Availability & { code?: string };
@@ -95,7 +103,15 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
       })
       .catch((e: unknown) => { if (!(e instanceof DOMException && e.name === "AbortError")) setLoaded({ key: reqKey, code: "availability_unavailable" }); });
     return () => ctrl.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `reqKey` carries the add-ons and the provider
   }, [listingId, location, applied, atHome, reqKey]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch(`/services/${encodeURIComponent(listingId)}/options`, { signal: ctrl.signal, headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null)).then((o: ServiceOptionsView | null) => { if (o?.available) setOpts(o); }).catch(() => undefined);
+    return () => ctrl.abort();
+  }, [listingId]);
 
   const tz = load.result ? safeZone(load.result.providers[0]?.timeZone) : "UTC";
   const days = useMemo(() => (load.result ? groupSlotsByDay(load.result.slots, tz) : []), [load.result, tz]);
@@ -117,6 +133,21 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
           <Input label="Your postal code" name="postal" value={postal} onChange={(e) => setPostal(e.target.value)} autoComplete="postal-code" maxLength={20} required />
           <Button type="submit" variant="secondary">Show times</Button>
         </form>
+      )}
+      {opts && opts.addOns.length > 0 && (
+        <fieldset className="stack" aria-label="Extras">
+          <legend>Extras</legend>
+          {opts.addOns.map((a) => (
+            <Checkbox key={a.id} label={`${a.name} (+${formatMoney(a.priceCents, currency)}${a.extraMinutes ? `, +${a.extraMinutes} min` : ""})`} checked={ticked.includes(a.id)}
+              onChange={(e) => setTicked((t) => (e.target.checked ? [...t, a.id] : t.filter((x) => x !== a.id)))} />
+          ))}
+        </fieldset>
+      )}
+      {chooser && opts && (
+        <Select label="Who" name="provider" value={providerId} onChange={(e) => setProvider(e.target.value)} hint="Names are shown as the provider's first name and initial.">
+          <option value="">Anyone available</option>
+          {opts.providers.map((p) => <option key={p.providerId} value={p.providerId}>{p.displayName}</option>)}
+        </Select>
       )}
       {loading && <p className="muted" role="status">Finding times…</p>}
       {load.code && <p role="alert" data-testid="availability-error">{AVAILABILITY_MESSAGES[load.code] ?? AVAILABILITY_MESSAGES["availability_unavailable"]}</p>}
@@ -146,6 +177,8 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
           <input type="hidden" name="location" value={apiLocation(location)} />
           <input type="hidden" name="durationMinutes" value={load.result ? load.result.durationMinutes : ""} />
           <input type="hidden" name="key" value={key} />
+          {addOnIds.map((id) => <input key={id} type="hidden" name="addOnIds" value={id} />)}
+          {providerId && <input type="hidden" name="providerId" value={providerId} />}
           <input type="hidden" name="returnTo" value={here.pathname + here.search} />
           {atHome && (
             <fieldset className="stack">
@@ -163,6 +196,7 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
             {submitting ? "One moment…" : bookingMode === "request" ? "Request this time" : "Hold this time"} · {formatMoney(price, currency)}
           </Button>
           <p className="muted" style={{ margin: 0 }}>{bookingMode === "request" ? "The provider confirms your request. You pay now and are refunded in full if they decline." : "We hold the time for a few minutes while you pay."} You sign in first if you have not.</p>
+          {policyLines(opts?.policy).length > 0 && <ul className="muted" data-testid="policy" style={{ margin: 0, paddingLeft: "1.2em" }}>{policyLines(opts?.policy).map((l) => <li key={l}>{l}</li>)}</ul>}
           {holdError && <p role="alert" data-testid="hold-error">{holdError}</p>}
         </fetcher.Form>
       )}

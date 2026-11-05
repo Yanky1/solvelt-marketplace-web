@@ -7,7 +7,7 @@ import { Badge, Card, formatMoney } from "~/components/ui/display";
 import { Button, Input, Select } from "~/components/ui/form";
 import { ApiError, api, type BookingPayment, type ServiceOptions } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, privateHeaders, requireAccount } from "~/lib/auth.server";
-import { badgeTone, bookingStatus, CANCELLABLE, countdown, secondsLeft, type BookingView } from "~/lib/bookings";
+import { apiLocation, badgeTone, bookingStatus, CALENDAR_STATUSES, CANCELLABLE, countdown, groupSlotsByDay, newHoldKey, policyLines, safeZone, secondsLeft, type Availability, type BookingView } from "~/lib/bookings";
 import { getConfig } from "~/lib/config.server";
 import { isSafeId } from "~/lib/passkey.server";
 import { formatDate } from "~/lib/orders";
@@ -25,9 +25,14 @@ export const BOOKING_PAGE_MESSAGES: Record<string, string> = {
   already_paid: "This booking is already paid.",
   invalid: "Please check your answers and try again.",
   invalid_state: "This booking can no longer be changed.",
+  slot_unavailable: "That time was just taken. Please choose another.",
+  reschedule_limit: "This booking cannot be moved again.",
+  too_late: "It is too late to move this booking.",
+  no_proposal: "There is no suggested time to answer any more.",
+  nothing_to_accept: "There is nothing to accept any more.",
   unavailable: "We could not do that just now. Please try again in a moment.",
 };
-const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|invalid_state)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
+const failure = (e: unknown): string => (e instanceof ApiError && e.status === 409 && /^(hold_expired|already_paid|invalid_state|slot_unavailable|reschedule_limit|too_late|no_proposal|nothing_to_accept)$/.test(e.code) ? e.code : e instanceof ApiError && e.status === 422 ? "invalid" : "unavailable");
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
@@ -53,6 +58,21 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   try {
     if (intent === "cancel") {
       await api.cancelBooking(ctx, params.id, String(form.get("reason") ?? "").slice(0, 300) || undefined);
+      return redirect(`/bookings/${encodeURIComponent(params.id)}`, { headers: privateHeaders });
+    }
+    if (intent === "reschedule") {
+      const newStart = String(form.get("newStart") ?? "");
+      if (Number.isNaN(Date.parse(newStart))) throw data("Bad request", { status: 400, headers: privateHeaders });
+      const key = /^[A-Za-z0-9\-_]{8,60}$/.test(String(form.get("key") ?? "")) ? String(form.get("key")) : newHoldKey().slice(0, 50);
+      await api.rescheduleBooking(ctx, params.id, new Date(newStart).toISOString(), key);
+      return redirect(`/bookings/${encodeURIComponent(params.id)}`, { headers: privateHeaders });
+    }
+    if (intent === "proposal") {
+      await api.bookingProposal(ctx, params.id, String(form.get("accept") ?? "") === "yes");
+      return redirect(`/bookings/${encodeURIComponent(params.id)}`, { headers: privateHeaders });
+    }
+    if (intent === "acknowledge") {
+      await api.acknowledgeReschedule(ctx, params.id);
       return redirect(`/bookings/${encodeURIComponent(params.id)}`, { headers: privateHeaders });
     }
     if (intent === "checkout") {
@@ -101,6 +121,14 @@ export default function BookingPage({ loaderData }: Route.ComponentProps) {
         {booking.proposedStartAt && <p style={{ margin: 0 }}>The provider suggested another time: <strong>{formatDate(booking.proposedStartAt, true)}</strong>.</p>}
       </Card>
 
+      {booking.status !== "Hold" && <ChangePanel booking={booking} />}
+      {policyLines(booking.policy).length > 0 && (
+        <section aria-labelledby="policy-h" className="stack">
+          <h2 id="policy-h" style={{ fontSize: "1rem", margin: 0 }}>Cancellation policy</h2>
+          <ul data-testid="booking-policy" style={{ margin: 0, paddingLeft: "1.2em" }}>{policyLines(booking.policy).map((l) => <li key={l}>{l}</li>)}</ul>
+        </section>
+      )}
+      {CALENDAR_STATUSES.has(booking.status) && <p><a href={`/bookings/${encodeURIComponent(booking.id)}/calendar.ics`} download data-testid="ics-link">Add to your calendar (.ics)</a></p>}
       {booking.status === "Hold" && !booking.holdExpired && !waiting && (
         <HoldPanel booking={booking} questions={questions} serverNow={serverNow} busy={fetcher.state !== "idle"} payment={payment} error={error}
           fetcher={fetcher} stripeJsUrl={stripeJsUrl} returnUrl={`${origin}/bookings/${encodeURIComponent(booking.id)}`} />
@@ -166,4 +194,92 @@ function Question({ q }: { q: ServiceOptions["intakeQuestions"][number] }) {
     );
   }
   return <Input {...common} maxLength={q.maxLength ?? 500} />;
+}
+
+
+/**
+ * What the buyer can do about a booking's time: answer the provider's suggested time, accept (or refuse by cancelling) a time the provider moved, or ask for another time. Every action is a
+ * plain form post; the API decides what is allowed and the page shows its answer in fixed words.
+ */
+function ChangePanel({ booking }: { booking: BookingView }) {
+  const fetcher = useFetcher<{ payment: BookingPayment | null; error: string | null }>();
+  const error = fetcher.data?.error ? BOOKING_PAGE_MESSAGES[fetcher.data.error] ?? BOOKING_PAGE_MESSAGES["unavailable"] : null;
+  const busy = fetcher.state !== "idle";
+  const [asking, setAsking] = useState(false);
+  const live = booking.status === "Requested" || booking.status === "Confirmed" || booking.status === "Rescheduled";
+  if (!live) return null;
+  return (
+    <div className="stack" data-testid="change-panel">
+      {booking.proposedStartAt && (
+        <Card className="stack">
+          <p style={{ margin: 0 }}>The provider suggested <strong>{formatDate(booking.proposedStartAt, true)}</strong>.</p>
+          <fetcher.Form method="post" className="row" aria-label="Answer the suggested time">
+            <CsrfField /><input type="hidden" name="intent" value="proposal" />
+            <Button type="submit" name="accept" value="yes" variant="primary" disabled={busy}>Accept this time</Button>
+            <Button type="submit" name="accept" value="no" variant="secondary" disabled={busy}>Keep my time</Button>
+          </fetcher.Form>
+        </Card>
+      )}
+      {booking.requiresBuyerConsent && (
+        <Card className="stack">
+          <p style={{ margin: 0 }}>The provider moved your booking to <strong>{booking.startAt ? formatDate(booking.startAt, true) : "a new time"}</strong>. Accept it, or cancel for free below.</p>
+          <fetcher.Form method="post" aria-label="Accept the new time">
+            <CsrfField /><input type="hidden" name="intent" value="acknowledge" />
+            <Button type="submit" variant="primary" disabled={busy}>Accept the new time</Button>
+          </fetcher.Form>
+        </Card>
+      )}
+      {booking.rescheduleRequestedStartAt && <p className="muted" data-testid="reschedule-pending">You asked to move this booking to {formatDate(booking.rescheduleRequestedStartAt, true)}. The provider will answer.</p>}
+      {error && <p role="alert" data-testid="change-error">{error}</p>}
+      {asking
+        ? <RescheduleForm booking={booking} fetcher={fetcher} busy={busy} onClose={() => setAsking(false)} />
+        : <div><Button type="button" variant="secondary" onClick={() => setAsking(true)}>Change the time</Button></div>}
+    </div>
+  );
+}
+
+function RescheduleForm({ booking, fetcher, busy, onClose }: { booking: BookingView; fetcher: ReturnType<typeof useFetcher<{ payment: BookingPayment | null; error: string | null }>>; busy: boolean; onClose: () => void }) {
+  const loc = apiLocation(booking.location === "customer" ? "at-home" : booking.location === "seller" ? "at-seller" : "online");
+  const [postal, setPostal] = useState("");
+  const [asked, setAsked] = useState(loc === "customer" ? "" : "-");       // an at-home booking needs the postal code again (the booking view carries no address)
+  const [res, setRes] = useState<{ key: string; result: Availability | null } | null>(null);
+  const [key] = useState(() => newHoldKey().slice(0, 50));
+  const reqKey = asked ? `${booking.listingId}|${loc}|${asked}` : null;
+  useEffect(() => {
+    if (!reqKey) return;
+    const ctrl = new AbortController();
+    const q = new URLSearchParams({ location: loc });
+    if (asked && asked !== "-") q.set("postalCode", asked);
+    fetch(`/services/${encodeURIComponent(booking.listingId)}/availability?${q}`, { signal: ctrl.signal, headers: { Accept: "application/json" } })
+      .then(async (r) => setRes({ key: reqKey, result: r.ok ? ((await r.json()) as Availability) : null }))
+      .catch((e: unknown) => { if (!(e instanceof DOMException && e.name === "AbortError")) setRes({ key: reqKey, result: null }); });
+    return () => ctrl.abort();
+  }, [reqKey, loc, asked, booking.listingId]);
+  const current = res && res.key === reqKey ? res : null;
+  const days = current?.result ? groupSlotsByDay(current.result.slots, safeZone(current.result.providers[0]?.timeZone)) : [];
+  const tz = safeZone(current?.result?.providers[0]?.timeZone);
+  return (
+    <fetcher.Form method="post" className="stack" aria-label="Choose another time">
+      <CsrfField /><input type="hidden" name="intent" value="reschedule" /><input type="hidden" name="key" value={key} />
+      {loc === "customer" && (
+        <div className="row">
+          <Input label="Your postal code" name="postal" value={postal} onChange={(e) => setPostal(e.target.value)} autoComplete="postal-code" maxLength={20} />
+          <Button type="button" variant="secondary" onClick={() => setAsked(postal.trim())} disabled={!postal.trim()}>Show times</Button>
+        </div>
+      )}
+      {reqKey && !current && <p className="muted" role="status">Finding times…</p>}
+      {current && !current.result && <p role="alert" data-testid="reschedule-error">We could not load other times just now. Please try again in a moment.</p>}
+      {current?.result && days.length === 0 && <p className="muted">No other times are open in the next two weeks.</p>}
+      {days.length > 0 && (
+        <Select label={`New time (${tz.replace(/_/g, " ")})`} name="newStart" required defaultValue="">
+          <option value="" disabled>Choose a time…</option>
+          {days.map((d) => <optgroup key={d.key} label={d.label}>{d.slots.map((s) => <option key={s.startAt} value={s.startAt}>{s.label}</option>)}</optgroup>)}
+        </Select>
+      )}
+      <div className="row">
+        <Button type="submit" variant="primary" disabled={busy || days.length === 0}>{busy ? "One moment…" : "Ask for this time"}</Button>
+        <Button type="button" variant="secondary" onClick={onClose}>Never mind</Button>
+      </div>
+    </fetcher.Form>
+  );
 }

@@ -36,6 +36,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (Number.isInteger(duration) && duration > 0 && duration <= 24 * 60) body.durationMinutes = duration;
   const providerId = String(form.get("providerId") ?? "");
   if (providerId && isSafeId(providerId)) body.providerId = providerId;
+  const addOnIds = [...new Set(form.getAll("addOnIds").map(String).filter((id) => /^[A-Za-z0-9._-]{1,100}$/.test(id)))].slice(0, 20);
+  if (addOnIds.length) body.addOnIds = addOnIds;
   const phone = String(form.get("phone") ?? "").trim().slice(0, 40);
   if (phone) body.phone = phone;
   if (location === "customer") {

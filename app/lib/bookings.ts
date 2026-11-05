@@ -42,7 +42,7 @@ export interface BookingView {
   id: string; number: string | null; listingId: string; status: string; location: string; startAt: string | null; endAt: string | null; durationMinutes: number | null; currency: string;
   priceCents: number; addOnsCents: number; travelFeeCents: number; totalCents: number; holdExpiresAt: string | null; holdExpired: boolean; approvalDeadline: string | null; proposedStartAt: string | null;
   cancellationFeeCents?: number | null; refundDueCents?: number | null; additionalChargeCents?: number | null; onlineInstructions?: string | null; failureCode?: string | null; createdAt: string;
-  requiresBuyerConsent?: boolean; rescheduleRequestedStartAt?: string | null; extraChargeState?: string | null;
+  requiresBuyerConsent?: boolean; rescheduleRequestedStartAt?: string | null; extraChargeState?: string | null; policy?: PolicyView | null;
 }
 
 export type Tone = "good" | "wait" | "bad" | "neutral";
@@ -60,6 +60,8 @@ export const BOOKING_STATUS: Record<string, { label: string; text: string; tone:
   NoShow: { label: "Missed", text: "This booking was marked as missed.", tone: "bad" },
 };
 export const bookingStatus = (s: string) => BOOKING_STATUS[s] ?? { label: s, text: "We are updating this booking.", tone: "neutral" as Tone };
+/** Statuses that have a time on the calendar (the API's .ics only answers for these). */
+export const CALENDAR_STATUSES = new Set(["Requested", "Confirmed", "Rescheduled", "InProgress"]);
 /** Statuses in which the buyer can still cancel. */
 export const CANCELLABLE = new Set(["Hold", "Requested", "Confirmed", "Rescheduled"]);
 
@@ -84,3 +86,32 @@ export const newHoldKey = (): string => `hold-${typeof crypto !== "undefined" &&
 
 /** The badge colours of the UI kit for a booking tone. */
 export const badgeTone = (t: Tone): "ok" | "gold" | "err" | "neutral" => (t === "good" ? "ok" : t === "wait" ? "gold" : t === "bad" ? "err" : "neutral");
+
+export interface PolicyView { cancelFreeHours: number | null; cancelFeePercent: number | null; noShowFeePercent: number | null; maxReschedules: number | null; approvalHours: number | null }
+export interface AddOn { id: string; name: string; description?: string | null; priceCents: number; extraMinutes: number }
+export interface IntakeQuestion { id: string; label: string; kind: "text" | "longText" | "choice" | "yesNo" | "number"; required: boolean; choices?: string[] | null; maxLength?: number | null }
+export interface ServiceOptionsView {
+  available: boolean; addOns: AddOn[]; intakeQuestions: IntakeQuestion[]; providers: { providerId: string; displayName: string }[]; assignment: string | null; policy: PolicyView | null;
+  travelFeeCents?: number | null;
+}
+
+/** The cancellation policy in plain words, one short sentence per fact we know; nothing for a fact we do not (never a guess). */
+export function policyLines(p: Partial<PolicyView> | null | undefined): string[] {
+  if (!p) return [];
+  const out: string[] = [];
+  const hours = (h: number) => (h % 24 === 0 && h >= 48 ? `${h / 24} days` : h === 1 ? "1 hour" : `${h} hours`);
+  if (p.cancelFreeHours != null) {
+    out.push(p.cancelFeePercent != null && p.cancelFeePercent > 0
+      ? `Free cancellation until ${hours(p.cancelFreeHours)} before the start; after that, ${p.cancelFeePercent}% of the price is kept.`
+      : `Free cancellation at any time up to ${hours(p.cancelFreeHours)} before the start.`);
+  }
+  if (p.noShowFeePercent != null && p.noShowFeePercent > 0) out.push(`If you do not show up, ${p.noShowFeePercent}% of the price is kept.`);
+  if (p.maxReschedules != null) out.push(p.maxReschedules === 0 ? "This booking cannot be moved to another time." : `You can change the time up to ${p.maxReschedules} ${p.maxReschedules === 1 ? "time" : "times"}.`);
+  return out;
+}
+
+/** Add-ons the buyer ticked, by id, limited to ones the service really offers (the page never trusts a stale selection). */
+export function pickAddOns(ids: Iterable<string>, offered: AddOn[]): string[] {
+  const ok = new Set(offered.map((a) => a.id));
+  return [...new Set(ids)].filter((i) => ok.has(i)).sort();
+}
