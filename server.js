@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createRequestHandler } from "@react-router/express";
 import compression from "compression";
 import express from "express";
+import { publicOriginMiddleware } from "./proxy-origin.js";
 
 // Importing the build runs start-up config validation (fails fast in production).
 const build = await import("./build/server/index.js");
@@ -14,6 +15,8 @@ const stripeScript = build.entry.module.stripeScriptOrigins.join(" ");
 const app = express();
 app.disable("x-powered-by");
 // No Express "trust proxy": the client IP is resolved by app/lib/client-ip.server.ts from TRUSTED_PROXIES.
+// Behind a TLS-terminating proxy this server sees http: the request URL's scheme and host come from the configured PUBLIC_ORIGIN, never from X-Forwarded-* (see proxy-origin.js, decision M8W-04).
+app.use(publicOriginMiddleware(process.env.PUBLIC_ORIGIN));
 
 // Security headers, set once for every response (HTML, data, resource routes, static files).
 app.use((req, res, next) => {
