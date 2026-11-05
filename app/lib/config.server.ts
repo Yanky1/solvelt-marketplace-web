@@ -31,13 +31,16 @@ export function isProduction(env: Record<string, string | undefined>): boolean {
 /**
  * What this deployment is called: the web's counterpart of the API's ASPNETCORE_ENVIRONMENT. `APP_ENV` names it (production, staging, ...); unset it is "production" for a
  * production build and "development" for a development or test run. A build with NODE_ENV=production is not enough to say "this is the production site": the test site is a
- * production build too, and it says so with APP_ENV=staging. Only the name "production" refuses demo mode (below).
+ * production build too, and it says so with APP_ENV=staging. Demo mode is allowed only for the names in DEMO_ALLOWED_DEPLOYMENTS (below).
  */
 export function deploymentOf(env: Record<string, string | undefined>): string {
   const named = (env.APP_ENV ?? "").trim().toLowerCase();
   if (named) return named;
   return isProduction(env) ? "production" : "development";
 }
+
+/** The only deployment names that may run with demo mode on (M9-06, an allowlist like the API's: Development, Testing, Staging). Any other name, an unset one on a production build included, refuses. */
+export const DEMO_ALLOWED_DEPLOYMENTS: ReadonlySet<string> = new Set(["development", "test", "testing", "staging"]);
 
 /** Why a secret is too weak, or null. Never includes the secret itself. */
 export function weakSecretReason(value: string): string | null {
@@ -96,7 +99,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
 
   // Demo data is test-mode data: never in production, whatever else is set (M9). Only "true" or "1" switch it on, so a typo cannot silently enable it.
   const demoEnabled = ["true", "1"].includes((env.DEMO_ENABLED ?? "").trim().toLowerCase());
-  if (demoEnabled && deploymentOf(env) === "production") problems.push("DEMO_ENABLED must not be true in production: demo data is test-mode data and cannot be switched on here (a test site runs with APP_ENV=staging)");
+  if (demoEnabled && !DEMO_ALLOWED_DEPLOYMENTS.has(deploymentOf(env))) problems.push("DEMO_ENABLED must not be true here: demo data is test-mode data and is allowed only when APP_ENV is development, test, testing or staging (a test site runs with APP_ENV=staging); production, an unset name on a production build and any other name refuse")
 
   if (problems.length) throw new Error(`Invalid configuration: ${problems.join("; ")}`);
   return { apiBaseUrl, sessionCookieSecret: secret, publicOrigin, trustedProxies, webForwardingKey: fwdKey, reauthWindowSeconds, stripeJsUrl, allowLiveStripeKeys: production && env.ALLOW_LIVE_STRIPE_KEYS === "1", demoEnabled, production };

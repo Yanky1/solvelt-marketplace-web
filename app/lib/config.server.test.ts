@@ -120,18 +120,24 @@ describe("demo data (test mode, M9)", () => {
     expect(() => loadConfig({ ...good, DEMO_ENABLED: "false" })).not.toThrow();
     expect(() => loadConfig({ ...good, APP_ENV: "staging" })).not.toThrow();
   });
+  const REFUSED = /DEMO_ENABLED must not be true here/;
   it("refuses to start on the production site with it on, however it is spelled, and with no override", () => {
-    for (const v of ["true", "TRUE", " True ", "1"]) fails({ ...good, DEMO_ENABLED: v }, /DEMO_ENABLED must not be true in production/);
-    fails({ ...good, DEMO_ENABLED: "true", APP_ENV: "production" }, /DEMO_ENABLED must not be true in production/);
-    fails({ ...good, DEMO_ENABLED: "true", APP_ENV: " Production " }, /DEMO_ENABLED must not be true in production/);
-    fails({ ...good, DEMO_ENABLED: "true", ALLOW_DEMO: "1", DEMO_FORCE: "true", ALLOW_DEMO_IN_PRODUCTION: "1", DEMO_ALLOW: "1" }, /DEMO_ENABLED must not be true in production/);
-    fails({ ...good, NODE_ENV: undefined, DEMO_ENABLED: "true" }, /DEMO_ENABLED must not be true in production/);                  // an unset NODE_ENV is production
-    fails({ NODE_ENV: "development", APP_ENV: "production", DEMO_ENABLED: "true" }, /DEMO_ENABLED must not be true in production/);   // a development run that says it is production is production
+    for (const v of ["true", "TRUE", " True ", "1"]) fails({ ...good, DEMO_ENABLED: v }, REFUSED);
+    fails({ ...good, DEMO_ENABLED: "true", APP_ENV: "production" }, REFUSED);
+    fails({ ...good, DEMO_ENABLED: "true", APP_ENV: " Production " }, REFUSED);
+    fails({ ...good, DEMO_ENABLED: "true", ALLOW_DEMO: "1", DEMO_FORCE: "true", ALLOW_DEMO_IN_PRODUCTION: "1", DEMO_ALLOW: "1" }, REFUSED);
+    fails({ ...good, NODE_ENV: undefined, DEMO_ENABLED: "true" }, REFUSED);                  // an unset NODE_ENV is production
+    fails({ NODE_ENV: "development", APP_ENV: "production", DEMO_ENABLED: "true" }, REFUSED);   // a development run that says it is production is production
+  });
+  it("is an allowlist: any other deployment name refuses too, whatever it is called (M9-06)", () => {
+    for (const name of ["prod", "live", "demo", "anything", "stagin", "staging2", "development-eu", "production-eu"])
+      fails({ ...good, DEMO_ENABLED: "true", APP_ENV: name }, REFUSED);
+    fails({ NODE_ENV: "development", APP_ENV: "live", DEMO_ENABLED: "true" }, REFUSED);   // a development run that names itself something else is not on the list
   });
   it("the test site is a production build named staging, and may use it", () => {
     expect(loadConfig({ ...good, DEMO_ENABLED: "true", APP_ENV: "staging" }).demoEnabled).toBe(true);
-    expect(loadConfig({ ...good, DEMO_ENABLED: "1", APP_ENV: "Staging" }).demoEnabled).toBe(true);
-    expect(loadConfig({ ...good, DEMO_ENABLED: "true", APP_ENV: "demo" }).demoEnabled).toBe(true);                                // every name but production
+    expect(loadConfig({ ...good, DEMO_ENABLED: "1", APP_ENV: " Staging " }).demoEnabled).toBe(true);
+    for (const name of ["testing", "TEST", "development"]) expect(loadConfig({ ...good, DEMO_ENABLED: "true", APP_ENV: name }).demoEnabled, name).toBe(true);
   });
   it("may be on in development and test", () => {
     expect(loadConfig({ NODE_ENV: "development", DEMO_ENABLED: "true" }).demoEnabled).toBe(true);
