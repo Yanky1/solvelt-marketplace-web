@@ -9,6 +9,7 @@ export const CATEGORIES: { key: string; label: string; hint: string }[] = [
   { key: "delivered", label: "Delivered", hint: "When your order arrives" },
   { key: "messages", label: "Messages", hint: "When a seller writes to you" },
   { key: "bookings", label: "Booking reminders", hint: "Reminders before a booking and when it is completed" },
+  { key: "wishlist", label: "Wishlist", hint: "When an item on your wishlist drops in price or is back in stock" },
 ];
 /** Mail that is required for the buyer's orders and account (API decision O-21 / M5-21): shown as always on, never editable, never sent in a save. */
 export const REQUIRED_CATEGORIES: { key: string; label: string; hint: string }[] = [
@@ -44,6 +45,8 @@ export function notificationText(n: NotificationItem): string {
     }
     case "data_exported": return "Your account data was downloaded. If this was not you, change your password now.";
     case "message_received": return `${seller(n)} sent you a message${str(n.parameters?.subject) ? ` about ${str(n.parameters?.subject)}` : ""}.`;
+    case "wishlist_price_drop": return `${str(n.parameters?.title) || "An item"} on your wishlist dropped in price.`;
+    case "wishlist_back_in_stock": return `${str(n.parameters?.title) || "An item"} on your wishlist is back in stock.`;
     default:
       return n.kind.startsWith("booking_") ? `There is an update on your booking${str(n.parameters?.bookingNumber) ? ` ${str(n.parameters?.bookingNumber)}` : ""}.` : "There is an update on your account.";
   }
@@ -55,6 +58,7 @@ const SAFE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 export function notificationLink(n: NotificationItem): string | null {
   if (n.kind === "message_received") { const t = str(n.parameters?.threadId); return SAFE_ID.test(t) ? `/account/messages/${encodeURIComponent(t)}` : "/account/messages"; }
   if (n.kind === "data_exported") return "/account/privacy";
+  if (n.kind === "wishlist_price_drop" || n.kind === "wishlist_back_in_stock") return "/account/wishlists";
   if (n.kind.startsWith("booking_")) return "/account/bookings";
   return n.orderNumber && SAFE_ID.test(n.orderNumber) ? `/account/orders/${encodeURIComponent(n.orderNumber)}` : null;
 }

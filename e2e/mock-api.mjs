@@ -3,7 +3,7 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import sharp from "sharp";
-import { catalogResponse, gid, IMAGE_BAD, IMAGE_DOWN, imageInfo, variantInfo } from "./mock-catalog.mjs";
+import { catalogResponse, gid, IMAGE_BAD, IMAGE_DOWN, imageInfo, listingById, variantInfo } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
@@ -24,6 +24,10 @@ function endAllSessionsAndIssue(u, res, send) {
   return send(res, 200, { token });
 }
 const addresses = new Map(); // addressId -> {userId, ...address}
+const wishlists = new Map(); // id -> {userId, name, shareHash, items: [listingId]}
+const viewed = new Map(); // userId -> [listingId] newest first (the mock stamps no times: order is the list)
+const sha = (t) => createHash("sha256").update(t).digest("hex");
+const listCard = (id) => { const l = listingById(id); return l ? { id: l.id, slug: l.slug, type: l.type, title: l.title, priceFromCents: l.priceFromCents, priceToCents: l.priceToCents, currency: l.currency, available: l.available, brandName: l.brand.name, sellerName: l.seller.displayName, image: l.images[0] ?? null } : null; };
 const passkeys = new Map(); // credentialId -> {id, userId, name, createdAt, lastUsedAt}
 const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
@@ -34,7 +38,7 @@ const threads = new Map(); // threadId -> {userId, kind, subject, sellerName, or
 const reports = []; // {messageId, reason}
 const notifs = new Map(); // userId -> [{id, kind, ...}]
 const prefs = new Map(); // userId -> {category: bool}
-const CATEGORIES = ["order_updates", "shipped", "out_for_delivery", "delivered", "messages", "bookings"];
+const CATEGORIES = ["order_updates", "shipped", "out_for_delivery", "delivered", "messages", "bookings", "wishlist"];
 const orders = new Map(); // number -> {userId, createdAt, status, group}
 const outbox = []; // {kind, email, token}
 const unsubCalls = new Map(); // token -> number of calls (the specs run in parallel on one mock)
@@ -197,7 +201,7 @@ http.createServer(async (req, res) => {
     if (path === "/__test/quote-send") { const qq = quotesDb.get(url.searchParams.get("id") ?? ""); if (!qq) return send(res, 404, { code: "not_found" }); qq.status = url.searchParams.get("status") ?? "Quoted"; qq.priceCents = Number(url.searchParams.get("price") ?? "40000"); qq.durationMinutes = 180; qq.slots = [slotAt(3, 15), slotAt(4, 15)]; qq.expiresAt = new Date(Date.now() + 3 * 86400000).toISOString(); qq.note = "Bring your own tap please"; qq.legacy = url.searchParams.get("legacy") === "1"; return send(res, 204); }
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -450,6 +454,61 @@ http.createServer(async (req, res) => {
       return send(res, 202, { returnId: `RT-${g.returns.length}`, status: "pending" });
     }
     if (om[3]) { const r = g.returns.find((x) => x.returnId === om[3]); if (!r) return send(res, 404, { code: "not_found" }); r.label = { url: "https://portal.example/api/v1/shipping/public/labels/L1?exp=9999999999&sig=x", expiresAt: new Date(Date.now() + 86400000).toISOString(), carrier: "USPS", trackingNumber: "RT1", trackingUrl: null }; return send(res, 200, { labelUrl: r.label.url, labelUrlExpiresAt: r.label.expiresAt }); }
+  }
+
+  // ---- wishlists and recently viewed (M6; the API's docs/API.md section) ----
+  const sh = /^\/api\/v1\/shared-wishlists\/([^/]+)$/.exec(path);
+  if (sh && req.method === "GET") {
+    const w = [...wishlists.values()].find((x) => x.shareHash && x.shareHash === sha(sh[1]));
+    if (!w) return send(res, 404, { code: "not_found", message: "Not found" });
+    return send(res, 200, { name: w.name, items: w.items.map((id) => ({ addedAt: new Date().toISOString(), listing: listCard(id) })).filter((i) => i.listing) });
+  }
+  const wm = /^\/api\/v1\/wishlists(?:\/(membership)|\/([^/]+)(?:\/(items)\/([^/]+)|\/(share))?)?$/.exec(path);
+  if (wm) {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const mine = () => [...wishlists.entries()].filter(([, w]) => w.userId === u.id);
+    const summary = ([id, w]) => ({ id, name: w.name, itemCount: w.items.length, shared: !!w.shareHash, sharedAt: w.shareHash ? new Date().toISOString() : null });
+    if (wm[1]) { const ids = (url.searchParams.get("listingIds") ?? "").split(",").filter(Boolean); return send(res, 200, { membership: Object.fromEntries(ids.map((x) => [x, mine().filter(([, w]) => w.items.includes(x)).map(([id]) => id)])) }); }
+    const id = wm[2];
+    if (!id) {
+      if (req.method === "GET") return send(res, 200, { limit: 20, itemLimit: 200, wishlists: mine().map(summary) });
+      if (req.method === "POST") {
+        const name = String(body.name ?? "").trim();
+        if (!name) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { name: "Give the list a name." } });
+        if (mine().some(([, w]) => w.name.toLowerCase() === name.toLowerCase())) return send(res, 409, { code: "name_taken", message: "You already have a list with that name." });
+        const nid = randomBytes(6).toString("hex");
+        wishlists.set(nid, { userId: u.id, name, shareHash: null, items: [] });
+        return send(res, 201, summary([nid, wishlists.get(nid)]));
+      }
+    } else {
+      const w = wishlists.get(id);
+      if (!w || w.userId !== u.id) return send(res, 404, { code: "not_found", message: "Not found" });   // another buyer's list is a 404
+      if (wm[3]) {
+        const lid = wm[4];
+        if (req.method === "PUT") { if (!listCard(lid)) return send(res, 404, { code: "not_found", message: "That item is not available." }); if (!w.items.includes(lid)) w.items.unshift(lid); return send(res, 204); }
+        if (req.method === "DELETE") { w.items = w.items.filter((x) => x !== lid); return send(res, 204); }
+      } else if (wm[5]) {
+        if (req.method === "POST") { const key = randomBytes(32).toString("base64url"); w.shareHash = sha(key); return send(res, 200, { shareKey: key }); }
+        if (req.method === "DELETE") { w.shareHash = null; return send(res, 204); }
+      } else {
+        if (req.method === "GET") return send(res, 200, { wishlist: summary([id, w]), items: w.items.map((x) => ({ listingId: x, addedAt: new Date().toISOString(), unavailable: !listCard(x), listing: listCard(x) })) });
+        if (req.method === "PATCH") { const name = String(body.name ?? "").trim(); if (!name) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { name: "Give the list a name." } }); w.name = name; return send(res, 200, summary([id, w])); }
+        if (req.method === "DELETE") { wishlists.delete(id); return send(res, 204); }
+      }
+    }
+  }
+  const rv = /^\/api\/v1\/recently-viewed(?:\/(merge)|\/([^/]+))?$/.exec(path);
+  if (rv) {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const list = viewed.get(u.id) ?? [];
+    if (!rv[1] && !rv[2]) {
+      if (req.method === "GET") return send(res, 200, { items: list.map((id) => ({ viewedAt: new Date().toISOString(), listing: listCard(id) })).filter((i) => i.listing) });
+      if (req.method === "DELETE") { viewed.delete(u.id); return send(res, 204); }
+    }
+    if (rv[1] && req.method === "POST") { const ids = (Array.isArray(body.listingIds) ? body.listingIds : []).filter((x) => listCard(x)); viewed.set(u.id, [...list, ...ids.filter((x) => !list.includes(x))].slice(0, 20)); return send(res, 204); }
+    if (rv[2] && req.method === "PUT") { if (!listCard(rv[2])) return send(res, 404, { code: "not_found", message: "Not found" }); viewed.set(u.id, [rv[2], ...list.filter((x) => x !== rv[2])].slice(0, 20)); return send(res, 204); }
   }
 
   // ---- account: addresses (another user's address is a 404, never 403) ----

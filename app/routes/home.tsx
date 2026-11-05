@@ -1,3 +1,4 @@
+import { RecentlyViewedShelf } from "~/components/RecentlyViewed";
 import type { Route } from "./+types/home";
 import { JsonLd } from "~/components/JsonLd";
 import { LinkButton } from "~/components/ui/form";
@@ -36,6 +37,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <h2 id="featured">Featured</h2>
         <EmptyState title="Listings are on their way">The catalog connects in the next release.</EmptyState>
       </section>
+      <RecentlyViewedShelf />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { isSafeId } from "./passkey.server";
  */
 import { safeHttps } from "./orders";
 import type { Availability, BookingView, PolicyView, QuoteView } from "./bookings";
+import { parseCard, parseItems, parseSummary, type ListCardView, type WishlistItemView, type WishlistSummary } from "./lists";
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public fieldErrors?: Record<string, string>, public retryAfter?: number, public body?: unknown) {
@@ -101,6 +102,11 @@ export function withoutCoordinates(o: OrderDetail): OrderDetail {
     returns: (g.returns ?? []).map((r) => ({ ...r, label: r.label && safeHttps(r.label.url) ? r.label : null })) })) };   // a label link that is not https is dropped before it can be rendered or serialised
 }
 export interface ReturnInput { sellerOrderNumber: string; reason: string; comment: string; lines: { lineId: string; quantity: number }[] }
+
+// ---- wishlists and recently viewed (M6; API docs "Wishlists and recently viewed") ----
+export interface WishlistList { limit: number; itemLimit: number; wishlists: WishlistSummary[] }
+export interface WishlistDetail { wishlist: WishlistSummary; items: WishlistItemView[] }
+export interface SharedWishlist { name: string; items: { addedAt: string; listing: ListCardView }[] }
 
 // ---- notifications (M5; API docs "Notifications") ----
 export interface NotificationItem { id: string; kind: string; category: string; orderNumber: string | null; sellerOrderNumber: string | null; parameters: Record<string, unknown> | null; createdAt: string; read: boolean }
@@ -237,6 +243,45 @@ export const api = {
   me: (ctx: ApiRequestContext) => call<ApiUser>(ctx, "/api/v1/account/me"),
   profile: (ctx: ApiRequestContext) => call<Profile>(ctx, "/api/v1/account/profile"),
   updateProfile: (ctx: ApiRequestContext, b: { displayName: string; phone: string }) => call<Profile>(ctx, "/api/v1/account/profile", b, "PUT"),
+  wishlists: async (ctx: ApiRequestContext): Promise<WishlistList> => {
+    const r = await call<{ limit?: number; itemLimit?: number; wishlists?: unknown[] }>(ctx, "/api/v1/wishlists");
+    return { limit: r.limit ?? 20, itemLimit: r.itemLimit ?? 200, wishlists: (r.wishlists ?? []).map(parseSummary).filter((w): w is WishlistSummary => w !== null) };
+  },
+  wishlist: async (ctx: ApiRequestContext, id: string): Promise<WishlistDetail> => {
+    const r = await call<{ wishlist?: unknown; items?: unknown }>(ctx, `/api/v1/wishlists/${pid(id)}`);
+    const w = parseSummary(r.wishlist);
+    if (!w) throw new ApiError(502, "bad_response", "Unexpected answer.");
+    return { wishlist: w, items: parseItems(r.items) };
+  },
+  createWishlist: (ctx: ApiRequestContext, name: string) => call<unknown>(ctx, "/api/v1/wishlists", { name }).then(parseSummary),
+  renameWishlist: (ctx: ApiRequestContext, id: string, name: string) => call<unknown>(ctx, `/api/v1/wishlists/${pid(id)}`, { name }, "PATCH"),
+  deleteWishlist: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/wishlists/${pid(id)}`, undefined, "DELETE"),
+  addWishlistItem: (ctx: ApiRequestContext, id: string, listingId: string) => call<void>(ctx, `/api/v1/wishlists/${pid(id)}/items/${pid(listingId)}`, undefined, "PUT"),
+  removeWishlistItem: (ctx: ApiRequestContext, id: string, listingId: string) => call<void>(ctx, `/api/v1/wishlists/${pid(id)}/items/${pid(listingId)}`, undefined, "DELETE"),
+  wishlistMembership: async (ctx: ApiRequestContext, listingId: string): Promise<string[]> => {
+    const r = await call<{ membership?: Record<string, unknown> }>(ctx, `/api/v1/wishlists/membership?listingIds=${pid(listingId)}`);
+    const ids = r.membership?.[listingId];
+    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+  },
+  shareWishlist: async (ctx: ApiRequestContext, id: string): Promise<string> => {
+    const r = await call<{ shareKey?: unknown }>(ctx, `/api/v1/wishlists/${pid(id)}/share`, {});
+    if (typeof r.shareKey !== "string" || !isSafeId(r.shareKey)) throw new ApiError(502, "bad_response", "Unexpected answer.");
+    return r.shareKey;
+  },
+  unshareWishlist: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/wishlists/${pid(id)}/share`, undefined, "DELETE"),
+  sharedWishlist: async (ctx: ApiRequestContext, key: string): Promise<SharedWishlist> => {
+    const r = await call<{ name?: unknown; items?: unknown[] }>(ctx, `/api/v1/shared-wishlists/${pid(key)}`);
+    const items = (r.items ?? []).flatMap((i) => { const o = i as { addedAt?: unknown; listing?: unknown }; const c = parseCard(o?.listing); return c ? [{ addedAt: typeof o.addedAt === "string" ? o.addedAt : "", listing: c }] : []; });
+    return { name: typeof r.name === "string" ? r.name.slice(0, 240) : "", items };
+  },
+  recentlyViewed: async (ctx: ApiRequestContext): Promise<ListCardView[]> => {
+    const r = await call<{ items?: { listing?: unknown }[] }>(ctx, "/api/v1/recently-viewed");
+    return (r.items ?? []).flatMap((i) => { const c = parseCard(i?.listing); return c ? [c] : []; });
+  },
+  recordViewed: (ctx: ApiRequestContext, listingId: string) => call<void>(ctx, `/api/v1/recently-viewed/${pid(listingId)}`, undefined, "PUT"),
+  mergeViewed: (ctx: ApiRequestContext, listingIds: string[]) => call<void>(ctx, "/api/v1/recently-viewed/merge", { listingIds: listingIds.slice(0, 20) }),
+  clearViewed: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/recently-viewed", undefined, "DELETE"),
+
   addresses: (ctx: ApiRequestContext) => call<Address[]>(ctx, "/api/v1/account/addresses"),
   address: (ctx: ApiRequestContext, id: string) => call<Address>(ctx, `/api/v1/account/addresses/${pid(id)}`),
   createAddress: (ctx: ApiRequestContext, b: AddressBody) => call<Address>(ctx, "/api/v1/account/addresses", b),

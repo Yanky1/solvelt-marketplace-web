@@ -8,6 +8,7 @@ import { useNonce } from "~/lib/nonce";
 import { apiCtx, currentUser, ensureVisitor } from "~/lib/auth.server";
 import { demoMode } from "~/lib/demo.server";
 import { reconcileUserStorageInBrowser } from "~/lib/client-storage";
+import { MergeGuestViews } from "~/components/RecentlyViewed";
 import { parseTheme, type ThemePref } from "~/lib/theme.server";
 import "~/styles/app.css";
 
@@ -63,6 +64,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <a className="skip-link" href="#main">Skip to main content</a>
         <ToastProvider>
           <Header />
+          <MergeGuestViews />
           <main id="main" tabIndex={-1} className="container">{children}</main>
           <Footer theme={theme} />
         </ToastProvider>

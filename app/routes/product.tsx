@@ -4,6 +4,8 @@ import { AddToCart } from "~/components/AddToCart";
 import { BookingSlot } from "~/components/BookingSlot";
 import { Gallery } from "~/components/Gallery";
 import { JsonLd } from "~/components/JsonLd";
+import { RecentlyViewedShelf, RecordView } from "~/components/RecentlyViewed";
+import { SaveToList } from "~/components/SaveToList";
 import { VariantPicker } from "~/components/VariantPicker";
 import { Badge, Breadcrumb, Price } from "~/components/ui/display";
 import { Link, useSearchParams } from "react-router";
@@ -133,6 +135,7 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
             : variant.available
               ? <AddToCart listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency} />
               : <p className="muted">This option is sold out. {listing.variants.some((v) => v.available) ? "Choose another option." : "Please check back later."}</p>}
+          <SaveToList listingId={listing.id} title={listing.title} />
         </div>
       </div>
       <section aria-labelledby="about" className="pdp-section stack">
@@ -158,6 +161,9 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
           ))}
         </section>
       )}
+      <RecordView card={{ id: listing.id, slug: listing.slug, type: listing.type, title: listing.title, priceFromCents: listing.priceFromCents, priceToCents: listing.priceToCents, currency: listing.currency, available: listing.available,
+        brandName: listing.brand.name, sellerName: listing.seller.displayName, image: listing.images[0] ? { id: listing.images[0].id, width: listing.images[0].width, height: listing.images[0].height, alt: listing.images[0].alt } : null }} />
+      <RecentlyViewedShelf exclude={listing.id} />
       <JsonLd data={listingJsonLd(listing, origin)} />
       <JsonLd data={breadcrumbJsonLd(origin, [{ name: "Home", path: "/" }, ...listing.categoryPath.map((c) => ({ name: c.name, path: categoryPath(c.slug) })), { name: listing.title, path: listingPath(listing.slug) }])} />
     </article>

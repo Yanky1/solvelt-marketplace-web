@@ -33,7 +33,7 @@ describe("notification text and links", () => {
   });
 
   it("lists the six switchable email categories of the API (refunds, cancellations and failed deliveries are always emailed)", () => {
-    expect(CATEGORY_KEYS).toEqual(["order_updates", "shipped", "out_for_delivery", "delivered", "messages", "bookings"]);
+    expect(CATEGORY_KEYS).toEqual(["order_updates", "shipped", "out_for_delivery", "delivered", "messages", "bookings", "wishlist"]);
     expect(REQUIRED_CATEGORIES.map((c) => c.key)).toEqual(["refunds", "cancellations", "delivery_problems", "returns", "booking_changes"]);
     expect(CATEGORY_KEYS.filter((k) => REQUIRED_CATEGORIES.some((r) => r.key === k))).toEqual([]);   // a save can never carry a required category
   });
