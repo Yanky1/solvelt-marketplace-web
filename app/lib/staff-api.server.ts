@@ -24,6 +24,10 @@ export interface StaffIngest { id: string; number: string; paidAt: string; total
 export interface StaffOutboxMessage { id: string; type: string; status: string; attempts: number; nextAttemptAt: string; lastError: string | null; createdAt: string; deliveredAt: string | null; deadAt: string | null; retryable: boolean }
 export interface StaffOutbox { counts: { pending: number; delivered: number; dead: number }; messages: StaffOutboxMessage[]; next: string | null }
 export interface StaffParked { id: string; type: string; aggregateType: string | null; aggregateKey: string | null; receivedAt: string; ageHours: number; lastReplayAt: string | null; note: string | null; retryable: boolean }
+export interface StaffBookingConfirm {
+  messageId: string; lastError: string | null; attempts: number; deadAt: string | null; bookingId: string | null; bookingNumber: string | null; bookingStatus: string | null; demo: boolean;
+  paymentId: string | null; paymentStatus: string | null; currency: string | null; amountCents: number | null; capturedCents: number | null; refundedCents: number | null; needsPerson: boolean; retryable: boolean; steps: string[];
+}
 export interface StaffStripeEvent { id: string; type: string; outcome: string; objectId: string | null; receivedAt: string }
 export interface StaffAccount { id: string; email: string; displayName: string; role: string; enrolled: boolean; disabled: boolean; passkeys: number; createdAt: string; lastSignInAt: string | null }
 export interface StaffAuditEntry { id: string; at: string; actorId: string | null; actorRole: string; action: string; targetType: string | null; targetId: string | null; reason: string; detail: string | null }
@@ -83,7 +87,7 @@ export const staffApi = {
   retryIngest: (ctx: ApiRequestContext, orderId: string, reason: string) => call<void>(ctx, `/ingests/${id(orderId)}/retry`, { body: { reason } }),
   outbox: (ctx: ApiRequestContext, q: { status?: string; type?: string; before?: string }) => call<StaffOutbox>(ctx, `/outbox${qs({ ...q, limit: 50 })}`),
   retryOutbox: (ctx: ApiRequestContext, messageId: string, reason: string) => call<void>(ctx, `/outbox/${id(messageId)}/retry`, { body: { reason } }),
-  deadLetters: (ctx: ApiRequestContext) => call<{ counts: Record<string, number>; parked: StaffParked[] }>(ctx, "/dead-letters"),
+  deadLetters: (ctx: ApiRequestContext) => call<{ counts: Record<string, number>; parked: StaffParked[]; bookingConfirms: StaffBookingConfirm[] }>(ctx, "/dead-letters"),
   retryDeadLetter: (ctx: ApiRequestContext, eventId: string, reason: string) => call<{ replayed: number }>(ctx, "/dead-letters/retry", { body: { eventId, reason } }),
   stripeFailures: (ctx: ApiRequestContext, before?: string) => call<{ total: number; events: StaffStripeEvent[]; next: string | null }>(ctx, `/stripe/failures${qs({ before, limit: 50 })}`),
   // ---- staff accounts and audit (admin)

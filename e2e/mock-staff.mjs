@@ -194,18 +194,18 @@ export function createStaffMock({ send, users, buyerSessions }) {
     }
     if (p.startsWith("/outbox") && method === "GET") {
       if (!can("outbox.view")) return forbid(), true;
-      send(res, 200, { counts: { pending: 1, delivered: 40, dead: 1 }, messages: [{ id: "44444444-4444-4444-4444-444444444444", type: "email.send", status: "dead", attempts: 8, nextAttemptAt: "2026-11-05T09:00:00Z", lastError: "SmtpException", createdAt: "2026-11-05T08:00:00Z", deliveredAt: null, deadAt: "2026-11-05T09:00:00Z", retryable: !deadOutbox.has(w.account.id) }], next: null });
+      send(res, 200, { counts: { pending: 1, delivered: 40, dead: 1 }, messages: [{ id: "44444444-4444-4444-4444-444444444444", type: "email.send", status: "dead", attempts: 8, nextAttemptAt: "2026-11-05T09:00:00Z", lastError: "SmtpException", createdAt: "2026-11-05T08:00:00Z", deliveredAt: null, deadAt: "2026-11-05T09:00:00Z", retryable: !deadOutbox.has(`${w.account.id}:44444444-4444-4444-4444-444444444444`) }], next: null });
       return true;
     }
     if ((m = /^\/outbox\/([^/]+)\/retry$/.exec(p)) && method === "POST") {
       if (!can("outbox.retry")) return forbid(), true;
       if (!reasonOk(body.reason)) return needReason(), true;
       if (!fresh(w)) return needStepUp(), true;
-      deadOutbox.add(w.account.id); note(w, "outbox.retry", "outbox", m[1], body.reason);
+      deadOutbox.add(`${w.account.id}:${m[1]}`); note(w, "outbox.retry", "outbox", m[1], body.reason);
       send(res, 204);
       return true;
     }
-    if (p === "/dead-letters" && method === "GET") { if (!can("deadletters.view")) return forbid(), true; send(res, 200, { counts: { applied: 100, parked: 1 }, parked: [{ id: "evt-parked-1", type: "order.shipped", aggregateType: "order", aggregateKey: "MP-9", receivedAt: "2026-11-05T05:00:00Z", ageHours: 5, lastReplayAt: null, note: null, retryable: true }] }); return true; }
+    if (p === "/dead-letters" && method === "GET") { if (!can("deadletters.view")) return forbid(), true; send(res, 200, { bookingConfirms: [{ messageId: "55555555-5555-5555-5555-555555555555", lastError: "confirm_unexpected_403", attempts: 8, deadAt: "2026-11-05T09:00:00Z", bookingId: "66666666-6666-6666-6666-666666666666", bookingNumber: "BK-7001", bookingStatus: "Hold", demo: false, paymentId: "77777777-7777-7777-7777-777777777777", paymentStatus: "captured", currency: "USD", amountCents: 12500, capturedCents: 12500, refundedCents: 0, needsPerson: true, retryable: !deadOutbox.has(`${w.account.id}:55555555-5555-5555-5555-555555555555`), steps: ["Ask the portal what it knows about this booking.", "If the portal has it, or the cause is fixed: retry the message below.", "If not: refund the PaymentIntent in the Stripe dashboard and tell the buyer."] }], counts: { applied: 100, parked: 1 }, parked: [{ id: "evt-parked-1", type: "order.shipped", aggregateType: "order", aggregateKey: "MP-9", receivedAt: "2026-11-05T05:00:00Z", ageHours: 5, lastReplayAt: null, note: null, retryable: true }] }); return true; }
     if (p === "/dead-letters/retry" && method === "POST") {
       if (!can("deadletters.retry")) return forbid(), true;
       if (!reasonOk(body.reason)) return needReason(), true;

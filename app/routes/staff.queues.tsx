@@ -5,7 +5,7 @@ import { FormMessage } from "~/components/AuthForm";
 import { Badge, EmptyState } from "~/components/ui/display";
 import { Button } from "~/components/ui/form";
 import { apiMessage, assertStaffCsrf, can, failStaff, requirePermission, requireStaff, staffForm, staffHeaders } from "~/lib/staff-auth.server";
-import { staffApi, type StaffIngest, type StaffOutbox, type StaffParked, type StaffStripeEvent } from "~/lib/staff-api.server";
+import { staffApi, type StaffBookingConfirm, type StaffIngest, type StaffOutbox, type StaffParked, type StaffStripeEvent } from "~/lib/staff-api.server";
 
 export function meta() {
   return [{ title: "Queues | Solvelt staff" }, { name: "robots", content: "noindex, nofollow" }];
@@ -24,7 +24,7 @@ const TABS = [
 type Data =
   | { tab: "ingests"; ingests: StaffIngest[]; after: number }
   | { tab: "outbox"; outbox: StaffOutbox; status: string }
-  | { tab: "dead-letters"; parked: StaffParked[]; counts: Record<string, number> }
+  | { tab: "dead-letters"; parked: StaffParked[]; counts: Record<string, number>; bookingConfirms: StaffBookingConfirm[] }
   | { tab: "stripe"; events: StaffStripeEvent[]; total: number; next: string | null };
 
 export async function loader({ request, context }: Route.LoaderArgs) {
@@ -38,9 +38,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     let data: Data;
     if (tab === "ingests") { const r = await staffApi.ingests(ctx); data = { tab, ingests: r.orders, after: r.stuckAfterMinutes }; }
     else if (tab === "outbox") { const status = ["pending", "delivered", "dead"].includes(url.searchParams.get("status") ?? "") ? url.searchParams.get("status")! : "dead"; data = { tab, outbox: await staffApi.outbox(ctx, { status, ...(url.searchParams.get("before") ? { before: url.searchParams.get("before")! } : {}) }), status }; }
-    else if (tab === "dead-letters") { const r = await staffApi.deadLetters(ctx); data = { tab, parked: r.parked, counts: r.counts }; }
+    else if (tab === "dead-letters") { const r = await staffApi.deadLetters(ctx); data = { tab, parked: r.parked, counts: r.counts, bookingConfirms: r.bookingConfirms ?? [] }; }
     else { const r = await staffApi.stripeFailures(ctx, url.searchParams.get("before") ?? undefined); data = { tab: "stripe", events: r.events, total: r.total, next: r.next }; }
-    return { tabs: tabs.map((t) => ({ id: t.id, label: t.label })), data, canRetry: retry[tab] };
+    return { tabs: tabs.map((t) => ({ id: t.id, label: t.label })), data, canRetry: retry[tab], canRetryOutbox: can(me, "outbox.retry") };
   } catch (e) {
     return failStaff(e, request);
   }
@@ -84,7 +84,7 @@ function RetryRow({ kind, id, label, retryable }: { kind: "ingest" | "outbox" | 
   );
 }
 
-export default function StaffQueues({ loaderData: { tabs, data, canRetry } }: Route.ComponentProps) {
+export default function StaffQueues({ loaderData: { tabs, data, canRetry, canRetryOutbox } }: Route.ComponentProps) {
   const [params] = useSearchParams();
   void params;
   return (
@@ -120,6 +120,26 @@ export default function StaffQueues({ loaderData: { tabs, data, canRetry } }: Ro
           )}
           {data.outbox.next && <p><Link to={`/staff/queues?tab=outbox&status=${data.status}&before=${encodeURIComponent(data.outbox.next)}`}>Older</Link></p>}
         </>
+      )}
+      {data.tab === "dead-letters" && data.bookingConfirms.length > 0 && (
+        <section className="stack" aria-labelledby="dead-confirms">
+          <h3 id="dead-confirms">Dead booking confirms</h3>
+          <p className="muted">The buyer paid, the portal was never told, and nobody has told the buyer. A person has to act.</p>
+          <TableWrap label="Dead booking confirms, table"><table className="table"><caption className="muted">Newest first</caption>
+            <thead><tr><th scope="col">Booking</th><th scope="col">Paid</th><th scope="col">Error</th><th scope="col">Action</th></tr></thead>
+            <tbody>{data.bookingConfirms.map((c) => (
+              <tr key={c.messageId}>
+                <th scope="row">{c.bookingNumber ?? "unknown (payload purged)"}{c.demo ? " (demo)" : ""}<div className="muted">{c.bookingStatus ?? "—"}</div></th>
+                <td>{c.amountCents !== null ? money(c.amountCents, c.currency ?? "USD") : "—"} <Badge tone={c.needsPerson ? "err" : "ok"}>{c.needsPerson ? "needs a person" : (c.paymentStatus ?? "—")}</Badge></td>
+                <td>{c.lastError ?? "—"}</td>
+                <td>
+                  <details><summary>What to do</summary><ol>{c.steps.map((s) => <li key={s}>{s}</li>)}</ol></details>
+                  {canRetryOutbox ? <RetryRow kind="outbox" id={c.messageId} label="Retry the confirm…" retryable={c.retryable} /> : null}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></TableWrap>
+        </section>
       )}
       {data.tab === "dead-letters" && (
         data.parked.length === 0 ? <EmptyState title="Nothing parked">Every portal event was applied.</EmptyState> : (
