@@ -16,6 +16,13 @@ const ZERO_COUNTS = Object.fromEntries(Object.keys(DEMO_COUNTS).map((k) => [k, 0
 const demoCounts = (u) => (demoData.has(u.id) ? DEMO_COUNTS : ZERO_COUNTS);
 const users = new Map(); // email -> {id, email, displayName, password, verified}
 const sessions = new Map(); // token -> userId
+/** Accounts whose address contains "tokenapi" behave like the API after M1-87: the three sign-in-method changes end EVERY session of the account, the caller's included, and answer 200 { token } with a new one. */
+function endAllSessionsAndIssue(u, res, send) {
+  for (const [t, id] of [...sessions.entries()]) if (id === u.id) { sessions.delete(t); authAt.delete(t); }
+  const token = randomBytes(24).toString("base64url");
+  sessions.set(token, u.id);
+  return send(res, 200, { token });
+}
 const addresses = new Map(); // addressId -> {userId, ...address}
 const passkeys = new Map(); // credentialId -> {id, userId, name, createdAt, lastUsedAt}
 const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
@@ -532,6 +539,7 @@ http.createServer(async (req, res) => {
     if (mine.length === 0) return send(res, 409, { code: "no_passkeys", message: "None" });
     if (u.email.includes("nopassword")) return send(res, 409, { code: "last_sign_in_method", message: "Only way in" });
     for (const [k] of mine) passkeys.delete(k);
+    if (u.email.includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
     return send(res, 204);
   }
   if (path === "/api/v1/account/password" && req.method === "POST") {
@@ -544,6 +552,7 @@ http.createServer(async (req, res) => {
     if (String(body.newPassword ?? "").length < 12) return send(res, 422, { code: "validation_failed", message: "Weak", errors: { newPassword: "Use at least 12 characters." } });
     u.password = String(body.newPassword); u.pwChanged = true;
     if (body.removePasskeys === true && !u.email.includes("legacyapi")) for (const [k, p] of [...passkeys.entries()]) if (p.userId === u.id) passkeys.delete(k);
+    if (u.email.includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
     for (const [t, id] of [...sessions.entries()]) if (id === u.id && t !== bearer(req)) sessions.delete(t);   // the other sessions end; this one stays
     return send(res, 204);
   }
@@ -555,6 +564,7 @@ http.createServer(async (req, res) => {
     if (!hit) return send(res, 404, { code: "not_found", message: "Not found" });
     if (hit[1].name.includes("undeletable")) return send(res, 503, { code: "unavailable", message: "Down" });
     passkeys.delete(hit[0]);
+    if (u.email.includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
     return send(res, 204);
   }
   if (path === "/api/v1/auth/passkey/options" && req.method === "POST") {

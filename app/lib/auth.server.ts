@@ -73,6 +73,19 @@ export function rotatedCookie(token?: string, now = Date.now() / 1000, extra?: P
   return sessionCookie(token ? { ...base, token, authAt: Math.floor(now) } : base, cfg);
 }
 
+/**
+ * The cookie for a session whose API token was replaced (the API ended every session of the account, the caller's included, and returned a new one: M1-87). A new session id, the new
+ * token, the item count of the header kept. `freshAuth` says whether the person just proved their password (a password change: the recent sign-in clock restarts) or not (a passkey
+ * removal: the clock they already had is kept, so rotating the token never extends how long a step-up lasts).
+ */
+export function cookieWithNewToken(session: SessionData, token: string, freshAuth: boolean, now = Date.now() / 1000): string {
+  const cfg = getConfig();
+  const fresh = newVisitor(now);
+  const base = session.cn !== undefined ? { ...fresh, cn: session.cn } : fresh;
+  const authAt = freshAuth ? Math.floor(now) : session.authAt;
+  return sessionCookie({ ...base, token, ...(authAt !== undefined ? { authAt } : {}) }, cfg);
+}
+
 /** Redirect to sign-in for pages that need an account, keeping a safe return path. */
 export function signInRedirect(request: Request, headers?: Record<string, string>): never {
   const u = new URL(request.url);

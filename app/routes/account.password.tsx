@@ -7,7 +7,7 @@ import { Card } from "~/components/ui/display";
 import { Button, Checkbox, Input } from "~/components/ui/form";
 import { safeFieldErrors } from "~/lib/api-errors";
 import { ApiError, api } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, formError, privateHeaders, requireAccount, rotatedCookie, signInRedirect } from "~/lib/auth.server";
+import { assertCsrf, cookieWithNewToken, failAccount, formError, privateHeaders, requireAccount, rotatedCookie, signInRedirect } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
 import { retryAfterHeader, tooManyMessage } from "~/lib/rate-limit";
 import { hasRecentAuth } from "~/lib/session.server";
@@ -64,15 +64,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (Object.keys(fieldErrors).length) return formError({ fieldErrors, message: null, removePasskeys });
   if (!hasRecentAuth(session, Date.now() / 1000, getConfig().reauthWindowSeconds)) return redirect(CONFIRM, { headers: privateHeaders });
   try {
-    await api.changePassword(ctx, { currentPassword: current, newPassword: next, ...(removePasskeys ? { removePasskeys: true } : {}) });
+    // The API ends every session of the account; since M1-87 it answers with a token for this caller, which replaces the one in the sealed cookie (a stolen copy of the old cookie is dead).
+    // An API that still answers 204 keeps the caller's session: no new token, the cookie stays as it is. Every call after this one uses the NEW token.
+    const newToken = await api.changePassword(ctx, { currentPassword: current, newPassword: next, ...(removePasskeys ? { removePasskeys: true } : {}) });
+    const after = newToken ? { ...ctx, sessionToken: newToken } : ctx;
+    const cookie: Record<string, string> = newToken ? { "Set-Cookie": cookieWithNewToken(session, newToken, true) } : {};
     let done: keyof typeof NOTICES = "changed";
     if (removePasskeys) {
       // What the API did is read back, never assumed: none left is "removed", some left is "kept" (an API that ignores the field), and a read that failed is "we couldn't confirm" (LOW-6),
       // which says neither that they were removed nor that they could not be.
-      const left = await api.passkeys(ctx).then((l) => l.length).catch(() => null);
+      const left = await api.passkeys(after).then((l) => l.length).catch(() => null);
       done = left === null ? "unconfirmed" : left === 0 ? "removed" : "kept";
     }
-    return redirect(`${BACK}?done=${done}`, { headers: privateHeaders });
+    return redirect(`${BACK}?done=${done}`, { headers: { ...privateHeaders, ...cookie } });
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 403) return redirect(CONFIRM, { headers: privateHeaders });                           // the API's own clock says "sign in again"

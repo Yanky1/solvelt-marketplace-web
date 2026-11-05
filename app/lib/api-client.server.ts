@@ -37,6 +37,16 @@ function pid(id: string): string {
   return encodeURIComponent(id);
 }
 
+/**
+ * Password change and passkey removal end every session of the account; the API (M1-87) answers them with 200 `{ token }`, a session for the caller to carry on with (before that it
+ * answered 204 and the caller's session lived on). Either is fine: this returns the new token, or undefined when there is none. Anything that is not a plausible token string is
+ * ignored, so a malformed answer can never put a strange value into the sealed cookie.
+ */
+export function tokenOf(answer: unknown): string | undefined {
+  const t = typeof answer === "object" && answer !== null ? (answer as { token?: unknown }).token : undefined;
+  return typeof t === "string" && t.length >= 8 && t.length <= 512 && /^[\x21-\x7e]+$/.test(t) ? t : undefined;
+}
+
 async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, method?: string, headers?: Record<string, string>): Promise<T> {
   let res: Response;
   try {
@@ -237,10 +247,10 @@ export const api = {
   passkeyRegistrationOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/account/passkeys/options", {}),
   registerPasskey: (ctx: ApiRequestContext, b: { challengeId: string; name: string; credential: unknown }) => call<PasskeyInfo>(ctx, "/api/v1/account/passkeys", b),
   /** Removes every passkey (one mail). 403 = sign in again first; 409 no_passkeys / last_sign_in_method. An API that predates it answers 404 or 405. */
-  deleteAllPasskeys: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/account/passkeys", undefined, "DELETE"),
+  deleteAllPasskeys: (ctx: ApiRequestContext) => call<unknown>(ctx, "/api/v1/account/passkeys", undefined, "DELETE").then(tokenOf),
   /** 204; `removePasskeys: true` also removes every passkey in the same step (an older API ignores the field). 403 = sign in again; 401 = wrong current password; 409 account_changed; 422 weak password. */
-  changePassword: (ctx: ApiRequestContext, b: { currentPassword: string; newPassword: string; removePasskeys?: boolean }) => call<void>(ctx, "/api/v1/account/password", b),
-  deletePasskey: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/passkeys/${pid(id)}`, undefined, "DELETE"),
+  changePassword: (ctx: ApiRequestContext, b: { currentPassword: string; newPassword: string; removePasskeys?: boolean }) => call<unknown>(ctx, "/api/v1/account/password", b).then(tokenOf),
+  deletePasskey: (ctx: ApiRequestContext, id: string) => call<unknown>(ctx, `/api/v1/account/passkeys/${pid(id)}`, undefined, "DELETE").then(tokenOf),
   passkeySignInOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/auth/passkey/options", {}),
   passkeySignIn: (ctx: ApiRequestContext, b: { challengeId: string; credential: unknown }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/passkey/sign-in", b),
   // Demo data (404 from the API while its Demo:Enabled is off).

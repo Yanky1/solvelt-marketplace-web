@@ -6,7 +6,7 @@ import { CsrfField } from "~/components/Shell";
 import { Card } from "~/components/ui/display";
 import { Button } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { assertCsrf, cookieWithNewToken, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
 import { hasRecentAuth } from "~/lib/session.server";
 
@@ -42,8 +42,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const cfg = getConfig();
   if (!hasRecentAuth(session, Date.now() / 1000, cfg.reauthWindowSeconds)) return redirect(CONFIRM, { headers: privateHeaders });
   try {
-    await api.deleteAllPasskeys(ctx);
-    return redirect(`${BACK}?done=all-removed`, { headers: privateHeaders });
+    const newToken = await api.deleteAllPasskeys(ctx);   // 200 { token } since M1-87 (every session ended, this caller gets a new one), 204 before: no token, the cookie stays
+    return redirect(`${BACK}?done=all-removed`, { headers: { ...privateHeaders, ...(newToken ? { "Set-Cookie": cookieWithNewToken(session, newToken, false) } : {}) } });
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 403) return redirect(CONFIRM, { headers: privateHeaders });                       // the API's own clock says "sign in again"

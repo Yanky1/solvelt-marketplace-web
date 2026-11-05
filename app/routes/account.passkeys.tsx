@@ -7,7 +7,7 @@ import { CsrfField, useRootData } from "~/components/Shell";
 import { Card, EmptyState } from "~/components/ui/display";
 import { Button, Input } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { assertCsrf, cookieWithNewToken, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
 import { getConfig } from "~/lib/config.server";
 import { hasRecentAuth, sessionCookie, checkPasskeyChallenge, withoutPasskeyChallenge } from "~/lib/session.server";
 import { isSafeId } from "~/lib/passkey.server";
@@ -54,13 +54,15 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (!isSafeId(id)) throw new Response("Not found", { status: 404, headers: privateHeaders });
       // Removing a sign-in method needs a recent sign-in (O-11): otherwise ask the user to confirm it is them first.
       if (!hasRecentAuth(session, Date.now() / 1000, cfg.reauthWindowSeconds)) return redirect("/account/confirm?next=%2Faccount%2Fpasskeys", { headers: privateHeaders });
+      let newToken: string | undefined;
       try {
-        await api.deletePasskey(ctx, id);
+        newToken = await api.deletePasskey(ctx, id);
       } catch (e) {
         if (e instanceof ApiError && e.status !== 401 && e.status !== 404) return formError({ message: "We could not remove that passkey. Please try again." }, 503);
         throw e;
       }
-      return redirect("/account/passkeys", { headers: privateHeaders });
+      // since M1-87 the API ends every session and answers with a token for this caller: it replaces the one in the cookie (204 before: nothing to replace)
+      return redirect("/account/passkeys", { headers: { ...privateHeaders, ...(newToken ? { "Set-Cookie": cookieWithNewToken(session, newToken, false) } : {}) } });
     }
     throw new Response("Bad request", { status: 400 });
   } catch (e) {
