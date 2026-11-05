@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { MOCK, addVirtualAuthenticator, newVerifiedUser, signIn, uniqueEmail, waitHydrated } from "./helpers";
+import { MOCK, addVirtualAuthenticator, newVerifiedUser, signIn, signUp, uniqueEmail, waitHydrated } from "./helpers";
 
 const REASON = "ticket 4412: caller asked";
 const axe = (page: Page) => new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
@@ -74,7 +74,7 @@ test("the staff session and the buyer session are separate: neither opens the ot
 
 test("buyer lookup is masked, and the break-glass reveal sends a stale passkey check to confirm and then works", async ({ page }) => {
   const buyer = uniqueEmail("lookup");
-  await page.request.post(`${MOCK}/api/v1/auth/sign-up`, { data: { email: buyer, password: "correct horse battery staple", displayName: "Dana Levi" } });
+  await signUp(page, buyer);   // through the real form: every API call the mock sees must carry the signed forwarding headers (auth.spec checks them all)
   const seed = await enrolAs(page, "support", "lookup");
   await page.goto("/staff/buyers");
   await waitHydrated(page);
@@ -111,7 +111,7 @@ test("buyer lookup is masked, and the break-glass reveal sends a stale passkey c
 
 test("a role sees only what it may: finance cannot reveal, support has no staff accounts page", async ({ page }) => {
   const buyer = uniqueEmail("fin");
-  await page.request.post(`${MOCK}/api/v1/auth/sign-up`, { data: { email: buyer, password: "correct horse battery staple", displayName: "Dana Levi" } });
+  await signUp(page, buyer);   // through the real form: every API call the mock sees must carry the signed forwarding headers (auth.spec checks them all)
   await enrolAs(page, "finance", "fin");
   await expect(page.getByRole("link", { name: "Staff accounts" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Audit log" })).toHaveCount(0);
