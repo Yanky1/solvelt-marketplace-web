@@ -79,12 +79,19 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const status = isRouteErrorResponse(error) ? error.status : 500;
   if (isRouteErrorResponse(error) && error.status === 403) {
     // A stale or missing CSRF token (form left open, another tab signed in or out): ask for a retry instead of a bare "Forbidden".
+    // Two causes are about the browser's connection to the site, not the form: the page was opened at an address other than the site's own, or the session cookie did not come back.
+    const why = typeof error.data === "string" ? error.data : "";
+    const message = why === "origin_mismatch" || why === "no_origin"
+      ? "This page was opened at an address that is not the site's own, so we could not confirm your request. Nothing was changed. Open the site at its official address (https) and try again."
+      : why === "no_session"
+        ? "Your browser did not send back its session cookie, so we could not confirm your request. Nothing was changed. Check that cookies are allowed for this site and that you are using its secure (https) address, then try again."
+        : "This page was open for a while or in another tab, so we could not confirm your request. Nothing was changed. Go back, reload the page and submit again.";
     return (
       <div className="empty">
         <title>Please try again | Solvelt</title>
         <meta name="robots" content="noindex" />
         <h1>Please try again</h1>
-        <p className="muted">This page was open for a while or in another tab, so we could not confirm your request. Nothing was changed. Go back, reload the page and submit again.</p>
+        <p className="muted">{message}</p>
         <LinkButton to="/">Back to home</LinkButton>
       </div>
     );
