@@ -167,6 +167,19 @@ test("queues: stuck orders, outbox, parked events and Stripe failures show by ro
   await expect(page.getByRole("cell", { name: "dead" }).first()).toBeVisible();
   await page.getByRole("link", { name: "Portal events" }).click();
   await expect(page.getByText("evt-parked-1")).toBeVisible();
+  // a dead booking confirm needs a person: it is listed with its booking, the amount and what to do
+  const confirm = page.getByRole("region", { name: "Dead booking confirms", exact: true });
+  await expect(confirm.getByRole("rowheader", { name: /BK-7001/ })).toBeVisible();
+  await expect(confirm).toContainText("$125.00");
+  await expect(confirm).toContainText("needs a person");
+  await expect(confirm).toContainText("confirm_unexpected_403");
+  await confirm.getByText("What to do").click();
+  await expect(confirm.getByText(/Stripe dashboard/)).toBeVisible();
+  await waitHydrated(page);
+  await confirm.getByText("Retry the confirm…").click();
+  await confirm.getByLabel("Reason").fill(REASON);
+  await confirm.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(confirm.getByText("Queued again.")).toBeVisible();
   await page.getByRole("link", { name: "Stripe failures" }).click();
   await expect(page.getByText("evt_a").first()).toBeVisible();
   await page.getByRole("link", { name: "Outbox" }).click();
@@ -223,7 +236,7 @@ for (const theme of ["light", "dark"] as const) {
     await enrolAs(page, "admin", `axe-${theme}`);
     const shots = process.env.STAFF_SHOTS === "1";
     const form = info.project.name === "mobile" ? "mobile" : "desktop";
-    for (const [name, path] of [["home", "/staff"], ["buyers", "/staff/buyers"], ["orders", "/staff/orders"], ["queues", "/staff/queues"], ["accounts", "/staff/accounts"], ["audit", "/staff/audit"]] as const) {
+    for (const [name, path] of [["home", "/staff"], ["buyers", "/staff/buyers"], ["orders", "/staff/orders"], ["queues", "/staff/queues"], ["dead-letters", "/staff/queues?tab=dead-letters"], ["accounts", "/staff/accounts"], ["audit", "/staff/audit"]] as const) {
       await page.goto(path);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       const results = await axe(page);
