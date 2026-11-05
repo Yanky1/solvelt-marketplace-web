@@ -147,4 +147,31 @@ describe("BookingSlot", () => {
     expect(await screen.findByRole("group", { name: "Choose a day" })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
+
+  it("asks for a quote with a NEW idempotency key once the buyer changes something after a refusal", async () => {
+    const posted: string[] = [];
+    const answer = { error: "outside_service_area" };
+    const router = createMemoryRouter(
+      [{ path: "/quotes/new", action: async ({ request }) => { const f = await request.formData(); posted.push(String(f.get("key"))); return data(answer, { status: 422 }); } },
+       { path: "*", element: <BookingSlot {...props} quoteOnly locations={["online"]} /> }],
+      { initialEntries: ["/p/custom-kitchen-remodel"] },
+    );
+    render(<RouterProvider router={router} />);
+    const user = userEvent.setup();
+    const details = screen.getByLabelText("What do you need?");
+    await user.type(details, "New cabinets and a sink, please.");
+    await user.click(screen.getByRole("button", { name: "Ask for a quote" }));
+    await waitFor(() => expect(screen.getByTestId("quote-form-error")).toHaveTextContent("does not come to that address"));
+    await user.type(details, " Thanks.");                                                 // the buyer corrects something
+    await user.click(screen.getByRole("button", { name: "Ask for a quote" }));
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[0]).toMatch(/^hold-/);
+    expect(posted[1]).not.toBe(posted[0]);                                               // so the API does not answer "same key, other details"
+  });
+
+  it("tells an at-home buyer about the travel fee before the buyer picks a time", async () => {
+    optionsReply = () => reply({ ...OPTIONS, travelFeeCents: 1000 });
+    setup({ locations: ["at-home"] });
+    expect(await screen.findByTestId("travel-fee")).toHaveTextContent("A travel fee of $10.00 is added");
+  });
 });

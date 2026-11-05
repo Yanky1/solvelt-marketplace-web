@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiLocation, bookingStatus, countdown, EXTRA_CHARGE_TEXT, isQuoteOnly, quoteStatus, groupSlotsByDay, newHoldKey, pickAddOns, policyLines, safeReturnPath, safeZone, secondsLeft } from "./bookings";
+import { apiLocation, bookingStatus, countdown, EXTRA_CHARGE_TEXT, isQuoteOnly, quoteStatus, groupSlotsByDay, newHoldKey, pickAddOns, policyLines, servicePath, safeReturnPath, safeZone, secondsLeft } from "./bookings";
 
 const slot = (startAt: string) => ({ startAt, endAt: Number.isNaN(Date.parse(startAt)) ? startAt : new Date(Date.parse(startAt) + 3600_000).toISOString(), providerIds: ["p1"] });
 
@@ -78,5 +78,10 @@ describe("booking helpers", () => {
     expect(quoteStatus("Quoted").tone).toBe("good");
     expect(quoteStatus("Mystery").text).toMatch(/updating/);
     expect(Object.keys(EXTRA_CHARGE_TEXT).sort()).toEqual(["consented", "declined", "paid", "requested"]);
+  });
+
+  it("links to a service page only for a plain slug", () => {
+    expect(servicePath("deep-house-cleaning")).toBe("/p/deep-house-cleaning");
+    for (const bad of [null, undefined, "", "../admin", "a/b", "a b", "x?y=1", "//evil.example", "-lead"]) expect(servicePath(bad as string | null)).toBeNull();
   });
 });

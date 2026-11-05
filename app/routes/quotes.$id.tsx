@@ -4,8 +4,8 @@ import { CsrfField } from "~/components/Shell";
 import { Badge, Card, formatMoney } from "~/components/ui/display";
 import { Button, Input, Select } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
-import { assertCsrf, failAccount, privateHeaders, requireAccount } from "~/lib/auth.server";
-import { badgeTone, groupSlotsByDay, quoteStatus } from "~/lib/bookings";
+import { apiCtx, assertCsrf, failAccount, privateHeaders, requireAccount } from "~/lib/auth.server";
+import { badgeTone, groupSlotsByDay, quoteStatus, safeZone } from "~/lib/bookings";
 import { formatDate } from "~/lib/orders";
 import { isSafeId } from "~/lib/passkey.server";
 
@@ -30,7 +30,20 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
   if (!isSafeId(params.id)) throw data("Not found", { status: 404, headers: privateHeaders });
   try {
-    return data({ quote: await api.quoteRequest(ctx, params.id) }, { headers: privateHeaders });
+    const quote = await api.quoteRequest(ctx, params.id);
+    // The provider's time zone (the times are shown in it) and the travel fee of an at-home job come from public data; either can be missing, and the page then says UTC and shows no fee.
+    let zone = "UTC";
+    if (quote.slots.length > 0) {
+      for (const where of ["online", "seller"]) {
+        try {
+          const a = await api.serviceAvailability(apiCtx(request, context, null), quote.listingId, `location=${where}`);
+          zone = safeZone((a.providers.find((p) => p.providerId === quote.providerId) ?? a.providers[0])?.timeZone);
+          if (zone !== "UTC") break;
+        } catch { /* try the next place */ }
+      }
+    }
+    const travelFeeCents = quote.location === "customer" ? (await api.serviceOptions(apiCtx(request, context, null), quote.listingId).catch(() => null))?.travelFeeCents ?? null : null;
+    return data({ quote, zone, travelFeeCents }, { headers: privateHeaders });
   } catch (e) {
     return failAccount(e, request);
   }
@@ -62,12 +75,13 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 }
 
 export default function QuotePage({ loaderData }: Route.ComponentProps) {
-  const { quote } = loaderData;
+  const { quote, zone, travelFeeCents } = loaderData;
   const st = quoteStatus(quote.status);
   const fetcher = useFetcher<{ error?: string }>();
   const error = fetcher.data?.error ? QUOTE_MESSAGES[fetcher.data.error] ?? QUOTE_MESSAGES["unavailable"] : null;
   const open = quote.status === "Quoted" && !quote.expired;
-  const days = groupSlotsByDay(quote.slots.map((s) => ({ startAt: s, endAt: s, providerIds: [] })), "UTC");
+  const days = groupSlotsByDay(quote.slots.map((s) => ({ startAt: s, endAt: s, providerIds: [] })), zone);
+  const fee = travelFeeCents && travelFeeCents > 0 ? travelFeeCents : 0;
   return (
     <div className="stack">
       <h1>Your quote request</h1>
@@ -76,6 +90,7 @@ export default function QuotePage({ loaderData }: Route.ComponentProps) {
       <Card className="stack">
         <p style={{ margin: 0 }} data-testid="quote-details">{quote.details}</p>
         {quote.priceCents != null && <p style={{ margin: 0 }}>Price <strong data-testid="quote-price">{formatMoney(quote.priceCents, quote.currency)}</strong>{quote.durationMinutes ? <span className="muted"> · {quote.durationMinutes} min</span> : null}</p>}
+        {quote.priceCents != null && fee > 0 && <p style={{ margin: 0 }} data-testid="quote-total">Travel fee {formatMoney(fee, quote.currency)} · Total <strong>{formatMoney(quote.priceCents + fee, quote.currency)}</strong></p>}
         {quote.note && <p style={{ margin: 0 }}>Provider's note: {quote.note}</p>}
         {quote.expiresAt && quote.status === "Quoted" && <p className="muted" style={{ margin: 0 }}>Valid until {formatDate(quote.expiresAt, true)}.</p>}
         {quote.declineReason && <p style={{ margin: 0 }}>{quote.declineReason}</p>}
@@ -83,7 +98,7 @@ export default function QuotePage({ loaderData }: Route.ComponentProps) {
       {open && (
         <fetcher.Form method="post" className="stack" aria-label="Accept this quote">
           <CsrfField /><input type="hidden" name="intent" value="accept" />
-          <Select label="Choose a time (UTC)" name="start" required defaultValue="">
+          <Select label={`Choose a time (${zone.replace(/_/g, " ")})`} name="start" required defaultValue="">
             <option value="" disabled>Choose a time…</option>
             {days.map((d) => <optgroup key={d.key} label={d.label}>{d.slots.map((s) => <option key={s.startAt} value={s.startAt}>{s.label}</option>)}</optgroup>)}
           </Select>

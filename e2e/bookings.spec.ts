@@ -38,9 +38,11 @@ test.describe("booking a service", () => {
   test("the widget shows times by day in the provider's zone, and explains an area that is not served", async ({ page }) => {
     const slot = await chooseTime(page);
     await expect(slot.getByRole("group", { name: "Choose a day" })).toBeVisible();
+    await expect(slot.getByTestId("travel-fee")).toContainText("$10.00");
     await expect(slot).toContainText("Times are shown in America/New York");
     await pickFirst(page);
     await expect(slot.getByRole("form", { name: /^Book / })).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));                                        // the sticky header must not sit on top of the widget while it is measured
     const axe = await new AxeBuilder({ page }).include('[data-testid="booking-slot"]').withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(axe.violations, JSON.stringify(axe.violations.map((v) => v.id))).toEqual([]);
     await slot.getByLabel("Your postal code").fill("99999");
@@ -182,6 +184,142 @@ test.describe("booking a service", () => {
     await page.getByTestId("extra-charge").getByRole("button", { name: "Decline" }).click();
     await expect(page.getByTestId("extra-charge")).toContainText("You declined the additional amount");
   });
+
+  test("a confirmed but unpaid booking (a quote accepted before holds) offers the payment, with the time left", async ({ page }) => {
+    await signedIn(page, "legacy");
+    await page.goto("/p/custom-kitchen-remodel");
+    await waitHydrated(page);
+    await page.getByLabel("What do you need?").fill("A small change to the kitchen layout, please.");
+    await page.getByRole("button", { name: "Ask for a quote" }).click();
+    await expect(page).toHaveURL(/\/quotes\/[0-9a-f-]+$/);
+    const qid = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/quote-send?id=${qid}&price=40000&legacy=1`);
+    await page.goto(`/quotes/${qid}`);
+    await page.getByLabel(/^Choose a time/).selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Accept and continue to payment" }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    await expect(page.getByTestId("booking-status")).toHaveAttribute("data-status", "Confirmed");          // confirmed already: NOT a hold
+    const due = page.getByTestId("due-panel");
+    await expect(due.getByTestId("due-countdown")).toContainText(/\d+:\d\d/);
+    await expect(page.getByTestId("hold-panel")).toHaveCount(0);
+    await due.getByRole("button", { name: /^Continue to payment/ }).click();
+    await expect(due.getByTestId("payment-step")).toBeVisible();
+  });
+
+  test("an expired hold links back to the service so the buyer can choose again", async ({ page }) => {
+    await signedIn(page, "expired");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&holdExpiresAt=${encodeURIComponent(new Date(Date.now() - 60000).toISOString())}`);
+    await page.goto(`/bookings/${id}`);
+    await expect(page.getByTestId("choose-again")).toHaveAttribute("href", "/p/deep-house-cleaning");
+  });
+
+  test("a request the provider has not answered yet cannot be moved", async ({ page }) => {
+    await signedIn(page, "requested");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Requested`);
+    await page.goto(`/bookings/${id}`);
+    await expect(page.getByTestId("booking-status")).toHaveAttribute("data-status", "Requested");
+    await expect(page.getByRole("button", { name: "Change the time" })).toHaveCount(0);
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Confirmed`);
+    await page.goto(`/bookings/${id}`);
+    await expect(page.getByRole("button", { name: "Change the time" })).toBeVisible();
+  });
+
+  test("a changed extra amount is refused under the old figure, shown again, and paid at the new one", async ({ page }) => {
+    await signedIn(page, "amount");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Completed`);
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&extraChargeState=requested&additionalChargeCents=5000`);
+    await page.goto(`/bookings/${id}`);
+    await expect(page.getByTestId("extra-charge")).toContainText("$50.00");
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&additionalChargeCents=7000`);       // the provider asks for more while the page is open
+    await page.getByTestId("extra-charge").getByRole("button", { name: "Agree and pay" }).click();
+    await expect(page.getByTestId("extra-error")).toContainText("changed the amount");
+    await expect(page.getByTestId("extra-charge")).toContainText("$70.00");                      // the page now shows what is asked
+    await expect(page.getByTestId("payment-step")).toHaveCount(0);                               // and nothing is being paid yet
+    await page.getByTestId("extra-charge").getByRole("button", { name: "Agree and pay" }).click();
+    await expect(page.getByTestId("extra-charge").getByRole("button", { name: "Pay $70.00" })).toBeVisible();
+  });
+
+  test("the extra-charge buttons are gone once it is declined or paid", async ({ page }) => {
+    await signedIn(page, "extradone");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Completed`);
+    for (const state of ["declined", "paid"]) {
+      await page.request.get(`${MOCK}/__test/book-set?id=${id}&extraChargeState=${state}&additionalChargeCents=5000`);
+      await page.goto(`/bookings/${id}`);
+      await expect(page.getByTestId("extra-charge")).toBeVisible();
+      await expect(page.getByTestId("extra-charge").getByRole("button")).toHaveCount(0);
+    }
+  });
+
+  test("every new form post needs the page's csrf token, and private pages are not cached", async ({ page }) => {
+    await signedIn(page, "csrf");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const bid = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${bid}&status=Confirmed`);
+    await page.goto("/p/custom-kitchen-remodel");
+    await waitHydrated(page);
+    await page.getByLabel("What do you need?").fill("Something small that needs a quote, thanks.");
+    await page.getByRole("button", { name: "Ask for a quote" }).click();
+    await expect(page).toHaveURL(/\/quotes\/[0-9a-f-]+$/);
+    const qid = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/quote-send?id=${qid}`);
+    const posts: [string, Record<string, string>][] = [
+      ["/quotes/new", { listingId: "x", location: "online", details: "Ten characters at least." }],
+      ["/bookings/holds", { listingId: "x", start: new Date(Date.now() + 86400000).toISOString(), location: "online" }],
+      [`/quotes/${qid}`, { intent: "accept", start: "2030-01-01T10:00:00Z" }], [`/quotes/${qid}`, { intent: "decline" }],
+      ...["checkout", "cancel", "reschedule", "proposal", "acknowledge", "extra-accept", "extra-decline"].map((intent): [string, Record<string, string>] => [`/bookings/${bid}`, { intent, newStart: "2030-01-01T10:00:00Z", accept: "yes" }]),
+    ];
+    for (const [url, form] of posts) {
+      expect((await page.request.post(url, { form })).status(), `${url} ${form["intent"] ?? ""} without a token`).toBe(403);
+      expect((await page.request.post(url, { form: { ...form, csrf: "wrong-token" } })).status(), `${url} ${form["intent"] ?? ""} with a wrong token`).toBe(403);
+    }
+    for (const url of [`/quotes/${qid}`, "/account/quotes", `/bookings/${bid}`, "/account/bookings", `/bookings/${bid}/calendar.ics`]) {
+      const cc = (await page.request.get(url)).headers()["cache-control"] ?? "";
+      expect(cc, url).toContain("private"); expect(cc, url).toContain("no-store");
+    }
+  });
+
+  test("a dirty file name from the API is cleaned to letters, digits and dashes", async ({ page }) => {
+    await signedIn(page, "dirty");
+    await chooseTime(page);
+    await pickFirst(page);
+    await fillAddress(page);
+    await page.getByRole("button", { name: /^Hold Deep House Cleaning/ }).click();
+    await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
+    const id = page.url().split("/").pop()!;
+    await page.request.get(`${MOCK}/__test/book-status?id=${id}&status=Confirmed`);
+    await page.request.get(`${MOCK}/__test/book-set?id=${id}&number=${encodeURIComponent('A";x=1/..\\y')}`);
+    const r = await page.request.get(`/bookings/${id}/calendar.ics`);
+    expect(r.status()).toBe(200);
+    expect(r.headers()["content-disposition"]).toMatch(/^attachment; filename="booking-[A-Za-z0-9-]+\.ics"$/);
+  });
 });
 
 test.describe("quotes", () => {
@@ -203,7 +341,8 @@ test.describe("quotes", () => {
     await expect(page.getByTestId("quote-price")).toHaveText("$400.00");
     const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(axe.violations, JSON.stringify(axe.violations.map((v) => v.id))).toEqual([]);
-    await page.getByLabel("Choose a time (UTC)").selectOption({ index: 1 });
+    await expect(page.getByLabel(/^Choose a time \(America\/New York\)/)).toBeVisible();     // the provider's zone, not UTC
+    await page.getByLabel(/^Choose a time/).selectOption({ index: 1 });
     await page.getByRole("button", { name: "Accept and continue to payment" }).click();
     await expect(page).toHaveURL(/\/bookings\/[0-9a-f-]+$/);
     await expect(page.getByTestId("booking-status")).toHaveAttribute("data-status", "Hold");

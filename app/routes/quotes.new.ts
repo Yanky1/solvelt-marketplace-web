@@ -2,7 +2,8 @@ import { data, redirect } from "react-router";
 import type { Route } from "./+types/quotes.new";
 import { ApiError, api } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, privateHeaders, signInRedirect } from "~/lib/auth.server";
-import { newHoldKey, safeReturnPath } from "~/lib/bookings";
+import { newHoldKey } from "~/lib/bookings";
+import { safeNext } from "~/lib/csrf.server";
 import { isSafeId } from "~/lib/passkey.server";
 
 export function loader() {
@@ -24,7 +25,7 @@ function quoteFailure(e: unknown): string {
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   const session = assertCsrf(request, form);
-  const returnTo = safeReturnPath(String(form.get("returnTo") ?? ""), "/");
+  const returnTo = safeNext(String(form.get("returnTo") ?? ""), "/");
   if (!session.token) return signInRedirect(new Request(new URL(returnTo, request.url)));
   const listingId = String(form.get("listingId") ?? ""), location = String(form.get("location") ?? ""), details = String(form.get("details") ?? "").trim();
   if (!isSafeId(listingId) || !LOCATIONS.has(location)) throw data("Bad request", { status: 400, headers: privateHeaders });
