@@ -3,6 +3,7 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import sharp from "sharp";
+import { createStaffMock } from "./mock-staff.mjs";
 import { catalogResponse, gid, IMAGE_BAD, IMAGE_DOWN, imageInfo, listingById, variantInfo } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
@@ -121,6 +122,7 @@ const send = (res, status, body, extra = {}) => {
   res.writeHead(status, { "Content-Type": "application/json", ...extra });
   res.end(body === undefined ? "" : JSON.stringify(body));
 };
+const staffMock = createStaffMock({ send, users, buyerSessions: sessions });   // M7W: the staff endpoints (e2e/mock-staff.mjs)
 const readBody = (req) => new Promise((resolve) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
@@ -140,6 +142,7 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://mock");
   const path = url.pathname;
   if (path === "/health") return send(res, 200, { status: "ok" });
+  if (path.startsWith("/__test/staff-") && await staffMock.handle(req, res, path, {}, url)) return;   // the staff test hooks (they take no body)
 
   if (path.startsWith("/__test/")) {
     if (path === "/__test/pay") { const o = checkoutOrders.get(url.searchParams.get("number") ?? ""); if (!o) return send(res, 404, { code: "not_found" }); o.status = url.searchParams.get("status") ?? "placed"; if (o.status === "placed") carts.set(o.key, []); return send(res, 200, { status: o.status }); }
@@ -222,7 +225,7 @@ http.createServer(async (req, res) => {
     if (path === "/__test/reviews") return send(res, 200, { reviews: [...reviews.values()].map((r) => ({ ...reviewView(r, true), userId: r.userId })), reports: reviewReports, questions: questionsDb });
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { staffMock.reset(); carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -233,6 +236,7 @@ http.createServer(async (req, res) => {
   }
   seen.push({ method: req.method, path, forwardingOk: forwardingOk(req), hasAuth: !!req.headers.authorization, tokenTail: (bearer(req) ?? "").slice(-8), clientIp: req.headers["x-solvelt-client-ip"] ?? null, idem: req.headers["idempotency-key"] ?? null });
   const body = ["POST", "PUT", "PATCH"].includes(req.method ?? "") ? await readBody(req) : {};
+  if (await staffMock.handle(req, res, path, body, url)) return;
 
   if (path === "/api/v1/auth/sign-up" && req.method === "POST") {
     const email = String(body.email ?? "").toLowerCase();

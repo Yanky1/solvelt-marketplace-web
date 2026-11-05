@@ -12,6 +12,7 @@ export function loader() {
     "Disallow: /account",
     "Disallow: /cart",
     "Disallow: /checkout",
+    "Disallow: /staff",
     "Disallow: /search/suggest",
     "Allow: /",
     `Sitemap: ${publicOrigin}/sitemap.xml`,

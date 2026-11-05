@@ -205,3 +205,11 @@ dialog.drawer { margin: 0; inset: 0 auto 0 0; height: 100%; max-height: 100%; wi
 @media (min-width: 700px) { .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1100px) { .category-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .category-grid h2 { font-size: var(--fs-lg); margin: 0 0 var(--s1); }
+
+/* Staff area tables (M7W): data tables scroll inside their own focusable region on a phone, never the page. */
+.table-wrap { overflow-x: auto; max-width: 100%; }
+.table { width: 100%; min-width: 34rem; border-collapse: collapse; font-size: 0.95rem; }
+.table caption { text-align: left; padding-bottom: var(--s1); }
+.table th, .table td { text-align: left; padding: var(--s1) var(--s2); border-bottom: 1px solid var(--border); vertical-align: top; }
+.table thead th { border-bottom-color: var(--border-strong); }
+.table code { overflow-wrap: anywhere; }

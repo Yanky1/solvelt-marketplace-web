@@ -22,6 +22,10 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
 }
 
 export async function loader({ request, context }: Route.LoaderArgs) {
+  // The staff area (M7W-01) has its own session: no buyer visitor cookie, no buyer API call and no test-mode lookup on its pages.
+  if (new URL(request.url).pathname.startsWith("/staff")) {
+    return data({ theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref, csrf: "", cartCount: 0, user: null, demo: { badge: false, buttons: false } });
+  }
   const { user, expired } = await currentUser(request, context);
   const visitor = ensureVisitor(request, expired);
   return data(
