@@ -25,6 +25,8 @@ export interface ApiRequestContext {
 export interface ApiCallOptions {
   method?: string;
   body?: unknown;
+  /** A multipart body (a photo upload): sent as it is, with the boundary header the runtime makes. Mutually exclusive with `body`. */
+  form?: FormData;
   signal?: AbortSignal;
   /** Extra request headers (for example an idempotency key). Never a client-forwarding or Authorization header: those are set here only. */
   headers?: Record<string, string>;
@@ -49,8 +51,9 @@ export async function apiFetch(cfg: Pick<AppConfig, "apiBaseUrl" | "trustedProxi
     headers.set(FORWARDED_CLIENT_TIMESTAMP_HEADER, String(ts));
     headers.set(FORWARDED_CLIENT_SIGNATURE_HEADER, signClientIp(cfg.webForwardingKey, ts, ip));
   }
-  const init: RequestInit = { method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"), headers };
+  const init: RequestInit = { method: opts.method ?? (opts.body !== undefined || opts.form !== undefined ? "POST" : "GET"), headers };
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+  else if (opts.form !== undefined) init.body = opts.form;
   if (opts.signal) init.signal = opts.signal;
   return fetch(`${cfg.apiBaseUrl}${path}`, init);
 }
