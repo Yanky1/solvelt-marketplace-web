@@ -2,7 +2,7 @@ import type { AppLoadContext } from "react-router";
 import { ApiError, EMPTY_CART, api, type Cart } from "./api-client.server";
 import { apiCtx } from "./auth.server";
 import { getConfig } from "./config.server";
-import { readSession, sessionCookie, type SessionData } from "./session.server";
+import { cartCookie, readSession, type SessionData } from "./session.server";
 
 /**
  * The guest cart token lives ONLY in the sealed, HttpOnly session cookie (decision M3W-01): never in loader data, HTML, JS, storage or a URL. These helpers read the cart for this
@@ -30,13 +30,16 @@ export function strip(cart: Cart): Cart {
   return rest;
 }
 
-/** The cookie after a cart answer: remembers a NEW guest token and the item count; null when nothing changed. */
+/**
+ * The cart cookie after a cart answer: remembers a NEW guest token and the item count; nothing when nothing changed. It is the CART cookie only (M7W-09): a cart request, however slow,
+ * never rewrites the session cookie, so it cannot bring back an API token another tab has just rotated away. The cookie is sealed for this session's id, so even a late write
+ * after a rotation or sign-in (new id) is ignored.
+ */
 export function cookieFor(session: SessionData | null, cart: Cart): { setCookie: string } | Record<string, never> {
   if (!session) return {};
-  const next: SessionData = { ...session, cn: cart.itemCount };
-  if (!session.token && cart.cartToken) next.cart = cart.cartToken;
-  if (next.cn === session.cn && next.cart === session.cart) return {};
-  return { setCookie: sessionCookie(next, getConfig()) };
+  const guestToken = !session.token && cart.cartToken ? cart.cartToken : session.cart;
+  if (cart.itemCount === session.cn && guestToken === session.cart) return {};
+  return { setCookie: cartCookie(session.sid, { ...(guestToken !== undefined ? { cart: guestToken } : {}), cn: cart.itemCount }, getConfig()) };
 }
 
 /**
@@ -69,7 +72,7 @@ export function healCartCount(request: Request, context: AppLoadContext, session
   const run = async (): Promise<HealedCount> => {
     try {
       const cart = await api.cart(apiCtx(request, context, session));
-      return { cn: cart.itemCount, setCookie: sessionCookie({ ...session, cn: cart.itemCount }, getConfig()) };
+      return { cn: cart.itemCount, setCookie: cartCookie(session.sid, { cn: cart.itemCount }, getConfig()) };
     } catch {
       return null;
     }

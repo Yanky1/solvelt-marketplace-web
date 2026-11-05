@@ -17,9 +17,12 @@ export interface SessionData {
   pk?: PasskeyBinding;
   /** Wrong passwords entered on the confirm page in this session. At MAX_CONFIRM_FAILURES the session is ended. */
   rf?: number;
-  /** The guest cart's token (decision M3W-01): only here, sealed and HttpOnly, never in loader data, HTML, JS or storage. Dropped once the cart is merged into an account at sign-in. */
+  /**
+   * The guest cart's token (decision M3W-01): sealed and HttpOnly, never in loader data, HTML, JS or storage. Dropped once the cart is merged into an account at sign-in.
+   * A VIEW of the cart cookie (M7W-09): `readSession` fills it in; `sessionCookie` never seals it into the session cookie.
+   */
   cart?: string;
-  /** How many items the cart held when the server last saw it: the header shows it without an API call on every page. */
+  /** How many items the cart held when the server last saw it: the header shows it without an API call on every page. Same view of the cart cookie as `cart`. */
   cn?: number;
   /** The guest order the browser has just placed: its number and order-access token (sealed, HttpOnly), so the confirmation page can follow it without the token ever being in the page or the URL (decision M3W-07). */
   /** Order-access grants of a guest (one per order number, at most 5; the newest last): see checkout.ts `withGrant`. */
@@ -109,20 +112,74 @@ export function csrfValid(sid: string, token: unknown, secret: string): boolean 
 export const cookieName = (cfg: Pick<AppConfig, "publicOrigin">) =>
   cfg.publicOrigin.startsWith("https://") ? "__Host-solvelt_session" : "solvelt_session";
 
-export function readSession(request: Request, cfg: Pick<AppConfig, "publicOrigin" | "sessionCookieSecret">): SessionData | null {
-  const header = request.headers.get("cookie");
-  if (!header) return null;
-  const name = cookieName(cfg);
-  for (const part of header.split(";")) {
-    const i = part.indexOf("=");
-    if (i > 0 && part.slice(0, i).trim() === name) return open(part.slice(i + 1).trim(), cfg.sessionCookieSecret);
-  }
-  return null;
+/** The cart cookie (M7W-09): the guest cart token and the header's item count, in a cookie of their own, so a slow cart request can never rewrite the one holding the API token. */
+export const cartCookieName = (cfg: Pick<AppConfig, "publicOrigin">) =>
+  cfg.publicOrigin.startsWith("https://") ? "__Host-solvelt_cart" : "solvelt_cart";
+
+export interface CartState { cart?: string; cn?: number }
+
+function sealCart(sid: string, state: CartState, secret: string, now = Date.now() / 1000): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", derive(secret, "cart-cookie"), iv);
+  const ct = Buffer.concat([cipher.update(JSON.stringify({ sid, iat: Math.floor(now), ...(state.cart !== undefined ? { cart: state.cart } : {}), ...(state.cn !== undefined ? { cn: state.cn } : {}) }), "utf8"), cipher.final()]);
+  return b64(Buffer.concat([iv, cipher.getAuthTag(), ct]));
 }
 
+/** The cart state of a cart cookie, but only when it was sealed for THIS session id: after a sign-in, a sign-out or a token rotation (all new ids) an older cookie, or one a slow request wrote late, counts for nothing. */
+function openCart(value: string, sid: string, secret: string, now = Date.now() / 1000): CartState | null {
+  try {
+    const raw = Buffer.from(value, "base64url");
+    if (raw.length < 12 + 16 + 2) return null;
+    const decipher = createDecipheriv("aes-256-gcm", derive(secret, "cart-cookie"), raw.subarray(0, 12));
+    decipher.setAuthTag(raw.subarray(12, 28));
+    const d = JSON.parse(Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString("utf8")) as { sid?: unknown; iat?: unknown; cart?: unknown; cn?: unknown };
+    if (d.sid !== sid || typeof d.iat !== "number" || now - d.iat > MAX_AGE_SECONDS) return null;
+    if (d.cart !== undefined && (typeof d.cart !== "string" || d.cart.length === 0 || d.cart.length > 100)) return null;
+    if (d.cn !== undefined && (typeof d.cn !== "number" || !Number.isInteger(d.cn) || d.cn < 0 || d.cn > 100_000)) return null;
+    return { ...(d.cart !== undefined ? { cart: d.cart } : {}), ...(d.cn !== undefined ? { cn: d.cn } : {}) };
+  } catch {
+    return null;
+  }
+}
+
+const cookieValue = (header: string | null, name: string): string | null => {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+  }
+  return null;
+};
+
+/**
+ * The session of this request: the session cookie, with the cart state of the cart cookie laid over it when that was sealed for the same session id. A session cookie from before M7W-09 still
+ * holds `cart` and `cn` itself and keeps working until the next cart write moves them out.
+ */
+export function readSession(request: Request, cfg: Pick<AppConfig, "publicOrigin" | "sessionCookieSecret">): SessionData | null {
+  const header = request.headers.get("cookie");
+  const value = cookieValue(header, cookieName(cfg));
+  const session = value === null ? null : open(value, cfg.sessionCookieSecret);
+  if (!session) return null;
+  const cartValue = cookieValue(header, cartCookieName(cfg));
+  const state = cartValue === null ? null : openCart(cartValue, session.sid, cfg.sessionCookieSecret);
+  if (!state) return session;
+  const { cart: _c, cn: _n, ...rest } = session;
+  void _c; void _n;
+  return { ...rest, ...state };
+}
+
+/** The session cookie: identity only. Cart state never goes in (it has its own cookie), so a cart request can never write an old API token back. */
 export function sessionCookie(data: SessionData, cfg: Pick<AppConfig, "publicOrigin" | "sessionCookieSecret">): string {
   const secure = cfg.publicOrigin.startsWith("https://");
-  return `${cookieName(cfg)}=${seal(data, cfg.sessionCookieSecret)}; Path=/; Max-Age=${MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
+  const { cart: _c, cn: _n, ...identity } = data;
+  void _c; void _n;
+  return `${cookieName(cfg)}=${seal(identity, cfg.sessionCookieSecret)}; Path=/; Max-Age=${MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
+}
+
+/** The cart cookie for session id `sid`. Written only by cart code; never carries the token. */
+export function cartCookie(sid: string, state: CartState, cfg: Pick<AppConfig, "publicOrigin" | "sessionCookieSecret">): string {
+  const secure = cfg.publicOrigin.startsWith("https://");
+  return `${cartCookieName(cfg)}=${sealCart(sid, state, cfg.sessionCookieSecret)}; Path=/; Max-Age=${MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
 
 /** Passkey options are issued for exactly one challenge per session; a newer one replaces an older one. */
