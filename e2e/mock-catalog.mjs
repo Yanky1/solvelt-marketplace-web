@@ -31,6 +31,9 @@ const rows = [
   ["deep-house-cleaning", "Deep House Cleaning", "service", "hudson-home-pros", "cleaning", "Top-to-bottom clean by a two-person team.",
     "Top-to-bottom clean by a two-person team.\n\nBook a time that suits you; the seller confirms the details after your request.",
     [["2 bedrooms", 18000, 20000, true], ["3 bedrooms", 24000, null, true]], [["service-area", "Brooklyn, Manhattan, Queens"], ["duration", "4 to 6 hours"], ["insured", "yes"], ["delivery", "at-home"]], [["What areas do you serve?", "Brooklyn, Manhattan, Queens"]], 3],
+  ["custom-kitchen-remodel", "Custom Kitchen Remodel", "service", "hudson-home-pros", "cleaning", "Priced per job after a look at your kitchen.",
+    "Priced per job: describe what you need and the provider sends a price and times to choose from.",
+    [["Consultation and quote", 15000, null, true]], [["pricing-model", "quote"], ["booking-mode", "request"], ["delivery", "online"], ["duration", "2 hours"]], [], 2],
 ];
 for (let n = 1; n <= 26; n++) rows.push([`gift-box-${n}`, `Gift Box ${String(n).padStart(2, "0")}`, "product", "brooklyn-judaica", "gifts", `Gift box number ${n}.`, `Gift box number ${n}.`, [["Box", 2000 + n * 100, null, true]], [["delivery", "ships"]], [], 1]);
 const unlisted = new Set(["retired-spice-gift-set"]); // 410
