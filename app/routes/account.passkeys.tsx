@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Form, redirect, useActionData, useNavigation, useSubmit } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation, useSubmit } from "react-router";
 import type { Route } from "./+types/account.passkeys";
 import { AccountNav } from "~/components/AccountNav";
 import { ErrorSummary, FormMessage } from "~/components/AuthForm";
@@ -24,7 +24,8 @@ export function headers() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { ctx } = requireAccount(request, context);
   try {
-    return { passkeys: await api.passkeys(ctx) };
+    // Only a known key selects the message; nothing from the query string is ever shown.
+    return { passkeys: await api.passkeys(ctx), removedAll: new URL(request.url).searchParams.get("done") === "all-removed" };
   } catch (e) {
     return failAccount(e, request);
   }
@@ -111,6 +112,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
       <h2>Passkeys</h2>
       <p className="muted">A passkey lets you sign in with your fingerprint, face or device PIN instead of a password.</p>
       <ErrorSummary submission={a} message={a?.message} />
+      {loaderData.removedAll && <FormMessage kind="ok">All passkeys removed. You sign in with your password now.</FormMessage>}
       {loaderData.passkeys.length === 0 ? (
         <EmptyState title="No passkeys yet">Add one to sign in faster on this device.</EmptyState>
       ) : (
@@ -131,6 +133,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
           ))}
         </ul>
       )}
+      {loaderData.passkeys.length > 1 && <p><Link to="/account/passkeys/remove-all">Remove all passkeys</Link></p>}
       <Card className="stack" style={{ marginTop: "var(--s3)" }}>
         <h3>Add a passkey</h3>
         {supported === false && <FormMessage kind="error">This browser or device does not support passkeys.</FormMessage>}

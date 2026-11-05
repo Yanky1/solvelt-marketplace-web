@@ -8,6 +8,7 @@ const LINKS = [
   { to: "/account/messages", label: "Messages" },
   { to: "/account/notifications", label: "Notifications" },
   { to: "/account/profile", label: "Profile" },
+  { to: "/account/password", label: "Password" },
   { to: "/account/addresses", label: "Addresses" },
   { to: "/account/passkeys", label: "Passkeys" },
   { to: "/account/privacy", label: "Privacy" },

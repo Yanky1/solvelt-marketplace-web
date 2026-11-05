@@ -236,6 +236,10 @@ export const api = {
   passkeys: (ctx: ApiRequestContext) => call<PasskeyInfo[]>(ctx, "/api/v1/account/passkeys"),
   passkeyRegistrationOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/account/passkeys/options", {}),
   registerPasskey: (ctx: ApiRequestContext, b: { challengeId: string; name: string; credential: unknown }) => call<PasskeyInfo>(ctx, "/api/v1/account/passkeys", b),
+  /** Removes every passkey (one mail). 403 = sign in again first; 409 no_passkeys / last_sign_in_method. An API that predates it answers 404 or 405. */
+  deleteAllPasskeys: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/account/passkeys", undefined, "DELETE"),
+  /** 204; `removePasskeys: true` also removes every passkey in the same step (an older API ignores the field). 403 = sign in again; 401 = wrong current password; 409 account_changed; 422 weak password. */
+  changePassword: (ctx: ApiRequestContext, b: { currentPassword: string; newPassword: string; removePasskeys?: boolean }) => call<void>(ctx, "/api/v1/account/password", b),
   deletePasskey: (ctx: ApiRequestContext, id: string) => call<void>(ctx, `/api/v1/account/passkeys/${pid(id)}`, undefined, "DELETE"),
   passkeySignInOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/auth/passkey/options", {}),
   passkeySignIn: (ctx: ApiRequestContext, b: { challengeId: string; credential: unknown }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/passkey/sign-in", b),

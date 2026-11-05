@@ -36,6 +36,8 @@ export default [
   route("account/privacy", "routes/account.privacy.tsx"),
   route("account/privacy/export", "routes/account.privacy.export.ts"),
   route("account/passkeys/options", "routes/account.passkeys.options.ts"),
+  route("account/passkeys/remove-all", "routes/account.passkeys.remove-all.tsx"),
+  route("account/password", "routes/account.password.tsx"),
   route("passkeys/sign-in-options", "routes/passkeys.sign-in-options.ts"),
   route("p/:slug", "routes/product.tsx"),
   route("categories", "routes/categories.tsx"),

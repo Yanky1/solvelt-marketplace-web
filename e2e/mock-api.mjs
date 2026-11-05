@@ -127,6 +127,13 @@ http.createServer(async (req, res) => {
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
+    if (path === "/__test/add-passkeys") {   // creates passkeys for a user without a ceremony: ?email=&count=
+      const u = users.get(String(url.searchParams.get("email") ?? "").toLowerCase());
+      if (!u) return send(res, 404, { code: "not_found", message: "no such user" });
+      const n = Math.min(10, Number(url.searchParams.get("count") ?? 1));
+      for (let i = 0; i < n; i++) { const id = randomBytes(6).toString("hex"); passkeys.set(`seed-${id}`, { id, userId: u.id, credentialId: `seed-${id}`, name: `Seeded passkey ${i + 1}`, createdAt: new Date().toISOString() }); }
+      return send(res, 200, { added: n });
+    }
     if (path === "/__test/auth-at") { const t = url.searchParams.get("token") ?? ""; return send(res, 200, { authAt: authAt.get(t) ?? null }); }
     if (path === "/__test/tokens") {
       const email = url.searchParams.get("email");
@@ -505,6 +512,30 @@ http.createServer(async (req, res) => {
     const p = { id: randomBytes(6).toString("hex"), userId: u.id, credentialId: cred.id, name: String(body.name || "Passkey"), createdAt: new Date().toISOString() };
     passkeys.set(cred.id, p);
     return send(res, 201, { id: p.id, name: p.name, createdAt: p.createdAt });
+  }
+  // Test accounts pick the API's behaviour by their address: "legacyapi" = an API that predates the password option and the bulk delete (a 405, and the field ignored),
+  // "reauthapi" = the API's own clock says "sign in again" until a step-up has happened, "nopassword" = the passkeys are the only way in.
+  if (path === "/api/v1/account/passkeys" && req.method === "DELETE") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (u.email.includes("legacyapi")) return send(res, 405, { code: "method_not_allowed", message: "Not allowed" });
+    if (u.email.includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
+    const mine = [...passkeys.entries()].filter(([, p]) => p.userId === u.id);
+    if (mine.length === 0) return send(res, 409, { code: "no_passkeys", message: "None" });
+    if (u.email.includes("nopassword")) return send(res, 409, { code: "last_sign_in_method", message: "Only way in" });
+    for (const [k] of mine) passkeys.delete(k);
+    return send(res, 204);
+  }
+  if (path === "/api/v1/account/password" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (u.email.includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
+    if (u.password !== body.currentPassword) return send(res, 401, { code: "invalid_credentials", message: "Invalid" });
+    if (String(body.newPassword ?? "").length < 12) return send(res, 422, { code: "validation_failed", message: "Weak", errors: { newPassword: "Use at least 12 characters." } });
+    u.password = String(body.newPassword);
+    if (body.removePasskeys === true && !u.email.includes("legacyapi")) for (const [k, p] of [...passkeys.entries()]) if (p.userId === u.id) passkeys.delete(k);
+    for (const [t, id] of [...sessions.entries()]) if (id === u.id && t !== bearer(req)) sessions.delete(t);   // the other sessions end; this one stays
+    return send(res, 204);
   }
   const pm = /^\/api\/v1\/account\/passkeys\/([^/]+)$/.exec(path);
   if (pm && req.method === "DELETE") {
