@@ -25,10 +25,14 @@ test("the data download is a file with the signed-in buyer's own data, made by a
   const path = await download.path();
   const json = JSON.parse((await import("node:fs")).readFileSync(path!, "utf8"));
   expect(json.sections.account.profile.email).toBe(email);
-  expect(Object.keys(json.sections).sort()).toEqual(["account", "cancellations-and-returns", "messages", "notifications"]);
+  expect(Object.keys(json.sections).sort()).toEqual(["account", "bookings", "cancellations-and-returns", "carts", "messages", "notifications", "orders", "passkeys", "tracking"]);
   // a GET of the export route never makes a file
   await page.goto("/account/privacy/export");
   await expect(page).toHaveURL(/\/account\/privacy$/);
+  // a second download within ten minutes is refused by the API, and the page says when, instead of "try again"
+  await page.getByRole("button", { name: "Download my data" }).click();
+  await expect(page.getByText("You can download your data once every ten minutes. Please try again later.")).toBeVisible();
+  await expect(page.getByText("We could not prepare your file")).toHaveCount(0);
 });
 
 test("deleting the account needs the tick and the right password, then signs the browser out for good", async ({ page }) => {

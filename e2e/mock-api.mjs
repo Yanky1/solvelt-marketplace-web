@@ -22,6 +22,7 @@ const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const authAt = new Map(); // session token -> ms of the last successful step-up (the API-side O-11 clock)
+let exportedAt;
 const threads = new Map(); // threadId -> {userId, kind, subject, sellerName, orderNumber, listingId, messages:[]}
 const reports = []; // {messageId, reason}
 const notifs = new Map(); // userId -> [{id, kind, ...}]
@@ -297,7 +298,11 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/account/data-export" && req.method === "POST") {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
-    const body = JSON.stringify({ generatedAt: new Date().toISOString(), sections: { account: { profile: { email: u.email, displayName: u.displayName, phone: u.phone ?? null }, addresses: [] }, messages: [], notifications: { notifications: [], emailSettings: {} }, "cancellations-and-returns": { cancelRequests: [], returns: [] } } });
+    // one file per account per ten minutes (API M5-33)
+    exportedAt ??= new Map();
+    if (Date.now() - (exportedAt.get(u.id) ?? 0) < 600000) { res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "600" }); return res.end(JSON.stringify({ code: "export_rate_limited", message: "You can download your data once every ten minutes. Please try again later." })); }
+    exportedAt.set(u.id, Date.now());
+    const body = JSON.stringify({ generatedAt: new Date().toISOString(), sections: { account: { profile: { email: u.email, displayName: u.displayName, phone: u.phone ?? null }, addresses: [] }, bookings: { bookings: [], quoteRequests: [] }, carts: { carts: [] }, messages: [], notifications: { notifications: [], emailSettings: {} }, orders: { orders: [] }, passkeys: { passkeys: [] }, tracking: { sellerOrders: [] }, "cancellations-and-returns": { cancelRequests: [], returns: [] } } });
     res.writeHead(200, { "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="solvelt-my-data.json"', "Cache-Control": "private, no-store" });
     return res.end(body);
   }

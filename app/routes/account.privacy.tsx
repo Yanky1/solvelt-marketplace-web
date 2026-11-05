@@ -22,7 +22,8 @@ const CONFIRM = "/account/confirm?next=%2Faccount%2Fprivacy";
 
 export function loader({ request, context }: Route.LoaderArgs) {
   requireAccount(request, context);
-  return { exportFailed: new URL(request.url).searchParams.get("export") === "failed" };
+  const q = new URL(request.url).searchParams.get("export");
+  return { exportFailed: q === "failed", exportWait: q === "wait" };
 }
 
 /**
@@ -63,7 +64,8 @@ export default function Privacy({ loaderData }: Route.ComponentProps) {
       <AuthPage title="Privacy">
         <section className="stack" aria-labelledby="download-h">
           <h2 id="download-h">Download my data</h2>
-          <p className="muted">Get a file with what we hold about you: your profile and addresses, messages, notifications and email settings, and your cancellations and returns. It may ask you to confirm your password first.</p>
+          <p className="muted">Get a file with what we hold about you: your profile and addresses, orders and tracking, cancellations and returns, bookings, carts, messages, notifications and email settings, and the names of your passkeys. It may ask you to confirm your password first. We email you when a download is made, and you can download once every ten minutes.</p>
+          {loaderData.exportWait && <FormMessage kind="error">You can download your data once every ten minutes. Please try again later.</FormMessage>}
           {loaderData.exportFailed && <FormMessage kind="error">We could not prepare your file right now. Please try again.</FormMessage>}
           <Form method="post" action="/account/privacy/export" reloadDocument>
             <CsrfField />

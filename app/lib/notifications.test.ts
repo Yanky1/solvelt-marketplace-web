@@ -12,6 +12,7 @@ describe("notification text and links", () => {
     expect(notificationText(n({ kind: "refund_issued", parameters: { sellerName: "Bakery", amountCents: 1234, currency: "<b>" } }))).toBe("Bakery refunded $12.34 for order MP-1.");
     expect(notificationText(n({ kind: "out_for_delivery" }))).toBe("Order MP-1 is out for delivery.");
     expect(notificationText(n({ kind: "message_received", parameters: { sellerName: "Bakery", subject: "Order MP-1" } }))).toBe("Bakery sent you a message about Order MP-1.");
+    expect(notificationText(n({ kind: "data_exported", orderNumber: null }))).toBe("Your account data was downloaded. If this was not you, change your password now.");
     expect(notificationText(n({ kind: "booking_confirmed", orderNumber: null, parameters: { bookingNumber: "B-7" } }))).toBe("There is an update on your booking B-7.");
   });
 
@@ -28,6 +29,7 @@ describe("notification text and links", () => {
     expect(notificationLink(n({ kind: "message_received", parameters: { threadId: "abc-123" } }))).toBe("/account/messages/abc-123");
     expect(notificationLink(n({ kind: "message_received", parameters: { threadId: "//evil.example" } }))).toBe("/account/messages");
     expect(notificationLink(n({ kind: "booking_cancelled" }))).toBe("/account/bookings");
+    expect(notificationLink(n({ kind: "data_exported", orderNumber: null }))).toBe("/account/privacy");
   });
 
   it("lists the six switchable email categories of the API (refunds, cancellations and failed deliveries are always emailed)", () => {

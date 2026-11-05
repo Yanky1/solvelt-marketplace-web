@@ -42,6 +42,7 @@ export function notificationText(n: NotificationItem): string {
       const cents = typeof n.parameters?.amountCents === "number" ? n.parameters.amountCents : null;
       return `${seller(n)} refunded${cents !== null ? ` ${formatMoney(cents, /^[A-Z]{3}$/.test(str(n.parameters?.currency)) ? str(n.parameters?.currency) : "USD")}` : ""} for ${order}.`;
     }
+    case "data_exported": return "Your account data was downloaded. If this was not you, change your password now.";
     case "message_received": return `${seller(n)} sent you a message${str(n.parameters?.subject) ? ` about ${str(n.parameters?.subject)}` : ""}.`;
     default:
       return n.kind.startsWith("booking_") ? `There is an update on your booking${str(n.parameters?.bookingNumber) ? ` ${str(n.parameters?.bookingNumber)}` : ""}.` : "There is an update on your account.";
@@ -53,6 +54,7 @@ const SAFE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 /** Where a notification leads: only our own account pages, built from ids that pass the same check as every path id. */
 export function notificationLink(n: NotificationItem): string | null {
   if (n.kind === "message_received") { const t = str(n.parameters?.threadId); return SAFE_ID.test(t) ? `/account/messages/${encodeURIComponent(t)}` : "/account/messages"; }
+  if (n.kind === "data_exported") return "/account/privacy";
   if (n.kind.startsWith("booking_")) return "/account/bookings";
   return n.orderNumber && SAFE_ID.test(n.orderNumber) ? `/account/orders/${encodeURIComponent(n.orderNumber)}` : null;
 }

@@ -24,6 +24,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     const res = await api.dataExport(ctx);
     if (res.status === 403) return redirect(CONFIRM, { headers: privateHeaders });
     if (res.status === 401) throw new ApiError(401, "unauthorized", "Sign in required");
+    if (res.status === 429) return redirect("/account/privacy?export=wait", { status: 303, headers: privateHeaders });   // one file per ten minutes (API M5-33)
     if (!res.ok) return redirect("/account/privacy?export=failed", { status: 303, headers: privateHeaders });
     return new Response(res.body, {
       status: 200,
