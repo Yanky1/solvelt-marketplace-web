@@ -80,6 +80,21 @@ test.describe("cart", () => {
     await expect(page.getByTestId("cart-line")).toContainText("Classic Braided Challah");
   });
 
+  test("signing in on a browser with no guest cart shows the count of the account's cart in the header", async ({ page, browser }) => {
+    const email = await newVerifiedUser(page, "cartfresh");
+    await signIn(page, email);
+    await expect(page).toHaveURL(/\/account$/);
+    await addChallah(page);
+    await expect(page.getByTestId("cart-count")).toHaveText("1");
+    // a different browser: no cookie, no guest cart, only the account's cart at the API
+    const other = await browser.newContext({ baseURL: page.url() });
+    const page2 = await other.newPage();
+    await signIn(page2, email);
+    await expect(page2).toHaveURL(/\/account$/);
+    await expect(page2.getByTestId("cart-count")).toHaveText("1");
+    await other.close();
+  });
+
   test("the cart page has no accessibility violations, empty or full", async ({ page }) => {
     await page.goto("/cart");
     await expect(page.getByRole("heading", { name: "Your cart is empty" })).toBeVisible();
