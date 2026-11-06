@@ -141,7 +141,7 @@ test("a duplicate name is refused, and removing an item and deleting the list wo
 
   await page.getByRole("button", { name: /Remove Classic Braided Challah from Mine/ }).click();
   await expect(page.getByRole("heading", { name: "This list is empty" })).toBeVisible();
-  await page.getByRole("button", { name: "Delete the list Mine" }).click();
+  await page.getByRole("button", { name: "Delete this list, Mine" }).click();
   await expect(page).toHaveURL(/\/account\/wishlists$/);
   expect((await page.goto(listUrl))?.status()).toBe(404);
 });
@@ -160,6 +160,18 @@ test("another signed-in buyer gets a 404 for someone else's list", async ({ page
   await expect(op).toHaveURL(/\/account$/);
   expect((await op.goto(new URL(listUrl).pathname))?.status()).toBe(404);
   await other.close();
+});
+
+test("the delete-list button's accessible name starts with its visible text and axe's label-content-name-mismatch (WCAG 2.5.3) finds nothing on the list page (sweep issue #5)", async ({ page }) => {
+  await signedIn(page, "ldelname");
+  await saveToNewList(page, "Named list");
+  await page.goto("/account/wishlists");
+  await page.getByRole("link", { name: "Named list" }).click();
+  const button = page.getByRole("button", { name: /^Delete this list/ });         // the visible words come first (voice control says "click Delete this list")
+  await expect(button).toHaveText("Delete this list");
+  await expect(button).toHaveAccessibleName("Delete this list, Named list");      // and the list's name stays as the context
+  const results = await new AxeBuilder({ page }).withTags(["wcag21a"]).analyze();   // the tag the UI sweep ran: it holds label-content-name-mismatch
+  expect(results.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }))).toEqual([]);
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -191,7 +203,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("button", { name: /Remove Classic Braided Challah/ }).click();
     await expect(page.getByRole("heading", { name: "This list is empty" })).toBeVisible();
     await check();                                              // the empty list
-    await page.getByRole("button", { name: "Delete the list Axe list" }).click();
+    await page.getByRole("button", { name: "Delete this list, Axe list" }).click();
     await expect(page.getByRole("heading", { name: "No lists yet" })).toBeVisible();
     await check();                                              // the empty lists page
   });
