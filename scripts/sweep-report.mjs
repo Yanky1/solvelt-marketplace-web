@@ -40,10 +40,13 @@ for (const r of rows) for (const line of r.consoleSources ?? []) {
 const byCsp = new Map();
 for (const r of rows) for (const line of r.csp ?? []) { const k = `${r.browser} ${/^(WRITE|STYLE)/.test(line) ? line.slice(0, 220) : line.replace(/\(.*$/, "").trim()}`; byCsp.set(k, (byCsp.get(k) ?? 0) + 1); }
 const cspLines = [...byCsp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `- ${n}x ${k}`);
+const engineRows = rows.filter((r) => r.engineSelectSetAside > 0);
+const engineTotal = engineRows.reduce((n, r) => n + r.engineSelectSetAside, 0);
+const engineWhere = [...new Set(engineRows.map((r) => `${r.role} ${r.pattern}`))].slice(0, 20);
 const suppressedTotal = rows.reduce((n, r) => n + (r.harnessSuppressed ?? 0), 0);
 const sample = rows.find((r) => r.browser === "webkit" && r.found?.console?.length);
 const sourceLines = [...bySource.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, n]) => `- ${n}x ${k}`);
-const diag = (sourceLines.length || suppressedTotal) ? ["", `Playwright's screenshot-step CSP message in WebKit, set aside (not a finding): ${suppressedTotal}`, "", "Where the console errors came from (first 20 per visit):", "", ...sourceLines, ...(cspLines.length ? ["", "CSP violation events seen inside the page (directive, blocked, element):", "", ...cspLines] : []), ...(sample ? ["", `One affected visit (${sample.role} ${sample.pattern} @ ${sample.project}):`, ...(sample.styles ?? []).map((x) => `- ${x}`), ...(sample.consoleSources ?? []).slice(0, 3).map((x) => `- ${x}`)] : []), ""] : [];
+const diag = (sourceLines.length || suppressedTotal || engineTotal) ? ["", `Set aside (Playwright screenshot step, WebKit): ${suppressedTotal}`, "", `Set aside (WebKit engine, select): ${engineTotal} messages in ${engineRows.length} visits${engineWhere.length ? `; pages: ${engineWhere.join(", ")}` : ""}`, "", "Where the console errors came from (first 20 per visit):", "", ...sourceLines, ...(cspLines.length ? ["", "CSP violation events seen inside the page (directive, blocked, element):", "", ...cspLines] : []), ...(sample ? ["", `One affected visit (${sample.role} ${sample.pattern} @ ${sample.project}):`, ...(sample.styles ?? []).map((x) => `- ${x}`), ...(sample.consoleSources ?? []).slice(0, 3).map((x) => `- ${x}`)] : []), ""] : [];
 
 const md = [
   "## UI sweep",
