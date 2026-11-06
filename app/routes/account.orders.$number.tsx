@@ -213,7 +213,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
           <Steps status={g.status} />
           {g.oversold && <FormMessage kind="error">The seller is short of stock for part of this order and will contact you.</FormMessage>}
           {g.deliveryAttemptsFailed > 0 && g.status !== "delivered" && <FormMessage kind="error">A delivery attempt did not work{g.lastAttemptFailedReason && ATTEMPT_REASON[g.lastAttemptFailedReason] ? `: ${ATTEMPT_REASON[g.lastAttemptFailedReason]}` : ""}. The seller will try again or contact you.</FormMessage>}
-          <table className="table">
+          <table className="table table-fit">
             <caption className="sr-only">Items from {g.sellerName}</caption>
             <thead><tr><th scope="col">Item</th><th scope="col">Qty</th><th scope="col">Price</th></tr></thead>
             <tbody>

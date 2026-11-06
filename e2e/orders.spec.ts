@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { MOCK, newVerifiedUser, signIn } from "./helpers";
+import { MOCK, newVerifiedUser, signIn, waitHydrated } from "./helpers";
+import { layoutFindings } from "./sweep/checks";
 
 async function signedIn(page: Page, tag: string) {
   const email = await newVerifiedUser(page, tag);
@@ -152,3 +153,19 @@ for (const theme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("at 320 px the order page fits the screen and its disclosure controls are at least 24 px tall (sweep #8, #9)", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  const email = await signedIn(page, "o320");
+  const o = await seed(page, email, "delivered");
+  await page.goto(`/account/orders/${o.number}`);
+  await waitHydrated(page);
+  // #9: the items table no longer holds the page at 34 rem (585 px in a 320 px screen)
+  const { layout, tap } = await layoutFindings(page);
+  expect(layout).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  // #8: "Return items" (and the other summaries) are big enough to tap
+  expect(tap).toEqual([]);
+  const box = await page.getByText("Return items", { exact: true }).boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(24);
+});

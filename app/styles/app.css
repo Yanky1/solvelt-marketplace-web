@@ -270,3 +270,11 @@ dialog.drawer { margin: 0; inset: 0 auto 0 0; height: 100%; max-height: 100%; wi
 
 /* Links that stand on their own (not inside a sentence) are at least 24 CSS px tall, WCAG 2.5.8 (sweep issues #6 and #7, M8W-08). */
 .link-standalone, .category-grid a, .category-links a { display: inline-flex; align-items: center; min-height: 2rem; }
+
+/* Sweep bugs (M7, decision M7W-10). #8: every disclosure control is at least 24 px tall (WCAG 2.5.8); the classes above (.btn, .faq, .facets-summary, .table summary) are more specific and keep their own size.
+   #9: a table that must fit a phone (the order's items) has no minimum width and wraps long words. #10: the name and email of a staff account are two lines that can shrink and wrap instead of covering each other or pushing the page wider. */
+details > summary { cursor: pointer; display: list-item; padding-block: var(--s1); min-height: 1.5rem; }
+.table-fit { min-width: 0; }
+.table-fit th, .table-fit td { overflow-wrap: anywhere; }
+.staff-who { flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.staff-who .muted { display: block; }   /* the email under the name: two inline boxes that wrap can cover each other (the sweep's "overlapping text") */
