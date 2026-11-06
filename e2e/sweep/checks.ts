@@ -34,6 +34,22 @@ export function watchPage(page: Page, expectedMain: number[]) {
   return { http, consoleErrors, pageErrors, main, sources, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
 }
 
+/** Listens for CSP violations inside the page (securitypolicyviolation: which directive, what was blocked, which element) from the first script on; read back with cspEvents(). Diagnosis only. */
+export async function listenForCspViolations(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __csp: string[] };
+    w.__csp = [];
+    document.addEventListener("securitypolicyviolation", (e) => {
+      const t = e.target as Element | null;
+      const where = t && t.nodeName ? `${t.nodeName.toLowerCase()}${t.id ? "#" + t.id : ""}${typeof t.className === "string" && t.className ? "." + t.className.split(" ")[0] : ""}` : "document";
+      if (w.__csp.length < 10) w.__csp.push(`${e.effectiveDirective} blocked=${e.blockedURI} on ${where} (${e.sourceFile || "no file"}:${e.lineNumber})`);
+    }, true);
+  });
+}
+export async function cspEvents(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __csp?: string[] }).__csp ?? []).catch(() => []);
+}
+
 /** What styles the document has right now: <style> and <link rel=stylesheet> elements, constructed (adopted) style sheets and elements with a style attribute. Written to the record, never a finding. */
 export async function styleSnapshot(page: Page, at: string): Promise<string> {
   return page.evaluate((where) => {
