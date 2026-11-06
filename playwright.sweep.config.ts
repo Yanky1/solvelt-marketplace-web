@@ -30,7 +30,7 @@ function project(browser: "chromium" | "firefox" | "webkit", width: Width, schem
   };
 }
 
-const widths: Width[] = (process.env.SWEEP_WIDTHS ?? "320,375,768,1280,1920").split(",").map((w) => Number(w) as Width);
+const widths: Width[] = (process.env.SWEEP_WIDTHS || "320,375,768,1280,1920").split(",").map((w) => Number(w) as Width);
 const browsers = (process.env.SWEEP_BROWSERS ?? "chromium,firefox,webkit").split(",") as Array<"chromium" | "firefox" | "webkit">;
 const projects: Project[] = [];
 for (const browser of browsers) {
@@ -43,6 +43,7 @@ if (browsers.includes("chromium") && widths.includes(1280)) for (const scheme of
 export default defineConfig({
   testDir: "e2e/sweep",
   testMatch: /.*\.sweep\.ts/,
+  grep: process.env.SWEEP_GREP ? new RegExp(process.env.SWEEP_GREP) : undefined,   // a narrower run (workflow input), for diagnosis; unset in a full sweep
   outputDir: "sweep-out/results",
   // the first run writes the baselines (`missing`); a later run compares against them. They are generated on the CI runner (its fonts), not on a laptop: see docs/DESIGN.md M8W-07.
   updateSnapshots: "missing",
