@@ -46,6 +46,15 @@ export async function listenForCspViolations(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as { __csp: string[] };
     w.__csp = [];
+    // who writes a style onto a <select>: the call stack of setAttribute("style"), of style.cssText and of style.setProperty on it (diagnosis only)
+    const note = (what: string, el: unknown) => {
+      const n = el as Element | null;
+      if (!n || n.nodeName !== "SELECT" || w.__csp.length >= 10) return;
+      w.__csp.push(`WRITE ${what} on select#${n.id}: ${(new Error().stack ?? "").split("\n").slice(1, 4).map((l) => l.trim().slice(0, 90)).join(" < ")}`);
+    };
+    const setAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (this: Element, name: string, value: string) { if (String(name).toLowerCase() === "style") note("setAttribute", this); return setAttr.call(this, name, value); };
+    new MutationObserver((list) => { for (const m of list) if (m.attributeName === "style" && m.target.nodeName === "SELECT" && w.__csp.length < 10) w.__csp.push(`STYLE ATTR on select#${(m.target as Element).id} = "${((m.target as Element).getAttribute("style") ?? "").slice(0, 80)}"`); }).observe(document, { attributes: true, subtree: true, attributeFilter: ["style"] });
     document.addEventListener("securitypolicyviolation", (e) => {
       const t = e.target as Element | null;
       const where = t && t.nodeName ? `${t.nodeName.toLowerCase()}${t.id ? "#" + t.id : ""}${typeof t.className === "string" && t.className ? "." + t.className.split(" ")[0] : ""}` : "document";

@@ -38,7 +38,7 @@ for (const r of rows) for (const line of r.consoleSources ?? []) {
   bySource.set(key, (bySource.get(key) ?? 0) + 1);
 }
 const byCsp = new Map();
-for (const r of rows) for (const line of r.csp ?? []) { const k = `${r.browser} ${line.replace(/\(.*$/, "").trim()}`; byCsp.set(k, (byCsp.get(k) ?? 0) + 1); }
+for (const r of rows) for (const line of r.csp ?? []) { const k = `${r.browser} ${/^(WRITE|STYLE)/.test(line) ? line.slice(0, 220) : line.replace(/\(.*$/, "").trim()}`; byCsp.set(k, (byCsp.get(k) ?? 0) + 1); }
 const cspLines = [...byCsp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `- ${n}x ${k}`);
 const suppressedTotal = rows.reduce((n, r) => n + (r.harnessSuppressed ?? 0), 0);
 const sample = rows.find((r) => r.browser === "webkit" && r.found?.console?.length);
