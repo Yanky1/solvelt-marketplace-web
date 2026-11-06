@@ -14,6 +14,9 @@ export const DENY = /\b(delete|remove|erase|discard|lock|unlock|refund|retry|re-
 export function watchPage(page: Page, expectedMain: number[]) {
   const http: Findings = [], consoleErrors: Findings = [], pageErrors: Findings = [];
   const main = { url: "", status: 0 };
+  // Where each console error came from (issue #3 diagnosis, M8W-08): the step the sweep was in, the script or page that reported it, and the page's URL at that moment.
+  let phase = "load";
+  const sources: string[] = [];
   const onResponse = (r: Response) => {
     const u = r.url();
     if (/\/error-ref$/.test(new URL(u).pathname)) return;      // the error page asks for its reference; an answer there is not a finding
@@ -21,9 +24,22 @@ export function watchPage(page: Page, expectedMain: number[]) {
     if (r.status() >= 400 && !(r.request().isNavigationRequest() && expectedMain.includes(r.status()))) http.push(`${r.status()} ${r.request().method()} ${new URL(u).pathname}`);
   };
   page.on("response", onResponse);
-  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) consoleErrors.push(m.text().slice(0, 240)); });
+  page.on("console", (m) => {
+    if (m.type() !== "error" || /Failed to load resource/.test(m.text())) return;
+    consoleErrors.push(m.text().slice(0, 240));
+    const loc = m.location();
+    if (sources.length < 20) sources.push(`[${phase}] ${loc.url || "(no url)"}:${loc.lineNumber} on ${page.url()}: ${m.text().slice(0, 160)}`);
+  });
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 240)));
-  return { http, consoleErrors, pageErrors, main, stop: () => page.off("response", onResponse) };
+  return { http, consoleErrors, pageErrors, main, sources, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
+}
+
+/** What styles the document has right now: <style> and <link rel=stylesheet> elements, constructed (adopted) style sheets and elements with a style attribute. Written to the record, never a finding. */
+export async function styleSnapshot(page: Page, at: string): Promise<string> {
+  return page.evaluate((where) => {
+    const sheets = [...document.querySelectorAll("style,link[rel=stylesheet]")].map((e) => e.tagName.toLowerCase() === "style" ? `<style${e.getAttribute("nonce") ? " nonce" : ""}> ${(e.textContent ?? "").replace(/\s+/g, " ").slice(0, 60)}` : `<link> ${e.getAttribute("href")}`);
+    return `${where}: ${sheets.length} sheet elements [${sheets.join(" | ").slice(0, 400)}], adopted ${document.adoptedStyleSheets?.length ?? 0}, [style] ${document.querySelectorAll("[style]").length}`;
+  }, at).catch((e) => `${at}: snapshot failed ${String(e).slice(0, 80)}`);
 }
 
 /** Waits until the page is hydrated (the site marks `html[data-hydrated=true]`), without waiting for "network idle". */
