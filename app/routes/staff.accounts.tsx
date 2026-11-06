@@ -64,7 +64,7 @@ function Row({ a, meId }: { a: Route.ComponentProps["loaderData"]["accounts"][nu
   return (
     <Card className="stack">
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-        <div><strong>{a.displayName}</strong> <span className="muted">{a.email}</span>{a.id === meId ? " (you)" : ""}</div>
+        <div className="staff-who"><strong>{a.displayName}</strong>{a.id === meId ? " (you)" : ""}<span className="muted">{a.email}</span></div>
         <div className="row"><Badge tone="gold">{a.role}</Badge>{!a.enrolled && <Badge>Not enrolled</Badge>}{a.disabled && <Badge tone="err">Disabled</Badge>}</div>
       </div>
       <div className="muted">{a.passkeys} passkey(s) · last sign-in {when(a.lastSignInAt)}</div>

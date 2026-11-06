@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { MOCK, addVirtualAuthenticator, newVerifiedUser, signIn, signUp, uniqueEmail, waitHydrated } from "./helpers";
+import { layoutFindings } from "./sweep/checks";
 
 const REASON = "ticket 4412: caller asked";
 const axe = (page: Page) => new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
@@ -358,4 +359,30 @@ test("staff responses carry one Cache-Control, a stricter CSP, and the enrolment
   // a path that merely starts with the same letters is not the staff area
   const near = await request.get("/staff-picks", { maxRedirects: 0 });
   expect(near.headers()["cache-control"] ?? "").not.toBe("private, no-store");
+});
+
+test("at 320 px a staff account with a long name and email wraps inside the screen, they do not overlap, and Manage is at least 24 px tall (sweep #8, #10)", async ({ page }) => {
+  await enrolAs(page, "admin", "w320");
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/staff/accounts");
+  await waitHydrated(page);
+  const unique = Math.random().toString(36).slice(2, 8);   // desktop and mobile share one mock API: a fixed address would exist already on the second run
+  await page.getByLabel("Email").fill(`dana.levi.rosenberg.washington.the.third.${unique}@a-very-long-company-domain-name.example.com`);
+  await page.getByLabel("Name").fill("Dana Levi-Rosenberg-Washington the Third of Springfield Heights");
+  await page.getByLabel(/Reason/).first().fill(REASON);
+  await page.getByRole("button", { name: "Create and get the link" }).click();
+  await expect(page.getByTestId("enrol-link").first()).toBeVisible();
+  // #10: nothing wider than the screen, and the name and the email are two boxes that do not cover each other
+  const { layout, tap } = await layoutFindings(page);
+  expect(layout).toEqual([]);
+  const who = page.locator(".staff-who").filter({ hasText: "Washington" }).first();
+  const name = (await who.locator("strong").boundingBox())!, mail = (await who.locator(".muted").boundingBox())!;
+  const overlap = Math.min(name.x + name.width, mail.x + mail.width) > Math.max(name.x, mail.x) && Math.min(name.y + name.height, mail.y + mail.height) > Math.max(name.y, mail.y);
+  expect(overlap).toBe(false);
+  expect(name.x + name.width).toBeLessThanOrEqual(321);
+  expect(mail.x + mail.width).toBeLessThanOrEqual(321);
+  // #8: "Manage…" is big enough to tap
+  expect(tap).toEqual([]);
+  const manage = (await page.getByText("Manage…").first().boundingBox())!;
+  expect(manage.height).toBeGreaterThanOrEqual(24);
 });
