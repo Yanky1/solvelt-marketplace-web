@@ -101,7 +101,7 @@ for (const role of roles) {
         found.console = [...watcher.consoleErrors, ...watcher.pageErrors];
 
         const failures = Object.entries(found).filter(([, v]) => v.length);
-        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, csp, styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
+        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, csp, harnessSuppressed: watcher.suppressed(), styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
         for (const [category, list] of Object.entries(found)) expect.soft(list, `${category} on ${role} ${url}`).toEqual([]);
       });
     }
