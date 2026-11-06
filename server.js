@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createRequestHandler } from "@react-router/express";
 import compression from "compression";
 import express from "express";
+import { bodyLimitMiddleware } from "./body-limit.js";
 import { publicOriginMiddleware } from "./proxy-origin.js";
 
 // Importing the build runs start-up config validation (fails fast in production).
@@ -16,6 +17,8 @@ const stripeScript = build.entry.module.stripeScriptOrigins.join(" ");
 const STAFF_PATH = /^\/staff(?:\.data)?(?:\/|$)/;
 const app = express();
 app.disable("x-powered-by");
+// A cap on every request body, before anything reads one into memory (found bug, decision M6W-05): declared sizes are refused unread, chunked bodies are cut off as they pass.
+app.use(bodyLimitMiddleware());
 // No Express "trust proxy": the client IP is resolved by app/lib/client-ip.server.ts from TRUSTED_PROXIES.
 // Behind a TLS-terminating proxy this server sees http: the request URL's scheme and host come from the configured PUBLIC_ORIGIN, never from X-Forwarded-* (see proxy-origin.js, decision M8W-04).
 app.use(publicOriginMiddleware(process.env.PUBLIC_ORIGIN));

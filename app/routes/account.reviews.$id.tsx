@@ -8,6 +8,7 @@ import { Button } from "~/components/ui/form";
 import { ApiError, api } from "~/lib/api-client.server";
 import { assertCsrf, failAccount, formError, privateHeaders, requireAccount } from "~/lib/auth.server";
 import { isSafeId } from "~/lib/passkey.server";
+import { UPLOAD_BODY_MAX, refuseOversizeBody } from "~/lib/body-size.server";
 import { MAX_PHOTOS, REVIEW_MAX, textProblem } from "~/lib/reviews";
 
 export function meta() {
@@ -39,6 +40,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 
 /** Save the text and rating, add a photo (one file, checked for size here and by its bytes at the API) or take one away. Every post checks csrf and origin first. */
 export async function action({ params, request, context }: Route.ActionArgs) {
+  refuseOversizeBody(request, UPLOAD_BODY_MAX);   // BEFORE formData() reads the whole body into memory, and before the csrf check: a declared size over ~6 MB is a 413, nothing is read
   const form = await request.formData();
   assertCsrf(request, form);
   const m = await mine(request, context, params.id);
