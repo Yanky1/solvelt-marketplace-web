@@ -11,12 +11,16 @@ export type Findings = string[];
 export const DENY = /\b(delete|remove|erase|discard|lock|unlock|refund|retry|re-?send|sign[ -]?out|log[ -]?out|disable|revoke|deactivate|cancel (order|booking)|place order|pay\b|pay now|reveal|report|purge|clear all|reset)\b|sign-out|\/remove|\/delete|privacy\/export|calendar\.ics/i;
 
 /** Responses that are not an error on this page: the page's own expected status, and nothing else (a 4xx on a sub-request is a finding). */
+const HARNESS_CSP = /^Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.$/;
+
 export function watchPage(page: Page, expectedMain: number[]) {
   const http: Findings = [], consoleErrors: Findings = [], pageErrors: Findings = [];
   const main = { url: "", status: 0 };
   // Where each console error came from (issue #3 diagnosis, M8W-08): the step the sweep was in, the script or page that reported it, and the page's URL at that moment.
   let phase = "load";
   const sources: string[] = [];
+  const webkit = page.context().browser()?.browserType().name() === "webkit";
+  let suppressed = 0;
   const onResponse = (r: Response) => {
     const u = r.url();
     if (/\/error-ref$/.test(new URL(u).pathname)) return;      // the error page asks for its reference; an answer there is not a finding
@@ -26,12 +30,15 @@ export function watchPage(page: Page, expectedMain: number[]) {
   page.on("response", onResponse);
   page.on("console", (m) => {
     if (m.type() !== "error" || /Failed to load resource/.test(m.text())) return;
+    // Playwright's own screenshot machinery (animations, caret, masks) makes WebKit report this one message while it takes or compares a screenshot, and the page's own CSP-violation
+    // events do not see it (issue #3, M8W-08). Exactly that message, in WebKit, in those two steps; counted and written to the record, never silently dropped.
+    if (webkit && (phase === "screenshot" || phase === "compare") && HARNESS_CSP.test(m.text())) { suppressed++; return; }
     consoleErrors.push(m.text().slice(0, 240));
     const loc = m.location();
     if (sources.length < 20) sources.push(`[${phase}] ${loc.url || "(no url)"}:${loc.lineNumber} on ${page.url()}: ${m.text().slice(0, 160)}`);
   });
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 240)));
-  return { http, consoleErrors, pageErrors, main, sources, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
+  return { http, consoleErrors, pageErrors, main, sources, suppressed: () => suppressed, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
 }
 
 /** Listens for CSP violations inside the page (securitypolicyviolation: which directive, what was blocked, which element) from the first script on; read back with cspEvents(). Diagnosis only. */
