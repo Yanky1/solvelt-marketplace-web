@@ -34,7 +34,7 @@ export default function Styleguide() {
         <div className="row"><Badge>Neutral</Badge><Badge tone="gold">Kosher</Badge><Badge tone="ok">In stock</Badge><Badge tone="err">Sold out</Badge></div>
         <Price cents={4999} wasCents={5999} />
         <RatingStars value={4.4} count={128} />
-        <Skeleton height={24} width="60%" />
+        <Skeleton size="title" />
         <EmptyState title="Nothing here yet">Try another category.</EmptyState>
         <Pagination page={2} pageCount={6} hrefFor={(p) => `/styleguide?page=${p}`} />
       </Card>

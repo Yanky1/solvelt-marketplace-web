@@ -51,3 +51,17 @@ test("focus ring on the hero is the gold ring, not the dark green one (light mod
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Browse categories" })).toHaveCSS("outline-color", "rgb(231, 198, 85)");
 });
+
+// Sweep issues #6 and #7 (M8W-08): links that stand on their own are at least 24 CSS px tall (WCAG 2.5.8). Asserted on the computed min-height as well as the box, because an inline
+// link's own box depends on the font (it was 23 px on the CI runner and 26 px on a laptop).
+for (const [path, selector] of [["/forgot-password", "main a.link-standalone"], ["/reset-password", "main a.link-standalone"], ["/categories", "main .category-grid a"]] as const) {
+  test(`standalone links on ${path} are at least 24 px tall`, async ({ page }) => {
+    await page.goto(path);
+    const links = page.locator(selector);
+    expect(await links.count()).toBeGreaterThan(0);
+    for (const l of await links.evaluateAll((els) => els.map((e) => ({ t: e.textContent?.trim() ?? "", h: e.getBoundingClientRect().height, min: parseFloat(getComputedStyle(e).minHeight) || 0 })))) {
+      expect(l.h, l.t).toBeGreaterThanOrEqual(24);
+      expect(l.min, `${l.t}: min-height`).toBeGreaterThanOrEqual(24);
+    }
+  });
+}

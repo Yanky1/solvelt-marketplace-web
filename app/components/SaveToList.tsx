@@ -50,7 +50,7 @@ export function SaveToList({ listingId, title }: { listingId: string; title: str
   return (
     <details className="save-to-list" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary className="btn btn-secondary">Save to a list</summary>
-      <div className="stack" style={{ marginTop: "var(--s2)" }}>
+      <div className="stack u-margin-top-var-s2">
         {!signedIn ? (
           <p><Link to={`/sign-in?next=${encodeURIComponent(location.pathname + location.search)}`}>Sign in</Link> to save {title} to a list.</p>
         ) : !panel ? (
@@ -60,15 +60,15 @@ export function SaveToList({ listingId, title }: { listingId: string; title: str
         ) : (
           <>
             {lists.length === 0 && <p className="muted">You have no lists yet. Name one to save this item.</p>}
-            <ul style={{ listStyle: "none", padding: 0 }} className="stack">
+            <ul className="stack u-list-style-none-padding-0">
               {lists.map((l) => (
-                <li key={l.id} className="row" style={{ justifyContent: "space-between" }}>
+                <li key={l.id} className="row u-justify-content-space-between">
                   <span>{l.name} <span className="muted">· {l.has ? "Saved" : "Not saved"}</span></span>
                   <Button type="button" variant="secondary" disabled={busy} aria-label={`${l.has ? "Remove from" : "Save to"} ${l.name}`} onClick={() => void send({ intent: l.has ? "remove" : "add", wishlistId: l.id })}>{l.has ? "Remove" : "Save"}</Button>
                 </li>
               ))}
             </ul>
-            <form className="row" style={{ alignItems: "flex-end" }} onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const name = String(new FormData(form).get("name") ?? "").trim(); if (name) { void send({ intent: "create", name }); form.reset(); } }}>
+            <form className="row u-align-items-flex-end" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const name = String(new FormData(form).get("name") ?? "").trim(); if (name) { void send({ intent: "create", name }); form.reset(); } }}>
               <label className="field"><span>New list</span><input className="input" name="name" maxLength={NAME_MAX} autoComplete="off" /></label>
               <Button type="submit" variant="secondary" disabled={busy}>Create and save</Button>
             </form>

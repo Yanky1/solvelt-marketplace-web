@@ -141,7 +141,7 @@ export default function SignIn({ loaderData }: Route.ComponentProps) {
       </Form>
       {passkeys && (
         <div className="stack">
-          <hr style={{ border: 0, borderTop: "1px solid var(--divider)", width: "100%" }} />
+          <hr className="u-border-0-border-top-1px-solid-var-divider-width-100" />
           {passkeyError && <FormMessage kind="error">{passkeyError}</FormMessage>}
           <Button variant="secondary" onClick={signInWithPasskey} disabled={busy}>Sign in with a passkey</Button>
         </div>

@@ -29,7 +29,7 @@ export const NAV: { to: string; label: string; permission: string }[] = [
 export function StaffNav({ me }: { me: StaffMe }) {
   const here = useLocation().pathname;
   return (
-    <nav aria-label="Staff" className="row" style={{ flexWrap: "wrap", gap: "var(--s1)" }}>
+    <nav aria-label="Staff" className="row u-flex-wrap-wrap-gap-var-s1">
       {NAV.filter((n) => me.permissions.includes(n.permission)).map((n) => (
         <Link key={n.to} to={n.to} className={`btn ${here.startsWith(n.to) ? "btn-secondary" : "btn-ghost"}`} aria-current={here.startsWith(n.to) ? "page" : undefined}>{n.label}</Link>
       ))}

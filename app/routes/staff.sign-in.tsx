@@ -71,7 +71,7 @@ export default function StaffSignIn() {
   }
 
   return (
-    <Card className="stack" style={{ maxWidth: 480 }}>
+    <Card className="stack u-max-width-480px">
       <h2>Sign in</h2>
       <p className="muted">Staff sign in with a passkey. First time? Use the one-time link an admin gave you: <a href="/staff/enrol">enrol a passkey</a>.</p>
       {supported === false && <FormMessage kind="error">This browser or device does not support passkeys.</FormMessage>}

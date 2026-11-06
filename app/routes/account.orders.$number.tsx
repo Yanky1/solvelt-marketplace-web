@@ -95,7 +95,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 function Steps({ status }: { status: string }) {
   if (status === "cancelled" || status === "refunded") return null;
   return (
-    <ol className="row" aria-label="Order progress" style={{ listStyle: "none", padding: 0 }}>
+    <ol className="row u-list-style-none-padding-0" aria-label="Order progress">
       {progressSteps(status).map((s) => (
         <li key={s.label}><Badge tone={s.done ? "ok" : "neutral"}>{s.label}{s.done ? <span className="sr-only"> (done)</span> : <span className="sr-only"> (not yet)</span>}</Badge></li>
       ))}
@@ -108,7 +108,7 @@ function Tracking({ number, s }: { number: string; s: ShipmentView }) {
   const local = s.method === "local";
   return (
     <section aria-label={`Shipment ${s.trackingNumber ?? ""}`.trim()} className="stack">
-      <h4 style={{ margin: 0 }}>{local ? "Local delivery" : `Shipped${s.carrier ? ` with ${s.carrier}` : ""}`}{s.voided ? " (cancelled label)" : ""}</h4>
+      <h4 className="u-margin-0">{local ? "Local delivery" : `Shipped${s.carrier ? ` with ${s.carrier}` : ""}`}{s.voided ? " (cancelled label)" : ""}</h4>
       {s.trackingStatus && <p><Badge tone={s.trackingStatus === "delivered" ? "ok" : s.trackingStatus === "failure" ? "err" : "gold"}>{trackingLabel(s.trackingStatus)}</Badge>{s.trackingStatusDetail ? <> <span className="muted">{s.trackingStatusDetail}</span></> : null}</p>}
       {s.trackingNumber && <p className="muted">Tracking number: {link ? <a href={link} rel="noopener noreferrer" target="_blank">{s.trackingNumber}</a> : s.trackingNumber}</p>}
       {local && s.etaWindowStart && !s.deliveredAt && <p>Delivery window: {formatDate(s.etaWindowStart)}, {formatWindow(s.etaWindowStart, s.etaWindowEnd)}</p>}
@@ -120,7 +120,7 @@ function Tracking({ number, s }: { number: string; s: ShipmentView }) {
         <div className="row">
           {Array.from({ length: s.proofCount }, (_, i) => (
             <a key={i} href={`/account/orders/${encodeURIComponent(number)}/proof/${encodeURIComponent(s.id)}/${i}`} target="_blank" rel="noopener noreferrer">
-              <img src={`/account/orders/${encodeURIComponent(number)}/proof/${encodeURIComponent(s.id)}/${i}`} alt={`Proof of delivery ${i + 1} of ${s.proofCount}`} width={120} height={120} loading="lazy" style={{ objectFit: "cover", borderRadius: "var(--r-ctl)" }} />
+              <img src={`/account/orders/${encodeURIComponent(number)}/proof/${encodeURIComponent(s.id)}/${i}`} alt={`Proof of delivery ${i + 1} of ${s.proofCount}`} width={120} height={120} loading="lazy" className="u-object-fit-cover-border-radius-var-r-ctl" />
             </a>
           ))}
         </div>
@@ -206,8 +206,8 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
       {notice && <FormMessage kind="ok">{notice}</FormMessage>}
       {order.groups.map((g) => (
         <Card key={g.sellerOrderNumber ?? g.sellerName} className="stack" id={`seller-${g.sellerOrderNumber ?? ""}`} aria-labelledby={`h-${g.sellerOrderNumber}`}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <h3 id={`h-${g.sellerOrderNumber}`} style={{ margin: 0 }}>{g.sellerName}{g.sellerOrderNumber ? <span className="muted"> · {g.sellerOrderNumber}</span> : null}</h3>
+          <div className="row u-justify-content-space-between">
+            <h3 id={`h-${g.sellerOrderNumber}`}>{g.sellerName}{g.sellerOrderNumber ? <span className="muted u-margin-0"> · {g.sellerOrderNumber}</span> : null}</h3>
             <Badge tone={statusTone(g.status)}>{statusLabel(g.status)}</Badge>
           </div>
           <Steps status={g.status} />
@@ -231,7 +231,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
           {g.cancelRequest && <p>Cancellation request: <Badge>{CANCEL_STATUS[g.cancelRequest.status] ?? "In progress"}</Badge>{g.cancelRequest.decisionNote ? <> <span className="muted">“{g.cancelRequest.decisionNote}”</span></> : null}</p>}
           {g.returns.map((r) => (
             <section key={r.returnId} aria-label="Return" className="stack">
-              <h4 style={{ margin: 0 }}>Return requested {formatDate(r.createdAt)} <Badge tone={r.status === "rejected" || r.status === "failed" ? "err" : r.status === "approved" || r.status === "received" || r.status === "refunded" ? "ok" : "neutral"}>{RETURN_STATUS[r.status] ?? "In progress"}</Badge></h4>
+              <h4 className="u-margin-0">Return requested {formatDate(r.createdAt)} <Badge tone={r.status === "rejected" || r.status === "failed" ? "err" : r.status === "approved" || r.status === "received" || r.status === "refunded" ? "ok" : "neutral"}>{RETURN_STATUS[r.status] ?? "In progress"}</Badge></h4>
               {r.decisionNote && <p className="muted">“{r.decisionNote}”</p>}
               {r.label && safeHttps(r.label.url) && <p><a href={safeHttps(r.label.url)!} rel="noopener noreferrer" target="_blank">Print your return label</a>{r.label.carrier ? ` (${r.label.carrier})` : ""} <span className="muted">· link valid until {formatDate(r.label.expiresAt, true)}</span></p>}
               {r.canRefreshLabel && !r.label && (
@@ -244,7 +244,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
           ))}
           {g.refunds.length > 0 && (
             <section aria-label="Refunds" className="stack">
-              <h4 style={{ margin: 0 }}>Refunds</h4>
+              <h4 className="u-margin-0">Refunds</h4>
               <ul>{g.refunds.map((r, i) => <li key={i}>{money(r.amountCents + r.shippingCents)} · {REFUND_STATUS[r.status] ?? r.status} · {formatDate(r.createdAt)}</li>)}</ul>
               <p className="muted">Refunds go back to your original payment method.</p>
             </section>
@@ -254,8 +254,8 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
         </Card>
       ))}
       <Card className="stack">
-        <h3 style={{ margin: 0 }}>Delivery address</h3>
-        <address style={{ fontStyle: "normal" }}>
+        <h3 className="u-margin-0">Delivery address</h3>
+        <address className="u-font-style-normal">
           {order.shipTo.name}<br />{order.shipTo.line1}<br />{order.shipTo.line2 && <>{order.shipTo.line2}<br /></>}
           {order.shipTo.city}{order.shipTo.region ? `, ${order.shipTo.region}` : ""} {order.shipTo.postalCode}<br />{order.shipTo.country}
         </address>

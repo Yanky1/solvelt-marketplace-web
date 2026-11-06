@@ -3,11 +3,25 @@ import type { Route } from "./+types/home";
 import { JsonLd } from "~/components/JsonLd";
 import { LinkButton } from "~/components/ui/form";
 import { EmptyState } from "~/components/ui/display";
+import { ListingCard } from "~/components/ListingCard";
+import { apiCtx } from "~/lib/auth.server";
+import { catalog } from "~/lib/catalog.server";
 import { getConfig } from "~/lib/config.server";
+import { emptyQuery, type ListingCardData } from "~/lib/search";
 import { organizationJsonLd, websiteJsonLd } from "~/lib/seo";
 
-export function loader() {
-  return { origin: getConfig().publicOrigin };
+const FEATURED = 8;
+
+/** "Featured" is the newest listings (the catalog's default order, no curation). A catalog that cannot be reached is reported as that, never as an empty catalog. */
+export async function loader({ request, context }: Route.LoaderArgs) {
+  let featured: ListingCardData[] = [];
+  let unavailable = false;
+  try {
+    featured = (await catalog.listings(apiCtx(request, context, null), { ...emptyQuery(), sort: "newest" }, { facets: false })).items.slice(0, FEATURED);
+  } catch {
+    unavailable = true;
+  }
+  return { origin: getConfig().publicOrigin, featured, unavailable };
 }
 
 export function meta({ data }: Route.MetaArgs) {
@@ -35,7 +49,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       </section>
       <section aria-labelledby="featured">
         <h2 id="featured">Featured</h2>
-        <EmptyState title="Listings are on their way">The catalog connects in the next release.</EmptyState>
+        {loaderData.featured.length > 0
+          ? <ul className="listing-grid" aria-label="Featured listings">{loaderData.featured.map((item, i) => <ListingCard key={item.id} item={item} priority={i < 4} />)}</ul>
+          : loaderData.unavailable
+            ? <EmptyState title="Listings could not be loaded">Please try again in a moment, or <a href="/search">search the catalog</a>.</EmptyState>
+            : <EmptyState title="No listings yet">Sellers have not published anything yet. Check back soon.</EmptyState>}
       </section>
       <RecentlyViewedShelf />
     </div>

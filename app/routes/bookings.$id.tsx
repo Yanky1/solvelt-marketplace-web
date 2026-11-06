@@ -128,18 +128,18 @@ export default function BookingPage({ loaderData }: Route.ComponentProps) {
       <div className="row"><Badge tone={badgeTone(st.tone)}>{st.label}</Badge></div>
       <p role="status" data-testid="booking-status" data-status={booking.status}>{waiting ? "We are confirming your payment. This page checks by itself every few seconds." : st.text}</p>
       <Card className="stack">
-        {booking.startAt && <p style={{ margin: 0 }}><strong>{formatDate(booking.startAt, true)}</strong>{booking.durationMinutes ? <span className="muted"> · {booking.durationMinutes} min</span> : null}</p>}
-        <p style={{ margin: 0 }}>Total <strong>{formatMoney(booking.totalCents, booking.currency)}</strong></p>
-        {booking.onlineInstructions && <p style={{ margin: 0 }}>Meeting link: <a href={booking.onlineInstructions} rel="noopener noreferrer nofollow">{booking.onlineInstructions}</a></p>}
-        {booking.proposedStartAt && <p style={{ margin: 0 }}>The provider suggested another time: <strong>{formatDate(booking.proposedStartAt, true)}</strong>.</p>}
+        {booking.startAt && <p><strong>{formatDate(booking.startAt, true)}</strong>{booking.durationMinutes ? <span className="muted u-margin-0"> · {booking.durationMinutes} min</span> : null}</p>}
+        <p className="u-margin-0">Total <strong>{formatMoney(booking.totalCents, booking.currency)}</strong></p>
+        {booking.onlineInstructions && <p className="u-margin-0">Meeting link: <a href={booking.onlineInstructions} rel="noopener noreferrer nofollow">{booking.onlineInstructions}</a></p>}
+        {booking.proposedStartAt && <p className="u-margin-0">The provider suggested another time: <strong>{formatDate(booking.proposedStartAt, true)}</strong>.</p>}
       </Card>
 
       {booking.status !== "Hold" && <ChangePanel booking={booking} />}
       {booking.extraChargeState && booking.extraChargeState !== "none" && <ExtraChargePanel booking={booking} stripeJsUrl={stripeJsUrl} returnUrl={`${origin}/bookings/${encodeURIComponent(booking.id)}`} />}
       {policyLines(booking.policy).length > 0 && (
         <section aria-labelledby="policy-h" className="stack">
-          <h2 id="policy-h" style={{ fontSize: "1rem", margin: 0 }}>Cancellation policy</h2>
-          <ul data-testid="booking-policy" style={{ margin: 0, paddingLeft: "1.2em" }}>{policyLines(booking.policy).map((l) => <li key={l}>{l}</li>)}</ul>
+          <h2 id="policy-h" className="u-font-size-1rem-margin-0">Cancellation policy</h2>
+          <ul data-testid="booking-policy" className="u-margin-0-padding-left-1-2em">{policyLines(booking.policy).map((l) => <li key={l}>{l}</li>)}</ul>
         </section>
       )}
       {CALENDAR_STATUSES.has(booking.status) && <p><a href={`/bookings/${encodeURIComponent(booking.id)}/calendar.ics`} download data-testid="ics-link">Add to your calendar (.ics)</a></p>}
@@ -160,7 +160,7 @@ export default function BookingPage({ loaderData }: Route.ComponentProps) {
         <cancel.Form method="post" className="stack" aria-label="Cancel this booking">
           <CsrfField />
           <input type="hidden" name="intent" value="cancel" />
-          {preview && <p className="muted" data-testid="cancel-preview" style={{ margin: 0 }}>
+          {preview && <p className="muted u-margin-0" data-testid="cancel-preview">
             {!preview.feeKnown ? "The provider's cancellation policy applies."
               : preview.withinFreeWindow ? "You can cancel for free." : `Cancelling now costs ${formatMoney(preview.feeCents ?? 0, preview.currency)}; ${formatMoney(preview.refundCents ?? 0, preview.currency)} is refunded.`}
           </p>}
@@ -234,7 +234,7 @@ function ChangePanel({ booking }: { booking: BookingView }) {
     <div className="stack" data-testid="change-panel">
       {booking.proposedStartAt && (
         <Card className="stack">
-          <p style={{ margin: 0 }}>The provider suggested <strong>{formatDate(booking.proposedStartAt, true)}</strong>.</p>
+          <p className="u-margin-0">The provider suggested <strong>{formatDate(booking.proposedStartAt, true)}</strong>.</p>
           <fetcher.Form method="post" className="row" aria-label="Answer the suggested time">
             <CsrfField /><input type="hidden" name="intent" value="proposal" />
             <Button type="submit" name="accept" value="yes" variant="primary" disabled={busy}>Accept this time</Button>
@@ -244,7 +244,7 @@ function ChangePanel({ booking }: { booking: BookingView }) {
       )}
       {booking.requiresBuyerConsent && (
         <Card className="stack">
-          <p style={{ margin: 0 }}>The provider moved your booking to <strong>{booking.startAt ? formatDate(booking.startAt, true) : "a new time"}</strong>. Accept it, or cancel for free below.</p>
+          <p className="u-margin-0">The provider moved your booking to <strong>{booking.startAt ? formatDate(booking.startAt, true) : "a new time"}</strong>. Accept it, or cancel for free below.</p>
           <fetcher.Form method="post" aria-label="Accept the new time">
             <CsrfField /><input type="hidden" name="intent" value="acknowledge" />
             <Button type="submit" variant="primary" disabled={busy}>Accept the new time</Button>
@@ -330,7 +330,7 @@ function ExtraChargePanel({ booking, stripeJsUrl, returnUrl }: { booking: Bookin
   if (!text) return null;
   return (
     <Card className="stack" data-testid="extra-charge">
-      <p style={{ margin: 0 }}>{text}{amount > 0 ? <> Amount: <strong>{formatMoney(amount, booking.currency)}</strong>.</> : null}</p>
+      <p className="u-margin-0">{text}{amount > 0 ? <> Amount: <strong>{formatMoney(amount, booking.currency)}</strong>.</> : null}</p>
       {(state === "requested" || state === "consented") && !payment && (
         <div className="row">
           <fetcher.Form method="post" aria-label="Agree to the additional amount">
@@ -366,7 +366,7 @@ function DuePanel({ booking, serverNow, stripeJsUrl, returnUrl }: { booking: Boo
   if (left === 0) return <p role="alert">The time to pay for this booking has passed.</p>;
   return (
     <Card className="stack" data-testid="due-panel">
-      <p style={{ margin: 0 }}>This booking is confirmed but not paid. Pay within <strong data-testid="due-countdown">{countdown(left)}</strong> or it is cancelled.</p>
+      <p className="u-margin-0">This booking is confirmed but not paid. Pay within <strong data-testid="due-countdown">{countdown(left)}</strong> or it is cancelled.</p>
       {payment
         ? <PaymentStep clientSecret={payment.clientSecret} publishableKey={payment.publishableKey} stripeJsUrl={stripeJsUrl} returnUrl={returnUrl} totalLabel={formatMoney(booking.totalCents, booking.currency)} />
         : (

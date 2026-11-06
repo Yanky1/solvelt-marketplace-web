@@ -82,15 +82,15 @@ export default function WishlistPage({ loaderData, actionData }: Route.Component
       {items.length === 0 ? (
         <EmptyState title="This list is empty">Use "Save to a list" on a product page to add it here.</EmptyState>
       ) : (
-        <ul className="grid" style={{ listStyle: "none", padding: 0 }} aria-label={`Items in ${wishlist.name}`}>
+        <ul className="grid u-list-style-none-padding-0" aria-label={`Items in ${wishlist.name}`}>
           {items.map((i) => (
             <li key={i.listingId}>
               <Card className="stack">
                 {i.listing ? (
                   <>
                     {i.listing.image && <Img imageId={i.listing.image.id} width={i.listing.image.width} height={i.listing.image.height} alt={i.listing.image.alt} sizes="(min-width: 700px) 25vw, 50vw" />}
-                    <p style={{ margin: 0 }}><Link to={listingPath(i.listing.slug)}><strong>{i.listing.title}</strong></Link></p>
-                    <p style={{ margin: 0 }}><Price cents={i.listing.priceFromCents} currency={i.listing.currency} /></p>
+                    <p className="u-margin-0"><Link to={listingPath(i.listing.slug)}><strong>{i.listing.title}</strong></Link></p>
+                    <p className="u-margin-0"><Price cents={i.listing.priceFromCents} currency={i.listing.currency} /></p>
                     {!i.listing.available && <Badge tone="neutral">Sold out</Badge>}
                   </>
                 ) : (
@@ -106,7 +106,7 @@ export default function WishlistPage({ loaderData, actionData }: Route.Component
         </ul>
       )}
 
-      <section className="stack" aria-labelledby="share-h" style={{ marginTop: "var(--s4)" }}>
+      <section className="stack u-margin-top-var-s4" aria-labelledby="share-h">
         <h3 id="share-h">Share</h3>
         <p className="muted">{wishlist.shared ? "Anyone with the link can see this list (names and prices of the items, nothing about you)." : "This list is private."}</p>
         {shareUrl && (
@@ -121,9 +121,9 @@ export default function WishlistPage({ loaderData, actionData }: Route.Component
         </div>
       </section>
 
-      <section className="stack" aria-labelledby="manage-h" style={{ marginTop: "var(--s4)" }}>
+      <section className="stack u-margin-top-var-s4" aria-labelledby="manage-h">
         <h3 id="manage-h">Manage this list</h3>
-        <Form method="post" className="row" style={{ alignItems: "flex-end" }} noValidate>
+        <Form method="post" className="row u-align-items-flex-end" noValidate>
           <CsrfField /><input type="hidden" name="intent" value="rename" />
           <label className="field"><span>Name</span><input className="input" name="name" defaultValue={wishlist.name} maxLength={NAME_MAX} required autoComplete="off" /></label>
           <Button type="submit" variant="secondary" disabled={busy}>Rename</Button>

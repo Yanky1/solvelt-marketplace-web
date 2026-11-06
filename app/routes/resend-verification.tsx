@@ -30,7 +30,7 @@ export default function ResendVerification() {
   const a = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
   if (a?.sent) {
-    return <AuthPage title="Check your inbox"><FormMessage kind="ok">If that address has an account that still needs verifying, we have sent a new link. Older links stop working.</FormMessage><Link to="/sign-in">Back to sign in</Link></AuthPage>;
+    return <AuthPage title="Check your inbox"><FormMessage kind="ok">If that address has an account that still needs verifying, we have sent a new link. Older links stop working.</FormMessage><Link to="/sign-in" className="link-standalone">Back to sign in</Link></AuthPage>;
   }
   return (
     <AuthPage title="Resend verification email" intro="Enter the email you signed up with and we will send a new verification link.">
@@ -39,7 +39,7 @@ export default function ResendVerification() {
         <ErrorSummary submission={a} message={a?.message} errors={a?.error ? { email: a.error } : undefined} />
         <Input label="Email" name="email" type="email" autoComplete="email" error={a?.error ?? undefined} required />
         <Button type="submit" disabled={busy}>{busy ? "Sending…" : "Send new link"}</Button>
-        <Link to="/sign-in">Back to sign in</Link>
+        <Link to="/sign-in" className="link-standalone">Back to sign in</Link>
       </Form>
     </AuthPage>
   );

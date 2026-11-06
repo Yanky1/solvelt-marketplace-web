@@ -111,14 +111,14 @@ export default function EditReview({ loaderData, actionData }: Route.ComponentPr
             <ReviewTextField defaultValue={values?.text ?? r.text} error={errors.text} />
             <Button type="submit" disabled={busy}>Save changes</Button>
           </Form>
-          <section className="stack" aria-labelledby="photos-h" style={{ marginTop: "var(--s4)" }}>
+          <section className="stack u-margin-top-var-s4" aria-labelledby="photos-h">
             <h3 id="photos-h">Photos ({r.photos.length} of {MAX_PHOTOS})</h3>
             {notice && <p role="status" className="card">{notice}</p>}
             {r.photos.length > 0 && (
-              <ul className="row" style={{ listStyle: "none", padding: 0 }}>
+              <ul className="row u-list-style-none-padding-0">
                 {r.photos.map((p, i) => (
                   <li key={p.id} className="stack">
-                    <img src={`/review-photo/${encodeURIComponent(p.id)}`} width={Math.min(p.width, 160)} height={Math.round(p.height * Math.min(1, 160 / p.width))} alt={`Your upload ${i + 1}`} style={{ maxWidth: "100%", height: "auto" }} />
+                    <img src={`/review-photo/${encodeURIComponent(p.id)}`} width={Math.min(p.width, 160)} height={Math.round(p.height * Math.min(1, 160 / p.width))} alt={`Your upload ${i + 1}`} className="u-max-width-100-height-auto" />
                     <Form method="post"><CsrfField /><input type="hidden" name="intent" value="remove-photo" /><input type="hidden" name="photoId" value={p.id} /><Button type="submit" variant="ghost" aria-label={`Remove your photo ${i + 1}`}>Remove</Button></Form>
                   </li>
                 ))}

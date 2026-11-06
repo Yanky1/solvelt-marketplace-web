@@ -84,7 +84,7 @@ export default function StaffEnrol() {
   }
 
   return (
-    <Card className="stack" style={{ maxWidth: 480 }}>
+    <Card className="stack u-max-width-480px">
       <h2>Enrol a passkey</h2>
       <p className="muted">Paste the one-time secret you were given (or open your link). It works once. Your passkey is then how you sign in.</p>
       {supported === false && <FormMessage kind="error">This browser or device does not support passkeys.</FormMessage>}

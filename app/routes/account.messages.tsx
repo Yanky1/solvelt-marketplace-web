@@ -34,18 +34,18 @@ export default function Messages({ loaderData }: Route.ComponentProps) {
       {threads.length === 0 ? (
         <EmptyState title="No messages yet">Write to a seller from an order, or ask a question on a product page. Replies appear here.</EmptyState>
       ) : (
-        <ul className="stack" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="stack u-list-style-none-padding-0">
           {threads.map((t) => (
             <li key={t.id}>
               <Card className="stack">
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <h3 style={{ margin: 0, fontWeight: t.unreadCount > 0 ? 700 : 600 }}>
+                <div className="row u-justify-content-space-between">
+                  <h3 className={t.unreadCount > 0 ? "u-m0 u-fw-700" : "u-m0 u-fw-600"}>
                     <Link to={`/account/messages/${encodeURIComponent(t.id)}`}>{t.sellerName ?? "Seller"}: {t.subject}</Link>
                     {t.unreadCount > 0 && <span className="sr-only"> ({t.unreadCount} unread)</span>}
                   </h3>
                   <span className="muted">{formatDate(t.lastMessageAt)}</span>
                 </div>
-                {t.preview && <p className="muted" style={{ margin: 0 }}>{t.preview}</p>}
+                {t.preview && <p className="muted u-margin-0">{t.preview}</p>}
               </Card>
             </li>
           ))}

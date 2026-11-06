@@ -30,7 +30,6 @@ app.use((req, res, next) => {
     "default-src 'self'",
     staff ? `script-src 'self' 'nonce-${nonce}'` : `script-src 'self' 'nonce-${nonce}' ${stripeScript}`,
     "style-src 'self'",
-    "style-src-attr 'unsafe-inline'", // React renders style="" attributes (no inline <style> or style tags are allowed)
     staff ? "img-src 'self' data:" : "img-src 'self' data: https://*.stripe.com",
     "font-src 'self'",
     staff ? "connect-src 'self'" : "connect-src 'self' https://api.stripe.com",

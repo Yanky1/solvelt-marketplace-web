@@ -90,7 +90,7 @@ export default function StaffQueues({ loaderData: { tabs, data, canRetry, canRet
   return (
     <div className="stack">
       <h2>Queues</h2>
-      <nav aria-label="Queues" className="row" style={{ flexWrap: "wrap" }}>
+      <nav aria-label="Queues" className="row u-flex-wrap-wrap">
         {tabs.map((t) => <Link key={t.id} to={`/staff/queues?tab=${t.id}`} className={`btn ${t.id === data.tab ? "btn-secondary" : "btn-ghost"}`} aria-current={t.id === data.tab ? "page" : undefined}>{t.label}</Link>)}
       </nav>
       {data.tab === "ingests" && (

@@ -76,17 +76,17 @@ export default function Thread({ loaderData, actionData }: Route.ComponentProps)
       {view.thread.marketplaceBookingId && <p><Link to={`/bookings/${encodeURIComponent(view.thread.marketplaceBookingId)}`}>View this booking</Link></p>}
       {reported && <FormMessage kind="ok">Thank you. We sent your report to our moderators.</FormMessage>}
       {view.older && <Link className="btn btn-secondary" to={`?before=${encodeURIComponent(view.older)}`}>Earlier messages</Link>}
-      <ol className="stack" style={{ listStyle: "none", padding: 0 }} aria-label="Messages">
+      <ol className="stack u-list-style-none-padding-0" aria-label="Messages">
         {view.messages.map((m) => (
-          <li key={m.id} style={{ alignSelf: m.direction === "buyer" ? "flex-end" : "flex-start", maxWidth: "min(46rem, 100%)" }}>
+          <li key={m.id} className={m.direction === "buyer" ? "u-msg u-msg-buyer" : "u-msg u-msg-seller"}>
             <Card className="stack">
-              <div className="row" style={{ justifyContent: "space-between" }}>
+              <div className="row u-justify-content-space-between">
                 <strong>{m.direction === "buyer" ? "You" : view.thread.sellerName ?? "Seller"}</strong>
                 <span className="muted">{formatDate(m.sentAt, true)}</span>
               </div>
-              {m.hidden ? <p className="muted"><em>This message was removed by our moderators.</em></p> : <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.text}</p>}
+              {m.hidden ? <p className="muted u-margin-0-white-space-pre-wrap-overflow-wrap-anywhere"><em>This message was removed by our moderators.</em></p> : <p>{m.text}</p>}
               {m.attachments.length > 0 && (
-                <ul style={{ margin: 0 }}>
+                <ul className="u-margin-0">
                   {m.attachments.map((f) => (
                     <li key={f.id}>
                       {f.available ? <a href={`/account/messages/attachments/${encodeURIComponent(f.id)}`} download>{f.fileName} <span className="muted">({formatSize(f.size)})</span></a>
