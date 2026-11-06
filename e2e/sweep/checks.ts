@@ -11,7 +11,7 @@ export type Findings = string[];
 export const DENY = /\b(delete|remove|erase|discard|lock|unlock|refund|retry|re-?send|sign[ -]?out|log[ -]?out|disable|revoke|deactivate|cancel (order|booking)|place order|pay\b|pay now|reveal|report|purge|clear all|reset)\b|sign-out|\/remove|\/delete|privacy\/export|calendar\.ics/i;
 
 /** Responses that are not an error on this page: the page's own expected status, and nothing else (a 4xx on a sub-request is a finding). */
-const HARNESS_CSP = /^Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.$/;
+export const CSP_STYLE_MESSAGE = /^Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.$/;
 
 export function watchPage(page: Page, expectedMain: number[]) {
   const http: Findings = [], consoleErrors: Findings = [], pageErrors: Findings = [];
@@ -32,7 +32,7 @@ export function watchPage(page: Page, expectedMain: number[]) {
     if (m.type() !== "error" || /Failed to load resource/.test(m.text())) return;
     // Playwright's own screenshot machinery (animations, caret, masks) makes WebKit report this one message while it takes or compares a screenshot, and the page's own CSP-violation
     // events do not see it (issue #3, M8W-08). Exactly that message, in WebKit, in those two steps; counted and written to the record, never silently dropped.
-    if (webkit && (phase === "screenshot" || phase === "compare") && HARNESS_CSP.test(m.text())) { suppressed++; return; }
+    if (webkit && (phase === "screenshot" || phase === "compare") && CSP_STYLE_MESSAGE.test(m.text())) { suppressed++; return; }
     consoleErrors.push(m.text().slice(0, 240));
     const loc = m.location();
     if (sources.length < 20) sources.push(`[${phase}] ${loc.url || "(no url)"}:${loc.lineNumber} on ${page.url()}: ${m.text().slice(0, 160)}`);
@@ -41,29 +41,73 @@ export function watchPage(page: Page, expectedMain: number[]) {
   return { http, consoleErrors, pageErrors, main, sources, suppressed: () => suppressed, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
 }
 
-/** Listens for CSP violations inside the page (securitypolicyviolation: which directive, what was blocked, which element) from the first script on; read back with cspEvents(). Diagnosis only. */
-export async function listenForCspViolations(page: Page) {
+export interface CspEvents { lines: string[]; all: number; select: number; writes: number }
+
+/**
+ * Listens for CSP violations inside the page (securitypolicyviolation: which directive, what was blocked, which element) from the first script on, and for any script that writes a style
+ * onto a <select> (setAttribute, or a style attribute change seen by a mutation observer). The counts are kept here, in the test, through a binding that survives the navigations of the click
+ * step (a page's own counters would be lost with every new document). Evidence for the WebKit finding of issue #3 (M8W-08).
+ */
+export async function listenForCspViolations(page: Page): Promise<CspEvents> {
+  const tally: CspEvents = { lines: [], all: 0, select: 0, writes: 0 };
+  await page.exposeBinding("__sweepCsp", (_src, kind: "violation" | "write", isSelect: boolean, line: string) => {
+    if (kind === "violation") { tally.all++; if (isSelect) tally.select++; } else tally.writes++;
+    if (tally.lines.length < 12) tally.lines.push(line);
+  });
   await page.addInitScript(() => {
-    const w = window as unknown as { __csp: string[] };
-    w.__csp = [];
-    // who writes a style onto a <select>: the call stack of setAttribute("style"), of style.cssText and of style.setProperty on it (diagnosis only)
-    const note = (what: string, el: unknown) => {
-      const n = el as Element | null;
-      if (!n || n.nodeName !== "SELECT" || w.__csp.length >= 10) return;
-      w.__csp.push(`WRITE ${what} on select#${n.id}: ${(new Error().stack ?? "").split("\n").slice(1, 4).map((l) => l.trim().slice(0, 90)).join(" < ")}`);
-    };
+    const report = (kind: "violation" | "write", isSelect: boolean, line: string) => (window as unknown as { __sweepCsp?: (...a: unknown[]) => void }).__sweepCsp?.(kind, isSelect, line);
+    const stack = () => (new Error().stack ?? "").split("\n").slice(1, 4).map((l) => l.trim().slice(0, 90)).join(" < ");
     const setAttr = Element.prototype.setAttribute;
-    Element.prototype.setAttribute = function (this: Element, name: string, value: string) { if (String(name).toLowerCase() === "style") note("setAttribute", this); return setAttr.call(this, name, value); };
-    new MutationObserver((list) => { for (const m of list) if (m.attributeName === "style" && m.target.nodeName === "SELECT" && w.__csp.length < 10) w.__csp.push(`STYLE ATTR on select#${(m.target as Element).id} = "${((m.target as Element).getAttribute("style") ?? "").slice(0, 80)}"`); }).observe(document, { attributes: true, subtree: true, attributeFilter: ["style"] });
+    Element.prototype.setAttribute = function (this: Element, name: string, value: string) {
+      if (String(name).toLowerCase() === "style" && this.nodeName === "SELECT") report("write", true, `WRITE setAttribute on select#${this.id}: ${stack()}`);
+      return setAttr.call(this, name, value);
+    };
+    new MutationObserver((list) => {
+      for (const m of list) if (m.attributeName === "style" && m.target.nodeName === "SELECT") report("write", true, `STYLE ATTR on select#${(m.target as Element).id} = "${((m.target as Element).getAttribute("style") ?? "").slice(0, 80)}"`);
+    }).observe(document, { attributes: true, subtree: true, attributeFilter: ["style"] });
     document.addEventListener("securitypolicyviolation", (e) => {
       const t = e.target as Element | null;
       const where = t && t.nodeName ? `${t.nodeName.toLowerCase()}${t.id ? "#" + t.id : ""}${typeof t.className === "string" && t.className ? "." + t.className.split(" ")[0] : ""}` : "document";
-      if (w.__csp.length < 10) w.__csp.push(`${e.effectiveDirective} blocked=${e.blockedURI} on ${where} (${e.sourceFile || "no file"}:${e.lineNumber})`);
+      report("violation", !!t && t.nodeName === "SELECT", `${e.effectiveDirective} blocked=${e.blockedURI} on ${where} (${e.sourceFile || "no file"}:${e.lineNumber})`);
     }, true);
   });
+  return tally;
 }
-export async function cspEvents(page: Page): Promise<string[]> {
-  return page.evaluate(() => (window as unknown as { __csp?: string[] }).__csp ?? []).catch(() => []);
+
+/**
+ * WebKit reports "Refused to apply a stylesheet ..." (a style-src-attr violation, blocked=inline) with a <select> as the target although no script and no markup of ours writes a style onto it
+ * (issue #3, decision M8W-08). That exact message is set aside, in WebKit only, and only when EVERY securitypolicyviolation event the page itself saw targets a <select> and no script wrote a style onto
+ * one. Any other target, any script write or any other message stays a finding; what is set aside is counted and listed in the report.
+ */
+export function webkitSelectEngineMessage(browser: string, evs: CspEvents, message: string): boolean {
+  return browser === "webkit" && evs.all > 0 && evs.all === evs.select && evs.writes === 0 && CSP_STYLE_MESSAGE.test(message);
+}
+
+/** Every visible <select> in main can be seen (a box of at least 24 px), focused and given a value (WebKit's inline-style report must not hide a control that does not work). */
+export async function selectFindings(page: Page): Promise<Findings> {
+  const out: Findings = [];
+  const selects = page.locator("main select:visible");
+  const n = Math.min(await selects.count(), 6);
+  for (let i = 0; i < n; i++) {
+    const s = selects.nth(i);
+    const label = (await s.getAttribute("id")) ?? `#${i}`;
+    const box = await s.boundingBox();
+    if (!box || box.width < 24 || box.height < 24) { out.push(`select ${label} is not usable in size: ${box ? `${Math.round(box.width)}x${Math.round(box.height)}` : "no box"}`); continue; }
+    const values = await s.locator("option").evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    if (values.length < 2) continue;
+    const before = await s.inputValue();
+    const target = values.find((v) => v !== before) ?? values[values.length - 1]!;
+    const urlBefore = page.url();
+    try {
+      await s.focus();
+      await s.selectOption(target, { timeout: 4_000 });
+      await page.waitForTimeout(300);
+      if (page.url() !== urlBefore) { await page.goto(urlBefore, { waitUntil: "domcontentloaded" }); await settle(page); continue; }   // the select submits its form on change: the value was taken
+      const after = await s.inputValue();
+      if (after !== target) out.push(`select ${label} did not take the value ${target} (is ${after})`);
+    } catch (e) { out.push(`select ${label} could not be given a value: ${String(e).split("\n")[0]!.slice(0, 120)}`); }
+  }
+  return out;
 }
 
 /** What styles the document has right now: <style> and <link rel=stylesheet> elements, constructed (adopted) style sheets and elements with a style attribute. Written to the record, never a finding. */
