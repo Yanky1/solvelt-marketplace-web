@@ -73,3 +73,12 @@ test("start-up fails in production without config", async () => {
   expect(r.status).not.toBe(0);
   expect(r.stderr).toMatch(/Invalid configuration/);
 });
+
+// Issue #2 (M8W-08): the home page's Featured shelf shows the catalog's listings (the mock catalog has some), never the old placeholder.
+test("the home page shows listings from the catalog under Featured", async ({ page }) => {
+  await page.goto("/");
+  const shelf = page.getByRole("list", { name: "Featured listings" });
+  await expect(shelf.getByRole("link").first()).toBeVisible();
+  expect(await shelf.getByRole("listitem").count()).toBeGreaterThan(0);
+  await expect(page.getByText("Listings are on their way")).toHaveCount(0);
+});

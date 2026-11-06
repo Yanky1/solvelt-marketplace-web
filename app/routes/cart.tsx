@@ -81,21 +81,21 @@ export default function CartPage({ loaderData }: Route.ComponentProps) {
         <>
           {cart.groups.map((g) => (
             <Card key={`${g.sellerId}:${g.brandId}`} className="stack" data-testid="cart-group">
-              <h2 style={{ margin: 0 }}>{g.brandName || g.sellerName}</h2>
-              <p className="muted" style={{ margin: 0 }}>Sold by {g.sellerName}. Shipped by this seller.</p>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }} className="stack">
+              <h2 className="u-margin-0">{g.brandName || g.sellerName}</h2>
+              <p className="muted u-margin-0">Sold by {g.sellerName}. Shipped by this seller.</p>
+              <ul className="stack u-list-style-none-padding-0-margin-0">
                 {g.lines.map((l) => (
                   <li key={l.id} className="stack" data-testid="cart-line">
-                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div className="row u-justify-content-space-between-align-items-flex-start">
                       <div>
                         <Link to={`/p/${encodeURIComponent(l.slug)}`}><strong>{l.title}</strong></Link>
                         <div className="muted">{l.variantName}</div>
                         {l.status === "unavailable" && <Badge tone="err">No longer available</Badge>}
                         {l.status === "ok" && l.previousUnitPriceCents !== null && l.previousUnitPriceCents !== l.unitPriceCents && (
-                          <p role="status" className="muted" style={{ margin: 0 }}>The price changed from {formatMoney(l.previousUnitPriceCents, cart.currency)} to {formatMoney(l.unitPriceCents, cart.currency)}.</p>
+                          <p role="status" className="muted u-margin-0">The price changed from {formatMoney(l.previousUnitPriceCents, cart.currency)} to {formatMoney(l.unitPriceCents, cart.currency)}.</p>
                         )}
                       </div>
-                      <div style={{ textAlign: "right" }}>
+                      <div className="u-text-align-right">
                         {l.status === "ok" ? <><div>{formatMoney(l.lineTotalCents, cart.currency)}</div><div className="muted">{formatMoney(l.unitPriceCents, cart.currency)} each</div></> : <div className="muted">Not counted</div>}
                       </div>
                     </div>
@@ -104,7 +104,7 @@ export default function CartPage({ loaderData }: Route.ComponentProps) {
                         <CsrfField />
                         <input type="hidden" name="intent" value="set" />
                         <input type="hidden" name="lineId" value={l.id} />
-                        <label>Quantity <input name="qty" type="number" min={0} max={20} defaultValue={l.quantity} className="input" style={{ width: "5rem" }} aria-label={`Quantity of ${l.title}, ${l.variantName}`} /></label>
+                        <label>Quantity <input name="qty" type="number" min={0} max={20} defaultValue={l.quantity} className="input u-width-5rem" aria-label={`Quantity of ${l.title}, ${l.variantName}`} /></label>
                         <Button type="submit" variant="secondary">Update</Button>
                       </Form>
                       <Form method="post">
@@ -117,12 +117,12 @@ export default function CartPage({ loaderData }: Route.ComponentProps) {
                   </li>
                 ))}
               </ul>
-              <div className="row" style={{ justifyContent: "space-between" }}><span>Subtotal</span><strong>{formatMoney(g.subtotalCents, cart.currency)}</strong></div>
+              <div className="row u-justify-content-space-between"><span>Subtotal</span><strong>{formatMoney(g.subtotalCents, cart.currency)}</strong></div>
             </Card>
           ))}
           <Card className="stack">
-            <div className="row" style={{ justifyContent: "space-between" }}><span>Items ({cart.itemCount})</span><strong data-testid="cart-subtotal">{formatMoney(cart.subtotalCents, cart.currency)}</strong></div>
-            <p className="muted" style={{ margin: 0 }}>Shipping and tax are added at checkout, once we know where it is going.</p>
+            <div className="row u-justify-content-space-between"><span>Items ({cart.itemCount})</span><strong data-testid="cart-subtotal">{formatMoney(cart.subtotalCents, cart.currency)}</strong></div>
+            <p className="muted u-margin-0">Shipping and tax are added at checkout, once we know where it is going.</p>
             {cart.canCheckout
               ? <LinkButton to="/checkout">Checkout</LinkButton>
               : <p role="status" className="muted">Remove the items that are no longer available to continue.</p>}

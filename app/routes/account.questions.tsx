@@ -34,12 +34,12 @@ export default function MyQuestions({ loaderData }: Route.ComponentProps) {
       {loaderData.questions.length === 0 ? (
         <EmptyState title="No questions yet">Use "Ask the seller" on a product page.</EmptyState>
       ) : (
-        <ul className="stack" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="stack u-list-style-none-padding-0">
           {loaderData.questions.map((q) => (
             <li key={q.id}>
               <Card className="stack">
                 <strong>{q.listing ? <Link to={listingPath(q.listing.slug)}>{q.listing.title}</Link> : "An item that is no longer listed"}</strong>
-                <p style={{ whiteSpace: "pre-line", margin: 0 }}>{q.text}</p>
+                <p className="u-white-space-pre-line-margin-0">{q.text}</p>
                 <Badge tone={q.status === "rejected" ? "err" : q.status === "sent" ? "ok" : "neutral"}>{STATE[q.status] ?? q.status}</Badge>
               </Card>
             </li>

@@ -49,22 +49,22 @@ export default function Addresses({ loaderData }: Route.ComponentProps) {
     <div>
       <h1>Your account</h1>
       <AccountNav />
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--s2)" }}>
-        <h2 style={{ margin: 0 }}>Addresses</h2>
+      <div className="row u-justify-content-space-between-margin-bottom-var-s2">
+        <h2 className="u-margin-0">Addresses</h2>
         <LinkButton to="/account/addresses/new">Add an address</LinkButton>
       </div>
       {addresses.length === 0 ? (
         <EmptyState title="No saved addresses" action={<LinkButton to="/account/addresses/new">Add your first address</LinkButton>}>Save an address to check out faster.</EmptyState>
       ) : (
-        <ul className="grid" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="grid u-list-style-none-padding-0">
           {addresses.map((a) => (
             <li key={a.id}>
               <Card className="stack">
-                <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row u-justify-content-space-between">
                   <strong>{a.fullName}</strong>
                   {a.isDefault && <Badge tone="gold">Default</Badge>}
                 </div>
-                <address style={{ fontStyle: "normal" }}>
+                <address className="u-font-style-normal">
                   {a.line1}<br />
                   {a.line2 && <>{a.line2}<br /></>}
                   {a.city}{a.region ? `, ${a.region}` : ""} {a.postalCode}<br />

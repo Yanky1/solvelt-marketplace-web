@@ -88,12 +88,12 @@ export default function QuotePage({ loaderData }: Route.ComponentProps) {
       <div className="row"><Badge tone={badgeTone(st.tone)}>{st.label}</Badge></div>
       <p role="status" data-testid="quote-status" data-status={quote.status}>{quote.expired && quote.status === "Quoted" ? quoteStatus("Expired").text : st.text}</p>
       <Card className="stack">
-        <p style={{ margin: 0 }} data-testid="quote-details">{quote.details}</p>
-        {quote.priceCents != null && <p style={{ margin: 0 }}>Price <strong data-testid="quote-price">{formatMoney(quote.priceCents, quote.currency)}</strong>{quote.durationMinutes ? <span className="muted"> · {quote.durationMinutes} min</span> : null}</p>}
-        {quote.priceCents != null && fee > 0 && <p style={{ margin: 0 }} data-testid="quote-total">Travel fee {formatMoney(fee, quote.currency)} · Total <strong>{formatMoney(quote.priceCents + fee, quote.currency)}</strong></p>}
-        {quote.note && <p style={{ margin: 0 }}>Provider's note: {quote.note}</p>}
-        {quote.expiresAt && quote.status === "Quoted" && <p className="muted" style={{ margin: 0 }}>Valid until {formatDate(quote.expiresAt, true)}.</p>}
-        {quote.declineReason && <p style={{ margin: 0 }}>{quote.declineReason}</p>}
+        <p className="u-margin-0" data-testid="quote-details">{quote.details}</p>
+        {quote.priceCents != null && <p>Price <strong data-testid="quote-price">{formatMoney(quote.priceCents, quote.currency)}</strong>{quote.durationMinutes ? <span className="muted u-margin-0"> · {quote.durationMinutes} min</span> : null}</p>}
+        {quote.priceCents != null && fee > 0 && <p className="u-margin-0" data-testid="quote-total">Travel fee {formatMoney(fee, quote.currency)} · Total <strong>{formatMoney(quote.priceCents + fee, quote.currency)}</strong></p>}
+        {quote.note && <p className="u-margin-0">Provider's note: {quote.note}</p>}
+        {quote.expiresAt && quote.status === "Quoted" && <p className="muted u-margin-0">Valid until {formatDate(quote.expiresAt, true)}.</p>}
+        {quote.declineReason && <p className="u-margin-0">{quote.declineReason}</p>}
       </Card>
       {open && (
         <fetcher.Form method="post" className="stack" aria-label="Accept this quote">

@@ -35,17 +35,17 @@ export default function Bookings({ loaderData }: Route.ComponentProps) {
       {bookings.length === 0 ? (
         <EmptyState title="No bookings yet" action={<LinkButton to="/search?type=service">Find a service</LinkButton>}>When you book a service it appears here, with its time and status.</EmptyState>
       ) : (
-        <ul className="stack" style={{ listStyle: "none", padding: 0 }} data-testid="booking-list">
+        <ul className="stack u-list-style-none-padding-0" data-testid="booking-list">
           {bookings.map((b) => {
             const st = bookingStatus(b.status);
             return (
               <li key={b.id}>
                 <Card className="stack">
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <h3 style={{ margin: 0 }}><Link to={`/bookings/${encodeURIComponent(b.id)}`}>{b.number ? `Booking ${b.number}` : "Booking"}</Link></h3>
+                  <div className="row u-justify-content-space-between">
+                    <h3 className="u-margin-0"><Link to={`/bookings/${encodeURIComponent(b.id)}`}>{b.number ? `Booking ${b.number}` : "Booking"}</Link></h3>
                     <Badge tone={badgeTone(st.tone)}>{st.label}</Badge>
                   </div>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
+                  <div className="row u-justify-content-space-between">
                     <span>{b.startAt ? formatDate(b.startAt, true) : "Time to be set"}</span>
                     <strong>{formatMoney(b.totalCents, b.currency)}</strong>
                   </div>

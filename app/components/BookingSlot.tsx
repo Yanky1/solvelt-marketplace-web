@@ -93,7 +93,7 @@ function QuoteForm({ listingId, title, locations }: BookingSlotProps) {
       <input type="hidden" name="location" value={apiLocation(location)} />
       <input type="hidden" name="key" value={key} />
       <input type="hidden" name="returnTo" value={here.pathname + here.search} />
-      <p className="muted" style={{ margin: 0 }}>The provider prices each job. Tell them what you need and you get a price and times to choose from.</p>
+      <p className="muted u-margin-0">The provider prices each job. Tell them what you need and you get a price and times to choose from.</p>
       {locations.length > 1 && (
         <Select label="Where" name="where" value={location} onChange={(e) => setLocation(e.target.value as ServiceLocation)}>
           {locations.map((l) => <option key={l} value={l}>{SERVICE_LOCATION_LABELS[l]}</option>)}
@@ -118,7 +118,7 @@ function QuoteForm({ listingId, title, locations }: BookingSlotProps) {
       <Input label="Phone (optional)" name="phone" type="tel" autoComplete="tel" maxLength={40} />
       {error && <p role="alert" data-testid="quote-form-error">{error}</p>}
       <Button type="submit" variant="primary" disabled={fetcher.state !== "idle"}>{fetcher.state !== "idle" ? "One moment…" : "Ask for a quote"}</Button>
-      <p className="muted" style={{ margin: 0 }}>You sign in first if you have not. Nothing is charged until you accept a quote.</p>
+      <p className="muted u-margin-0">You sign in first if you have not. Nothing is charged until you accept a quote.</p>
     </fetcher.Form>
   );
 }
@@ -207,20 +207,20 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
           {opts.providers.map((p) => <option key={p.providerId} value={p.providerId}>{p.displayName}</option>)}
         </Select>
       )}
-      {atHome && opts?.travelFeeCents ? <p className="muted" style={{ margin: 0 }} data-testid="travel-fee">A travel fee of {formatMoney(opts.travelFeeCents, currency)} is added for visits at your home.</p> : null}
+      {atHome && opts?.travelFeeCents ? <p className="muted u-margin-0" data-testid="travel-fee">A travel fee of {formatMoney(opts.travelFeeCents, currency)} is added for visits at your home.</p> : null}
       {loading && <p className="muted" role="status">Finding times…</p>}
       {load.code && <p role="alert" data-testid="availability-error">{AVAILABILITY_MESSAGES[load.code] ?? AVAILABILITY_MESSAGES["availability_unavailable"]}</p>}
       {load.result && days.length === 0 && <p className="muted" data-testid="no-times">No times are open in the next two weeks. Please check back soon.</p>}
       {load.result && days.length > 0 && (
         <>
-          <p className="muted" style={{ margin: 0 }}>Times are shown in {tz.replace(/_/g, " ")}{durationLabel ? ` · ${durationLabel}` : ""}.</p>
-          <div role="group" aria-label="Choose a day" className="row" style={{ flexWrap: "wrap" }}>
+          <p className="muted u-margin-0">Times are shown in {tz.replace(/_/g, " ")}{durationLabel ? ` · ${durationLabel}` : ""}.</p>
+          <div role="group" aria-label="Choose a day" className="row u-flex-wrap-wrap">
             {days.map((d) => (
               <Button key={d.key} variant={d.key === shownDay?.key ? "primary" : "secondary"} aria-pressed={d.key === shownDay?.key} onClick={() => setPicked({ key: reqKey ?? "", day: d.key, start: null })}>{d.label}</Button>
             ))}
           </div>
           {shownDay && (
-            <div role="group" aria-label={`Times on ${shownDay.label}`} className="row" style={{ flexWrap: "wrap" }}>
+            <div role="group" aria-label={`Times on ${shownDay.label}`} className="row u-flex-wrap-wrap">
               {shownDay.slots.map((s) => (
                 <Button key={s.startAt} variant={s.startAt === start ? "primary" : "secondary"} aria-pressed={s.startAt === start} onClick={() => { setPicked({ key: reqKey ?? "", day, start: s.startAt }); setKey(newHoldKey()); }}>{s.label}</Button>
               ))}
@@ -254,8 +254,8 @@ function Widget({ listingId, title, priceCents, currency, locations, bookingMode
           <Button type="submit" variant="primary" disabled={submitting} aria-label={`${bookingMode === "request" ? "Request" : "Hold"} ${title} at the chosen time`}>
             {submitting ? "One moment…" : bookingMode === "request" ? "Request this time" : "Hold this time"} · {formatMoney(price, currency)}
           </Button>
-          <p className="muted" style={{ margin: 0 }}>{bookingMode === "request" ? "The provider confirms your request. You pay now and are refunded in full if they decline." : "We hold the time for a few minutes while you pay."} You sign in first if you have not.</p>
-          {policyLines(opts?.policy).length > 0 && <ul className="muted" data-testid="policy" style={{ margin: 0, paddingLeft: "1.2em" }}>{policyLines(opts?.policy).map((l) => <li key={l}>{l}</li>)}</ul>}
+          <p className="muted u-margin-0">{bookingMode === "request" ? "The provider confirms your request. You pay now and are refunded in full if they decline." : "We hold the time for a few minutes while you pay."} You sign in first if you have not.</p>
+          {policyLines(opts?.policy).length > 0 && <ul className="muted u-margin-0-padding-left-1-2em" data-testid="policy">{policyLines(opts?.policy).map((l) => <li key={l}>{l}</li>)}</ul>}
           {holdError && <p role="alert" data-testid="hold-error">{holdError}</p>}
         </fetcher.Form>
       )}

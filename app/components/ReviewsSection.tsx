@@ -10,28 +10,27 @@ const NOTICES: Record<string, string> = {
   own: "You can't do that to your own review.", gone: "That review is not available any more.", retry: "Something went wrong. Please try again.",
 };
 /** Links in lists and rows are at least 2rem tall and wide (WCAG 2.2 target size). */
-const tap = { display: "inline-block", minHeight: "2rem", minWidth: "2rem", padding: "0.3rem 0.25rem", boxSizing: "border-box" } as const;
 const dateOf = (iso: string) => new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 
 function ReviewCard({ r, back, signedIn }: { r: ReviewView; back: string; signedIn: boolean }) {
   return (
     <article className="review stack" aria-label={`Review by ${r.displayName}, ${r.rating} out of 5`} data-testid="review">
-      <div className="row" style={{ justifyContent: "space-between" }}>
+      <div className="row u-justify-content-space-between">
         <RatingStars value={r.rating} />
         <span className="muted">{r.displayName} · {dateOf(r.createdAt)}{r.editedAt ? " (edited)" : ""} · Verified purchase</span>
       </div>
-      <p style={{ whiteSpace: "pre-line", margin: 0 }}>{r.text}</p>
+      <p className="u-white-space-pre-line-margin-0">{r.text}</p>
       {r.photos.length > 0 && (
-        <ul className="row" style={{ listStyle: "none", padding: 0 }} aria-label="Photos from this review">
+        <ul className="row u-list-style-none-padding-0" aria-label="Photos from this review">
           {r.photos.map((p) => (
-            <li key={p.id}><img src={`/review-photo/${encodeURIComponent(p.id)}`} width={Math.min(p.width, 160)} height={Math.round(p.height * Math.min(1, 160 / p.width))} loading="lazy" alt={`From the review by ${r.displayName}`} style={{ maxWidth: "100%", height: "auto", borderRadius: "var(--r1, 6px)" }} /></li>
+            <li key={p.id}><img src={`/review-photo/${encodeURIComponent(p.id)}`} width={Math.min(p.width, 160)} height={Math.round(p.height * Math.min(1, 160 / p.width))} loading="lazy" alt={`From the review by ${r.displayName}`} className="u-max-width-100-height-auto-border-radius-var-r1-6px" /></li>
           ))}
         </ul>
       )}
       {r.reply && (
-        <div className="card stack" style={{ marginLeft: "var(--s3)" }}>
+        <div className="card stack u-margin-left-var-s3">
           <strong>Reply from the seller</strong>
-          <p style={{ whiteSpace: "pre-line", margin: 0 }}>{r.reply.text}</p>
+          <p className="u-white-space-pre-line-margin-0">{r.reply.text}</p>
           {signedIn && (
             <details><summary>Report this reply</summary>
               <ReportForm reviewId={r.id} back={back} intent="report-reply" /></details>
@@ -89,7 +88,7 @@ function WritePrompt({ listingId }: { listingId: string }) {
   if (items === null) return null;
   if (items.length === 0) return <p className="muted">You can review this once you have received it or attended it.</p>;
   return (
-    <ul className="stack" style={{ listStyle: "none", padding: 0 }} aria-label="What you can review">
+    <ul className="stack u-list-style-none-padding-0" aria-label="What you can review">
       {items.map((i) => <li key={i.id}><Link className="btn btn-secondary" to={`/account/reviews/new?kind=${i.kind}&target=${encodeURIComponent(i.id)}&listing=${encodeURIComponent(listingId)}`}>Write a review: {i.label}</Link></li>)}
     </ul>
   );
@@ -114,15 +113,15 @@ export function ReviewsSection({ listingId, data, query }: { listingId: string; 
         <p className="muted">No reviews yet.</p>
       ) : (
         <div className="stack" data-testid="rating-summary">
-          <p style={{ margin: 0 }}><strong style={{ fontSize: "var(--fs-h3, 1.5rem)" }}>{summary.average?.toFixed(1)}</strong> out of 5 · {summary.count} {summary.count === 1 ? "review" : "reviews"}</p>
-          <ul style={{ listStyle: "none", padding: 0 }} aria-label="Reviews by rating">
+          <p className="u-margin-0 u-font-size-var-fs-h3-1-5rem"><strong>{summary.average?.toFixed(1)}</strong> out of 5 · {summary.count} {summary.count === 1 ? "review" : "reviews"}</p>
+          <ul className="u-list-style-none-padding-0" aria-label="Reviews by rating">
             {[5, 4, 3, 2, 1].map((n) => (
               <li key={n}>
                 <Link to={`${location.pathname}?${new URLSearchParams({ ...(query.sort !== "recent" ? { rsort: query.sort } : {}), rrating: String(n) }).toString()}#reviews`}
-                  style={{ display: "flex", alignItems: "center", gap: "var(--s2, 0.75rem)", minHeight: "2.5rem", boxSizing: "border-box" }} aria-label={`${n} stars: ${summary.distribution[n - 1]} reviews. Show only these.`}>
-                  <span style={{ minWidth: "4.5rem" }}>{n} {n === 1 ? "star" : "stars"}</span>
-                  <progress max={total} value={summary.distribution[n - 1]} aria-hidden="true" style={{ flex: "1 1 8rem" }} />
-                  <span style={{ minWidth: "2rem", textAlign: "right" }}>{summary.distribution[n - 1]}</span>
+                  className="u-display-flex-align-items-center-gap-var-s2-0-75rem-min-height-2-5rem" aria-label={`${n} stars: ${summary.distribution[n - 1]} reviews. Show only these.`}>
+                  <span className="u-min-width-4-5rem">{n} {n === 1 ? "star" : "stars"}</span>
+                  <progress max={total} value={summary.distribution[n - 1]} aria-hidden="true" className="u-flex-1-1-8rem" />
+                  <span className="u-min-width-2rem-text-align-right">{summary.distribution[n - 1]}</span>
                 </Link>
               </li>
             ))}
@@ -131,7 +130,7 @@ export function ReviewsSection({ listingId, data, query }: { listingId: string; 
       )}
       <WritePrompt listingId={listingId} />
       {summary.count > 0 && (
-        <Form method="get" action={`${location.pathname}#reviews`} className="row" style={{ alignItems: "flex-end" }}>
+        <Form method="get" action={`${location.pathname}#reviews`} className="row u-align-items-flex-end">
           {params.get("variant") && <input type="hidden" name="variant" value={params.get("variant")!} />}
           <div className="field">
             <label htmlFor="rsort">Sort by</label>
@@ -145,12 +144,12 @@ export function ReviewsSection({ listingId, data, query }: { listingId: string; 
         </Form>
       )}
       {data.reviews.map((r) => <ReviewCard key={r.id} r={r} back={back} signedIn={signedIn} />)}
-      {data.reviews.length === 0 && summary.count > 0 && <p className="muted">No reviews match this filter. <Link to={`${location.pathname}#reviews`} style={tap}>Show all</Link></p>}
+      {data.reviews.length === 0 && summary.count > 0 && <p className="muted">No reviews match this filter. <Link to={`${location.pathname}#reviews`} className="u-tap">Show all</Link></p>}
       {pages > 1 && (
         <nav aria-label="Review pages" className="row">
-          {query.page > 1 && <Link to={href(query.page - 1)} rel="prev" style={tap}>Previous</Link>}
+          {query.page > 1 && <Link to={href(query.page - 1)} rel="prev" className="u-tap">Previous</Link>}
           <span>Page {query.page} of {pages}</span>
-          {query.page < pages && <Link to={href(query.page + 1)} rel="next" style={tap}>Next</Link>}
+          {query.page < pages && <Link to={href(query.page + 1)} rel="next" className="u-tap">Next</Link>}
         </nav>
       )}
     </section>

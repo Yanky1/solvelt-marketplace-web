@@ -19,7 +19,7 @@ const LINKS = [
 
 export function AccountNav() {
   return (
-    <nav aria-label="Account" className="row" style={{ marginBottom: "var(--s3)" }}>
+    <nav aria-label="Account" className="row u-margin-bottom-var-s3">
       {LINKS.map((l) => (
         <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => `btn ${isActive ? "btn-primary" : "btn-secondary"}`}>
           {l.label}

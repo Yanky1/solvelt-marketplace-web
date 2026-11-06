@@ -125,7 +125,7 @@ export default function Checkout({ loaderData }: Route.ComponentProps) {
       <div className="stack">
         <h1>Pay for your order</h1>
         <Card className="stack">
-          <p style={{ margin: 0 }}>Order <strong>{p.orderNumber}</strong>. Total <strong>{formatMoney(p.quote.totalCents, p.quote.currency)}</strong>.</p>
+          <p className="u-margin-0">Order <strong>{p.orderNumber}</strong>. Total <strong>{formatMoney(p.quote.totalCents, p.quote.currency)}</strong>.</p>
           <PaymentStep clientSecret={p.payment!.clientSecret} publishableKey={p.payment!.publishableKey} stripeJsUrl={stripeJsUrl} returnUrl={`${origin}/checkout/confirmation/${encodeURIComponent(p.orderNumber)}`} totalLabel={formatMoney(p.quote.totalCents, p.quote.currency)} />
           <noscript><p role="alert">Paying needs JavaScript, because the card form comes from our payment provider.</p></noscript>
         </Card>
@@ -136,12 +136,12 @@ export default function Checkout({ loaderData }: Route.ComponentProps) {
   return (
     <div className="stack">
       <h1>Checkout</h1>
-      <p className="muted" style={{ margin: 0 }}><Link to="/cart">Back to your cart</Link> ({cart.itemCount} {cart.itemCount === 1 ? "item" : "items"}, {formatMoney(cart.subtotalCents, cart.currency)})</p>
+      <p className="muted u-margin-0"><Link to="/cart">Back to your cart</Link> ({cart.itemCount} {cart.itemCount === 1 ? "item" : "items"}, {formatMoney(cart.subtotalCents, cart.currency)})</p>
       <ErrorSummary submission={a} message={message} errors={errors} />
       {!signedIn && <p>Checking out as a guest. <Link to="/sign-in?next=%2Fcheckout">Sign in</Link> to use your saved addresses and keep your orders in one place.</p>}
       {signedIn && addresses.length > 0 && (
-        <nav aria-label="Saved addresses"><p style={{ margin: 0 }}>Use a saved address:</p>
-          <ul className="row" style={{ listStyle: "none", padding: 0 }}>{addresses.map((ad) => <li key={ad.id}><Link to={`/checkout?address=${encodeURIComponent(ad.id)}`} className="btn btn-secondary">{ad.fullName}, {ad.line1}</Link></li>)}</ul>
+        <nav aria-label="Saved addresses"><p className="u-margin-0">Use a saved address:</p>
+          <ul className="row u-list-style-none-padding-0">{addresses.map((ad) => <li key={ad.id}><Link to={`/checkout?address=${encodeURIComponent(ad.id)}`} className="btn btn-secondary">{ad.fullName}, {ad.line1}</Link></li>)}</ul>
         </nav>
       )}
       <Form method="post" className="stack" noValidate>
@@ -193,15 +193,15 @@ function DeliveryAndTotals({ quote }: { quote: Quote }) {
                 <span>Local delivery {w.date}, {w.start.slice(11, 16)} to {w.end.slice(11, 16)} UTC: {formatMoney(g.local?.feeCents ?? 0, quote.currency)}</span>
               </label>
             ))}
-            {g.unavailableSpeeds.length > 0 && <p className="muted" style={{ margin: 0 }}>Some speeds are not offered for these items.</p>}
+            {g.unavailableSpeeds.length > 0 && <p className="muted u-margin-0">Some speeds are not offered for these items.</p>}
           </fieldset>
         );
       })}
-      <dl className="stack" data-testid="checkout-totals" style={{ margin: 0 }}>
-        <div className="row" style={{ justifyContent: "space-between" }}><dt>Items</dt><dd style={{ margin: 0 }}>{formatMoney(quote.itemsCents, quote.currency)}</dd></div>
-        <div className="row" style={{ justifyContent: "space-between" }}><dt>Shipping</dt><dd style={{ margin: 0 }}>{formatMoney(quote.shippingCents, quote.currency)}</dd></div>
-        <div className="row" style={{ justifyContent: "space-between" }}><dt>Tax</dt><dd style={{ margin: 0 }}>{formatMoney(quote.taxCents, quote.currency)}</dd></div>
-        <div className="row" style={{ justifyContent: "space-between" }}><dt><strong>Total</strong></dt><dd style={{ margin: 0 }}><strong data-testid="checkout-total">{formatMoney(quote.totalCents, quote.currency)}</strong></dd></div>
+      <dl className="stack u-margin-0" data-testid="checkout-totals">
+        <div className="row u-justify-content-space-between u-margin-0"><dt>Items</dt><dd>{formatMoney(quote.itemsCents, quote.currency)}</dd></div>
+        <div className="row u-justify-content-space-between u-margin-0"><dt>Shipping</dt><dd>{formatMoney(quote.shippingCents, quote.currency)}</dd></div>
+        <div className="row u-justify-content-space-between u-margin-0"><dt>Tax</dt><dd>{formatMoney(quote.taxCents, quote.currency)}</dd></div>
+        <div className="row u-justify-content-space-between u-margin-0"><dt><strong>Total</strong></dt><dd><strong data-testid="checkout-total">{formatMoney(quote.totalCents, quote.currency)}</strong></dd></div>
       </dl>
     </section>
   );

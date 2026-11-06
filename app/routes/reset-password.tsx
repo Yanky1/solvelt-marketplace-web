@@ -46,7 +46,7 @@ export default function ResetPassword() {
   const a = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
   if (a?.done) return <AuthPage title="Password changed"><FormMessage kind="ok">Your password was changed. All other devices were signed out.</FormMessage><Link className="btn btn-primary" to="/sign-in">Sign in</Link></AuthPage>;
-  if (!token) return <AuthPage title="Link not valid" intro="This reset link is missing its token."><Link to="/forgot-password">Request a new link</Link></AuthPage>;
+  if (!token) return <AuthPage title="Link not valid" intro="This reset link is missing its token."><Link to="/forgot-password" className="link-standalone">Request a new link</Link></AuthPage>;
   return (
     <AuthPage title="Choose a new password">
       <Form method="post" action="/reset-password" className="stack" noValidate>

@@ -55,8 +55,8 @@ export default function Notifications({ loaderData }: Route.ComponentProps) {
     <div>
       <h1>Your account</h1>
       <AccountNav />
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: "var(--s2)" }}>
-        <h2 style={{ margin: 0 }}>Notifications {unreadCount > 0 && <Badge tone="gold">{unreadCount} unread</Badge>}</h2>
+      <div className="row u-justify-content-space-between-margin-bottom-var-s2">
+        <h2 className="u-margin-0">Notifications {unreadCount > 0 && <Badge tone="gold">{unreadCount} unread</Badge>}</h2>
         <div className="row">
           <LinkButton variant="secondary" to="/account/notifications/preferences">Email settings</LinkButton>
           {unreadCount > 0 && (
@@ -67,14 +67,14 @@ export default function Notifications({ loaderData }: Route.ComponentProps) {
       {notifications.length === 0 ? (
         <EmptyState title="Nothing new">Updates about your orders, deliveries, refunds and messages appear here.</EmptyState>
       ) : (
-        <ul className="stack" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="stack u-list-style-none-padding-0">
           {notifications.map((n) => {
             const link = notificationLink(n);
             return (
               <li key={n.id}>
-                <Card className="row" style={{ justifyContent: "space-between" }}>
+                <Card className="row u-justify-content-space-between">
                   <div>
-                    <p style={{ margin: 0, fontWeight: n.read ? 400 : 700 }}>
+                    <p className={n.read ? "u-m0 u-fw-400" : "u-m0 u-fw-700"}>
                       {!n.read && <span className="sr-only">Unread: </span>}{notificationText(n)}
                     </p>
                     <span className="muted">{formatDate(n.createdAt, true)}</span>

@@ -38,7 +38,7 @@ export function AddToCart({ listingId, variantId, title, variantName }: AddToCar
       <input type="hidden" name="listingId" value={listingId} />
       <input type="hidden" name="variantId" value={variantId} />
       <label className="row">Quantity
-        <input name="qty" type="number" min={1} max={99} defaultValue={1} className="input" style={{ width: "5rem" }} />
+        <input name="qty" type="number" min={1} max={99} defaultValue={1} className="input u-width-5rem" />
       </label>
       <Button type="submit" variant="primary" aria-label={`Add ${title}, ${variantName}, to cart`}>Add to cart</Button>
     </form>

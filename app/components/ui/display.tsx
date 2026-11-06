@@ -40,8 +40,8 @@ export function RatingStars({ value, count }: { value: number; count?: number | 
   );
 }
 
-export function Skeleton({ width = "100%", height = 16 }: { width?: number | string; height?: number | string }) {
-  return <span className="skeleton" aria-hidden="true" style={{ width, height }} />;
+export function Skeleton({ size = "line" }: { size?: "line" | "title" }) {
+  return <span className={size === "title" ? "skeleton skeleton-title" : "skeleton"} aria-hidden="true" />;
 }
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {

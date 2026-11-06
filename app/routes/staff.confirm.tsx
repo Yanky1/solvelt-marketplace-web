@@ -71,7 +71,7 @@ export default function StaffConfirm() {
   }
 
   return (
-    <Card className="stack" style={{ maxWidth: 480 }}>
+    <Card className="stack u-max-width-480px">
       <h2>Confirm it is you</h2>
       <p className="muted">This action needs a fresh passkey check. Afterwards you are taken back and can do it again.</p>
       {supported === false && <FormMessage kind="error">This browser or device does not support passkeys.</FormMessage>}

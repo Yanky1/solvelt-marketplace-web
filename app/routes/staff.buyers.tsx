@@ -80,13 +80,13 @@ function Panel({ buyer, perms }: { buyer: StaffBuyer; perms: { canReveal: boolea
   const msg = [lock, reveal, out, orders].map((f) => (f.data?.kind === "error" ? f.data.message : null)).find(Boolean);
   return (
     <Card className="stack" data-testid="buyer-card">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div className="row u-justify-content-space-between-flex-wrap-wrap">
         <h2>{buyer.name}</h2>
         <div className="row">
           {locked && <Badge tone="err">Locked</Badge>}{buyer.deleted && <Badge>Deleted</Badge>}{buyer.demo && <Badge tone="gold">Demo</Badge>}{!buyer.emailVerified && <Badge>Not verified</Badge>}
         </div>
       </div>
-      <dl className="stack" style={{ margin: 0 }}>
+      <dl className="stack u-margin-0">
         <div><dt className="muted">Email (masked)</dt><dd>{buyer.email ?? "—"}</dd></div>
         <div><dt className="muted">Account id</dt><dd><code>{buyer.id}</code></dd></div>
         <div><dt className="muted">Joined</dt><dd>{when(buyer.createdAt)}</dd></div>
@@ -113,7 +113,7 @@ function Panel({ buyer, perms }: { buyer: StaffBuyer; perms: { canReveal: boolea
           <h3>Break-glass reveal</h3>
           <p className="muted">Shows the real values once, needs a fresh passkey check and is recorded.</p>
           <StaffCsrf /><input type="hidden" name="id" value={buyer.id} /><input type="hidden" name="intent" value="reveal" />
-          <fieldset className="row" style={{ flexWrap: "wrap", border: 0, padding: 0 }}><legend className="muted">Show</legend>
+          <fieldset className="row u-flex-wrap-wrap-border-0-padding-0"><legend className="muted">Show</legend>
             {["email", "name", "phone", "addresses"].map((f) => <Checkbox key={f} name="fields" value={f} label={f} />)}
           </fieldset>
           <ReasonField id={`reveal-${buyer.id}`} />

@@ -15,8 +15,8 @@ export function Modal({ open, onClose, title, variant = "modal", children }: { o
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <dialog ref={ref} className={`modal ${variant === "drawer" ? "drawer" : ""}`} aria-label={title} onClose={onClose}
       onClick={(e) => { if (e.target === ref.current) onClose(); }}>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>{title}</h2>
+      <div className="row u-justify-content-space-between">
+        <h2 className="u-margin-0">{title}</h2>
         <Button variant="ghost" onClick={onClose} aria-label="Close">✕</Button>
       </div>
       {children}

@@ -118,10 +118,10 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
       {loaderData.passkeys.length === 0 ? (
         <EmptyState title="No passkeys yet">Add one to sign in faster on this device.</EmptyState>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0 }} className="stack">
+        <ul className="stack u-list-style-none-padding-0">
           {loaderData.passkeys.map((p) => (
             <li key={p.id}>
-              <Card className="row" style={{ justifyContent: "space-between" }}>
+              <Card className="row u-justify-content-space-between">
                 <div>
                   <strong>{p.name}</strong>
                   <div className="muted">Added {new Date(p.createdAt).toISOString().slice(0, 10)}{p.lastUsedAt ? `, last used ${new Date(p.lastUsedAt).toISOString().slice(0, 10)}` : ""}</div>
@@ -136,7 +136,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
         </ul>
       )}
       {loaderData.passkeys.length > 1 && <p><Link to="/account/passkeys/remove-all">Remove all passkeys</Link></p>}
-      <Card className="stack" style={{ marginTop: "var(--s3)" }}>
+      <Card className="stack u-margin-top-var-s3">
         <h3>Add a passkey</h3>
         {supported === false && <FormMessage kind="error">This browser or device does not support passkeys.</FormMessage>}
         {error && <FormMessage kind="error">{error}</FormMessage>}

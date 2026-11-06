@@ -30,7 +30,7 @@ export default function StaffAudit({ loaderData: d }: Route.ComponentProps) {
   return (
     <div className="stack">
       <h2>Audit log</h2>
-      <Form method="get" className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
+      <Form method="get" className="row u-align-items-flex-end-flex-wrap-wrap">
         <Input label="Action" name="action" defaultValue={d.action} hint="For example buyer.reveal" maxLength={60} />
         <Button type="submit" variant="secondary">Filter</Button>
       </Form>

@@ -35,17 +35,17 @@ export default function Orders({ loaderData }: Route.ComponentProps) {
       {orders.length === 0 ? (
         <EmptyState title="No orders yet" action={<LinkButton to="/">Start shopping</LinkButton>}>When you place an order it appears here, with tracking and returns.</EmptyState>
       ) : (
-        <ul className="stack" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="stack u-list-style-none-padding-0">
           {orders.map((o) => (
             <li key={o.number}>
               <Card className="stack">
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <h3 style={{ margin: 0 }}><Link to={`/account/orders/${encodeURIComponent(o.number)}`}>Order {o.number}</Link></h3>
+                <div className="row u-justify-content-space-between">
+                  <h3 className="u-margin-0"><Link to={`/account/orders/${encodeURIComponent(o.number)}`}>Order {o.number}</Link></h3>
                   <span className="muted">{formatDate(o.createdAt)}</span>
                 </div>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                <ul className="u-list-style-none-padding-0-margin-0">
                   {o.groups.map((g) => (
-                    <li key={g.sellerOrderNumber ?? g.sellerName} className="row" style={{ justifyContent: "space-between" }}>
+                    <li key={g.sellerOrderNumber ?? g.sellerName} className="row u-justify-content-space-between">
                       <span>
                         {g.sellerName}
                         {g.firstItem && <span className="muted">: {g.firstItem}{g.itemCount > 1 ? ` and ${g.itemCount - 1} more` : ""}</span>}
@@ -54,7 +54,7 @@ export default function Orders({ loaderData }: Route.ComponentProps) {
                     </li>
                   ))}
                 </ul>
-                <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="row u-justify-content-space-between">
                   <strong>{formatMoney(o.totalCents, o.currency)}</strong>
                   {o.refundedCents > 0 && <span className="muted">{formatMoney(o.refundedCents, o.currency)} refunded</span>}
                 </div>

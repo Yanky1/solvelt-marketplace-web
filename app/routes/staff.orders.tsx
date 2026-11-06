@@ -54,10 +54,10 @@ function OrderCard({ order, canRetry, canPayments }: { order: StaffOrder; canRet
   const done = retry.data?.kind === "retried";
   return (
     <Card className="stack" data-testid="order-card">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div className="row u-justify-content-space-between-flex-wrap-wrap">
         <h2>{order.number}</h2><div className="row"><Badge>{order.status}</Badge>{order.demo && <Badge tone="gold">Demo</Badge>}</div>
       </div>
-      <dl className="stack" style={{ margin: 0 }}>
+      <dl className="stack u-margin-0">
         <div><dt className="muted">Buyer</dt><dd>{order.buyer.name}{order.buyer.guestEmail ? ` (guest ${order.buyer.guestEmail})` : ""} · {order.buyer.shipCountry}</dd></div>
         <div><dt className="muted">Total / paid / refunded</dt><dd>{money(order.totalCents, order.currency)} / {money(order.paidCents, order.currency)} / {money(order.refundedCents, order.currency)}</dd></div>
         <div><dt className="muted">Placed / paid</dt><dd>{when(order.createdAt)} / {when(order.paidAt)}</dd></div>
@@ -69,7 +69,7 @@ function OrderCard({ order, canRetry, canPayments }: { order: StaffOrder; canRet
       </table></TableWrap>
       <h3>Refunds</h3>
       {order.refunds.length === 0 ? <p className="muted">None.</p> : (
-        <ul className="stack" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="stack u-list-style-none-padding-0">
           {order.refunds.map((r) => (
             <li key={r.id}>
               <div>{money(r.amountCents, order.currency)} · <Badge tone={r.status === "succeeded" ? "ok" : r.status === "reserved" ? "gold" : "err"}>{r.status}</Badge> · {r.reason}{canPayments && order.payment?.refunds.find((x) => x.id === r.id)?.stripeRefundId ? ` · ${order.payment.refunds.find((x) => x.id === r.id)?.stripeRefundId}` : ""}</div>

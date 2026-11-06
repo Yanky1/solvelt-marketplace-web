@@ -60,7 +60,7 @@ main { flex: 1; padding-block: var(--s4); }
 .price { font-weight: 700; font-variant-numeric: tabular-nums; }
 .price-was { color: var(--muted); text-decoration: line-through; font-weight: 400; margin-inline-start: var(--s1); }
 .stars { display: inline-flex; align-items: center; gap: 2px; color: var(--gold-ink); }
-.skeleton { display: block; background: linear-gradient(90deg, var(--surface-2), var(--border), var(--surface-2)); background-size: 200% 100%; border-radius: var(--r-sm); animation: shimmer 1.4s linear infinite; }
+.skeleton { display: block; width: 100%; height: 16px; background: linear-gradient(90deg, var(--surface-2), var(--border), var(--surface-2)); background-size: 200% 100%; border-radius: var(--r-sm); animation: shimmer 1.4s linear infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } * { transition: none !important; } }
 .empty { text-align: center; padding: var(--s6) var(--s2); }
@@ -214,3 +214,59 @@ dialog.drawer { margin: 0; inset: 0 auto 0 0; height: 100%; max-height: 100%; wi
 .table thead th { border-bottom-color: var(--border-strong); }
 .table code { overflow-wrap: anywhere; }
 .table summary { display: inline-flex; align-items: center; min-height: 2rem; padding: 0 var(--s1); cursor: pointer; }
+
+/* ---------- utilities that replace inline style="" attributes (M8W-08) ----------
+   WebKit applies style-src to style attributes and ignores style-src-attr, so any inline style is a CSP violation there; the policy now has no 'unsafe-inline' at all.
+   !important keeps the precedence an inline style had over the component rules. */
+.u-max-width-480px-margin-inline-auto { max-width: 480px !important; margin-inline: auto !important }
+.u-font-size-var-fs-xl { font-size: var(--fs-xl) !important }
+.u-justify-content-space-between { justify-content: space-between !important }
+.u-white-space-pre-line-margin-0 { white-space: pre-line !important; margin: 0 !important }
+.u-list-style-none-padding-0 { list-style: none !important; padding: 0 !important }
+.u-max-width-100-height-auto-border-radius-var-r1-6px { max-width: 100% !important; height: auto !important; border-radius: var(--r1, 6px) !important }
+.u-margin-left-var-s3 { margin-left: var(--s3) !important }
+.u-margin-0 { margin: 0 !important }
+.u-font-size-var-fs-h3-1-5rem { font-size: var(--fs-h3, 1.5rem) !important }
+.u-display-flex-align-items-center-gap-var-s2-0-75rem-min-height-2-5rem { display: flex !important; align-items: center !important; gap: var(--s2, 0.75rem) !important; min-height: 2.5rem !important; box-sizing: border-box !important }
+.u-min-width-4-5rem { min-width: 4.5rem !important }
+.u-flex-1-1-8rem { flex: 1 1 8rem !important }
+.u-min-width-2rem-text-align-right { min-width: 2rem !important; text-align: right !important }
+.u-align-items-flex-end { align-items: flex-end !important }
+.u-flex-wrap-wrap-gap-var-s1 { flex-wrap: wrap !important; gap: var(--s1) !important }
+.u-width-5rem { width: 5rem !important }
+.u-flex-wrap-wrap { flex-wrap: wrap !important }
+.u-margin-0-padding-left-1-2em { margin: 0 !important; padding-left: 1.2em !important }
+.u-margin-top-var-s2 { margin-top: var(--s2) !important }
+.u-justify-content-flex-start-width-100 { justify-content: flex-start !important; width: 100% !important }
+.u-font-size-var-fs-lg { font-size: var(--fs-lg) !important }
+.u-margin-bottom-var-s3 { margin-bottom: var(--s3) !important }
+.u-font-size-1rem-margin-0 { font-size: 1rem !important; margin: 0 !important }
+.u-list-style-none-padding-0-margin-0 { list-style: none !important; padding: 0 !important; margin: 0 !important }
+.u-justify-content-space-between-align-items-flex-start { justify-content: space-between !important; align-items: flex-start !important }
+.u-text-align-right { text-align: right !important }
+.u-justify-content-space-between-margin-bottom-var-s2 { justify-content: space-between !important; margin-bottom: var(--s2) !important }
+.u-font-style-normal { font-style: normal !important }
+.u-justify-content-space-between-flex-wrap-wrap { justify-content: space-between !important; flex-wrap: wrap !important }
+.u-flex-wrap-wrap-border-0-padding-0 { flex-wrap: wrap !important; border: 0 !important; padding: 0 !important }
+.u-max-width-480px { max-width: 480px !important }
+.u-margin-0-white-space-pre-wrap-overflow-wrap-anywhere { margin: 0 !important; white-space: pre-wrap !important; overflow-wrap: anywhere !important }
+.u-align-items-flex-end-flex-wrap-wrap { align-items: flex-end !important; flex-wrap: wrap !important }
+.u-object-fit-cover-border-radius-var-r-ctl { object-fit: cover !important; border-radius: var(--r-ctl) !important }
+.u-align-items-flex-end-margin-bottom-var-s3 { align-items: flex-end !important; margin-bottom: var(--s3) !important }
+.u-flex-1-1-14rem { flex: 1 1 14rem !important }
+.u-flex-wrap-wrap-gap-var-s2 { flex-wrap: wrap !important; gap: var(--s2) !important }
+.u-min-width-200px { min-width: 200px !important }
+.u-font-size-var-fs-xl-1-75rem { font-size: var(--fs-xl, 1.75rem) !important }
+.u-word-break-break-all { word-break: break-all !important }
+.u-margin-top-var-s4 { margin-top: var(--s4) !important }
+.u-max-width-100-height-auto { max-width: 100% !important; height: auto !important }
+.u-margin-top-var-s3 { margin-top: var(--s3) !important }
+.u-border-0-border-top-1px-solid-var-divider-width-100 { border: 0 !important; border-top: 1px solid var(--divider) !important; width: 100% !important }
+.u-tap { display: inline-block !important; min-height: 2rem !important; min-width: 2rem !important; padding: 0.3rem 0.25rem !important; box-sizing: border-box !important; }
+.u-form-ok { border-radius: var(--r-ctl) !important; padding: var(--s1) var(--s2) !important; }
+.u-fw-400 { font-weight: 400 !important; } .u-fw-600 { font-weight: 600 !important; } .u-fw-700 { font-weight: 700 !important; }
+.u-msg { max-width: min(46rem, 100%); } .u-msg-buyer { align-self: flex-end; } .u-msg-seller { align-self: flex-start; }
+.skeleton-title { width: 60%; height: 24px; }
+
+/* Links that stand on their own (not inside a sentence) are at least 24 CSS px tall, WCAG 2.5.8 (sweep issues #6 and #7, M8W-08). */
+.link-standalone, .category-grid a, .category-links a { display: inline-flex; align-items: center; min-height: 2rem; }

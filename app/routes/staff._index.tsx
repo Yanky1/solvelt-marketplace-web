@@ -32,13 +32,13 @@ export default function StaffHome({ loaderData: d }: Route.ComponentProps) {
   return (
     <div className="stack">
       <p>Signed in as <strong>{d.me.displayName}</strong> ({d.me.role}). Every action here is recorded with who, what, why and when.</p>
-      <div className="row" style={{ flexWrap: "wrap", gap: "var(--s2)" }}>
+      <div className="row u-flex-wrap-wrap-gap-var-s2">
         {tiles.filter((t) => t.value !== null).map((t) => (
-          <Card key={t.label} style={{ minWidth: 200 }}><strong style={{ fontSize: "var(--fs-xl, 1.75rem)" }}>{t.value}</strong><div><Link to={t.to} className="btn btn-ghost">{t.label}</Link></div></Card>
+          <Card key={t.label}><strong>{t.value}</strong><div><Link to={t.to} className="btn btn-ghost u-min-width-200px u-font-size-var-fs-xl-1-75rem">{t.label}</Link></div></Card>
         ))}
       </div>
       <Card className="stack"><h2>Open</h2>
-        <div className="row" style={{ flexWrap: "wrap" }}>{NAV.filter((n) => d.me.permissions.includes(n.permission)).map((n) => <Link key={n.to} to={n.to} className="btn btn-secondary">{n.label}</Link>)}</div>
+        <div className="row u-flex-wrap-wrap">{NAV.filter((n) => d.me.permissions.includes(n.permission)).map((n) => <Link key={n.to} to={n.to} className="btn btn-secondary">{n.label}</Link>)}</div>
       </Card>
     </div>
   );

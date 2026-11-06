@@ -30,7 +30,7 @@ export default function ForgotPassword() {
   const a = useActionData<typeof action>();
   const busy = useNavigation().state !== "idle";
   if (a?.sent) {
-    return <AuthPage title="Check your inbox"><FormMessage kind="ok">If an account exists for that address, we have sent a link to reset the password.</FormMessage><Link to="/sign-in">Back to sign in</Link></AuthPage>;
+    return <AuthPage title="Check your inbox"><FormMessage kind="ok">If an account exists for that address, we have sent a link to reset the password.</FormMessage><Link to="/sign-in" className="link-standalone">Back to sign in</Link></AuthPage>;
   }
   return (
     <AuthPage title="Reset your password" intro="Enter your email and we will send you a link to choose a new password.">
@@ -39,7 +39,7 @@ export default function ForgotPassword() {
         <ErrorSummary submission={a} message={a?.message} errors={a?.error ? { email: a.error } : undefined} />
         <Input label="Email" name="email" type="email" autoComplete="email" error={a?.error ?? undefined} required />
         <Button type="submit" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</Button>
-        <Link to="/sign-in">Back to sign in</Link>
+        <Link to="/sign-in" className="link-standalone">Back to sign in</Link>
       </Form>
     </AuthPage>
   );

@@ -32,7 +32,7 @@ export default function Staff({ loaderData }: Route.ComponentProps) {
   const me = loaderData.me;
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div className="row u-justify-content-space-between-flex-wrap-wrap">
         <h1>Staff</h1>
         {me && (
           <div className="row">

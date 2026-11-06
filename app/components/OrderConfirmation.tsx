@@ -28,11 +28,11 @@ export function OrderConfirmation({ order, lost }: Pick<ConfirmationData, "order
       <h1>{text.title}</h1>
       <p role="status" data-testid="order-status" data-status={order.status}>{text.text}</p>
       <Card className="stack">
-        <p style={{ margin: 0 }}>Order <strong>{order.number}</strong>{order.totalCents !== undefined && <> · Total <strong>{formatMoney(order.totalCents, order.currency ?? "USD")}</strong></>}</p>
+        <p className="u-margin-0">Order <strong>{order.number}</strong>{order.totalCents !== undefined && <> · Total <strong>{formatMoney(order.totalCents, order.currency ?? "USD")}</strong></>}</p>
         {order.groups?.map((g) => (
           <div key={`${g.sellerName}:${g.brandName}`}>
             <strong>{g.brandName || g.sellerName}</strong>
-            <ul style={{ margin: 0 }}>{g.lines.map((l, i) => <li key={i}>{l.quantity} x {l.title}{l.variantName ? `, ${l.variantName}` : ""}</li>)}</ul>
+            <ul className="u-margin-0">{g.lines.map((l, i) => <li key={i}>{l.quantity} x {l.title}{l.variantName ? `, ${l.variantName}` : ""}</li>)}</ul>
           </div>
         ))}
       </Card>

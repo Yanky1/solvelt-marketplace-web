@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
+import { PAGES } from "./pages";
 
 const SECURITY = {
   "x-content-type-options": "nosniff",
@@ -133,4 +134,20 @@ test("script-src is exactly self, the nonce, Stripe's origin and (E2E only) the 
   expect(directive("frame-src")).toEqual(["https://js.stripe.com", "http://localhost:5080", "https://hooks.stripe.com"]);
   expect(directive("connect-src")).toEqual(["'self'", "https://api.stripe.com"]);
   expect(directive("img-src")).toEqual(["'self'", "data:", "https://*.stripe.com"]);
+});
+
+// Sweep issue #3 (M8W-08): WebKit applies style-src to style="" attributes and ignores style-src-attr, so one inline style on a page is a CSP violation there. The policy has no
+// 'unsafe-inline' for styles, and no page carries a style attribute (layout comes from classes).
+test("the CSP allows no inline styles, and no page renders a style attribute", async ({ page, request }) => {
+  const csp = (await request.get("/")).headers()["content-security-policy"] ?? "";
+  expect(csp).toContain("style-src 'self'");
+  expect(csp).not.toContain("unsafe-inline");
+  expect(csp).not.toContain("style-src-attr");
+  const withStyle: string[] = [];
+  for (const path of PAGES) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    const n = await page.locator("[style]").count();
+    if (n > 0) withStyle.push(`${path}: ${n}`);
+  }
+  expect(withStyle).toEqual([]);
 });

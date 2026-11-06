@@ -62,8 +62,8 @@ export function Header() {
         <Link to="/cart" className="btn btn-secondary" aria-label={`Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}>Cart <span aria-hidden="true" data-testid="cart-count">{cartCount}</span></Link>
       </div>
       <Modal open={open} onClose={() => setOpen(false)} title="Menu" variant="drawer">
-        <nav aria-label="Mobile" className="stack" style={{ marginTop: "var(--s2)" }}>
-          {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost" style={{ justifyContent: "flex-start", width: "100%" }} onClick={() => setOpen(false)}>{l.label}</Link>)}
+        <nav aria-label="Mobile" className="stack u-margin-top-var-s2">
+          {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost u-justify-content-flex-start-width-100" onClick={() => setOpen(false)}>{l.label}</Link>)}
         </nav>
       </Modal>
     </header>
@@ -79,11 +79,11 @@ export function Footer({ theme }: { theme: ThemePref }) {
           <p className="muted">Products and services from independent sellers, with kosher-aware filters.</p>
         </div>
         <nav aria-label="Footer">
-          <h2 style={{ fontSize: "var(--fs-lg)" }}>Shop</h2>
+          <h2 className="u-font-size-var-fs-lg">Shop</h2>
           <ul>{NAV_LINKS.map((l) => <li key={l.to}><Link to={l.to}>{l.label}</Link></li>)}</ul>
         </nav>
         <div>
-          <h2 style={{ fontSize: "var(--fs-lg)" }}>Appearance</h2>
+          <h2 className="u-font-size-var-fs-lg">Appearance</h2>
           <ThemeSwitch theme={theme} />
         </div>
       </div>

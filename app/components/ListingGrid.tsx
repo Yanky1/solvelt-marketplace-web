@@ -7,7 +7,7 @@ import { listingPath } from "~/lib/urls";
 /** A plain grid of the small cards wishlists and "recently viewed" use (catalog data only; the whole card is one link). */
 export function ListingGrid({ items, label }: { items: ListCardView[]; label: string }) {
   return (
-    <ul className="grid" style={{ listStyle: "none", padding: 0 }} aria-label={label}>
+    <ul className="grid u-list-style-none-padding-0" aria-label={label}>
       {items.map((c) => (
         <li key={c.id} className="listing-card">
           <Link to={listingPath(c.slug)} className="listing-card-link">

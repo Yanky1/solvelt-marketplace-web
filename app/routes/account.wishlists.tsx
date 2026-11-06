@@ -50,9 +50,9 @@ export default function Wishlists({ loaderData, actionData }: Route.ComponentPro
       <AccountNav />
       <h2>Wishlists</h2>
       <p className="muted">Save things for later. Lists are private unless you share one with a link. We tell you when something on a list drops in price or is back in stock.</p>
-      <Form method="post" className="row" style={{ alignItems: "flex-end", marginBottom: "var(--s3)" }} noValidate>
+      <Form method="post" className="row u-align-items-flex-end-margin-bottom-var-s3" noValidate>
         <CsrfField />
-        <label className="field" style={{ flex: "1 1 14rem" }}>
+        <label className="field u-flex-1-1-14rem">
           <span>New list</span>
           <input className="input" name="name" maxLength={NAME_MAX} required aria-invalid={error ? true : undefined} aria-describedby={error ? "wl-error" : undefined} autoComplete="off" />
         </label>
@@ -62,11 +62,11 @@ export default function Wishlists({ loaderData, actionData }: Route.ComponentPro
       {loaderData.wishlists.length === 0 ? (
         <EmptyState title="No lists yet">Create a list, then use "Save to a list" on any product.</EmptyState>
       ) : (
-        <ul className="grid" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="grid u-list-style-none-padding-0">
           {loaderData.wishlists.map((w) => (
             <li key={w.id}>
               <Card className="stack">
-                <h3 style={{ margin: 0 }}><Link to={`/account/wishlists/${encodeURIComponent(w.id)}`}>{w.name}</Link></h3>
+                <h3 className="u-margin-0"><Link to={`/account/wishlists/${encodeURIComponent(w.id)}`}>{w.name}</Link></h3>
                 <span className="muted">{w.itemCount === 1 ? "1 item" : `${w.itemCount} items`}{w.shared ? " · shared by link" : " · private"}</span>
               </Card>
             </li>

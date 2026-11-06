@@ -54,7 +54,7 @@ function LinkBox({ link, expiresAt }: { link: string; expiresAt: string }) {
   return (
     <div role="status" className="stack" data-testid="enrol-link">
       <FormMessage kind="ok">Give this one-time link to the staff member. It is shown only now and expires {when(expiresAt)}.</FormMessage>
-      <code style={{ wordBreak: "break-all" }}>{link}</code>
+      <code className="u-word-break-break-all">{link}</code>
     </div>
   );
 }
@@ -63,7 +63,7 @@ function Row({ a, meId }: { a: Route.ComponentProps["loaderData"]["accounts"][nu
   const f = useFetcher<Result>();
   return (
     <Card className="stack">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div className="row u-justify-content-space-between-flex-wrap-wrap">
         <div><strong>{a.displayName}</strong> <span className="muted">{a.email}</span>{a.id === meId ? " (you)" : ""}</div>
         <div className="row"><Badge tone="gold">{a.role}</Badge>{!a.enrolled && <Badge>Not enrolled</Badge>}{a.disabled && <Badge tone="err">Disabled</Badge>}</div>
       </div>
@@ -77,7 +77,7 @@ function Row({ a, meId }: { a: Route.ComponentProps["loaderData"]["accounts"][nu
           <ReasonField id={`reason-${a.id}`} />
           <Select label="Role" name="role" defaultValue={a.role}><option value="support">support</option><option value="finance">finance</option><option value="admin">admin</option></Select>
           <label className="row"><input type="checkbox" name="revoke" /> Lost device: also remove their passkeys and end their sessions (with "New enrolment link")</label>
-          <div className="row" style={{ flexWrap: "wrap" }}>
+          <div className="row u-flex-wrap-wrap">
             <Button type="submit" name="intent" value="role" variant="secondary" disabled={f.state !== "idle"}>Change role</Button>
             <Button type="submit" name="intent" value="reissue" variant="secondary" disabled={f.state !== "idle"}>New enrolment link</Button>
             <Button type="submit" name="intent" value="signout" variant="secondary" disabled={f.state !== "idle"}>Sign out everywhere</Button>

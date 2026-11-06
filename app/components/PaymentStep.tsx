@@ -68,7 +68,7 @@ export function PaymentStep({ clientSecret, publishableKey, stripeJsUrl, returnU
       <div id="payment-element" aria-live="polite">{state === "loading" && <p className="muted">Loading the secure payment form…</p>}</div>
       {error && <p role="alert" data-testid="payment-error">{error}</p>}
       <Button type="submit" variant="primary" disabled={state !== "ready"}>{state === "paying" ? "Paying…" : `Pay ${totalLabel}`}</Button>
-      <p className="muted" style={{ margin: 0 }}>Your card details go straight to Stripe. We never see them.</p>
+      <p className="muted u-margin-0">Your card details go straight to Stripe. We never see them.</p>
     </form>
   );
 }
