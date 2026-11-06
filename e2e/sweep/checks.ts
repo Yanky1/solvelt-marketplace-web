@@ -38,24 +38,27 @@ export function watchPage(page: Page, expectedMain: number[]) {
     if (sources.length < 20) sources.push(`[${phase}] ${loc.url || "(no url)"}:${loc.lineNumber} on ${page.url()}: ${m.text().slice(0, 160)}`);
   });
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 240)));
-  return { http, consoleErrors, pageErrors, main, sources, suppressed: () => suppressed, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
+  return { http, consoleErrors, pageErrors, main, sources, suppressed: () => suppressed, phase: () => phase, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
 }
 
-export interface CspEvents { lines: string[]; all: number; select: number; writes: number }
+export interface CspEvents { lines: string[]; all: number; select: number; writes: number; screenshotDocument: number }
 
 /**
  * Listens for CSP violations inside the page (securitypolicyviolation: which directive, what was blocked, which element) from the first script on, and for any script that writes a style
  * onto a <select> (setAttribute, or a style attribute change seen by a mutation observer). The counts are kept here, in the test, through a binding that survives the navigations of the click
  * step (a page's own counters would be lost with every new document). Evidence for the WebKit finding of issue #3 (M8W-08).
  */
-export async function listenForCspViolations(page: Page): Promise<CspEvents> {
-  const tally: CspEvents = { lines: [], all: 0, select: 0, writes: 0 };
-  await page.exposeBinding("__sweepCsp", (_src, kind: "violation" | "write", isSelect: boolean, line: string) => {
-    if (kind === "violation") { tally.all++; if (isSelect) tally.select++; } else tally.writes++;
-    if (tally.lines.length < 12) tally.lines.push(line);
+export async function listenForCspViolations(page: Page, phase: () => string): Promise<CspEvents> {
+  const tally: CspEvents = { lines: [], all: 0, select: 0, writes: 0, screenshotDocument: 0 };
+  await page.exposeBinding("__sweepCsp", (_src, kind: "violation" | "write", isSelect: boolean, isDocument: boolean, line: string) => {
+    const p = phase();
+    // what Playwright's screenshot step injects targets the document (no element) while it takes or compares a screenshot: counted apart, it is the harness set-aside's business
+    if (kind === "violation" && isDocument && (p === "screenshot" || p === "compare")) tally.screenshotDocument++;
+    else if (kind === "violation") { tally.all++; if (isSelect) tally.select++; } else tally.writes++;
+    if (tally.lines.length < 14) tally.lines.push(`[${p}] ${line}`);
   });
   await page.addInitScript(() => {
-    const report = (kind: "violation" | "write", isSelect: boolean, line: string) => (window as unknown as { __sweepCsp?: (...a: unknown[]) => void }).__sweepCsp?.(kind, isSelect, line);
+    const report = (kind: "violation" | "write", isSelect: boolean, line: string, isDocument = false) => (window as unknown as { __sweepCsp?: (...a: unknown[]) => void }).__sweepCsp?.(kind, isSelect, isDocument, line);
     const stack = () => (new Error().stack ?? "").split("\n").slice(1, 4).map((l) => l.trim().slice(0, 90)).join(" < ");
     const setAttr = Element.prototype.setAttribute;
     Element.prototype.setAttribute = function (this: Element, name: string, value: string) {
@@ -68,7 +71,7 @@ export async function listenForCspViolations(page: Page): Promise<CspEvents> {
     document.addEventListener("securitypolicyviolation", (e) => {
       const t = e.target as Element | null;
       const where = t && t.nodeName ? `${t.nodeName.toLowerCase()}${t.id ? "#" + t.id : ""}${typeof t.className === "string" && t.className ? "." + t.className.split(" ")[0] : ""}` : "document";
-      report("violation", !!t && t.nodeName === "SELECT", `${e.effectiveDirective} blocked=${e.blockedURI} on ${where} (${e.sourceFile || "no file"}:${e.lineNumber})`);
+      report("violation", !!t && t.nodeName === "SELECT", `${e.effectiveDirective} blocked=${e.blockedURI} on ${where} (${e.sourceFile || "no file"}:${e.lineNumber})`, !t || t.nodeName === "#document" || t === (document as unknown as Element));
     }, true);
   });
   return tally;
