@@ -18,6 +18,12 @@ on:
       browsers:
         description: "Browsers to sweep (comma separated: chromium,firefox,webkit)"
         default: "chromium,firefox,webkit"
+      widths:
+        description: "Widths to sweep (comma separated; empty = all). For a narrow diagnostic run."
+        default: ""
+      grep:
+        description: "Only the tests whose title matches this regular expression (empty = all). For a narrow diagnostic run."
+        default: ""
   push:
     branches: ["main"]
 
@@ -144,6 +150,9 @@ jobs:
         run: npm run sweep:setup
       - name: Sweep
         run: npm run sweep
+        env:
+          SWEEP_WIDTHS: ${{ inputs.widths }}
+          SWEEP_GREP: ${{ inputs.grep }}
       - name: Lighthouse (layout shift and LCP on home, search, product, cart, checkout)
         if: always()
         run: node scripts/sweep-lighthouse.mjs

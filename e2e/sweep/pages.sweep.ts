@@ -55,12 +55,18 @@ for (const role of roles) {
         found.status = expected.includes(status) || (status >= 300 && status < 400) ? [] : [`the page answered ${status} (expected ${expected.join(" or ")})`];
 
         // layout, tap targets
+        watcher.setPhase("layout");
         const lay = await layoutFindings(page);
         found.layout = lay.layout;
         found.tap = lay.tap;
         // accessibility and keyboard
+        styles.push(await styleSnapshot(page, "after layout"));
+        watcher.setPhase("axe");
         found.axe = await axeFindings(page).catch((e) => [`axe failed to run: ${String(e).slice(0, 120)}`]);
+        styles.push(await styleSnapshot(page, "after axe"));
+        watcher.setPhase("keyboard");
         found.keyboard = await keyboardFindings(page);
+        styles.push(await styleSnapshot(page, "after keyboard"));
 
         // screenshots: published (full page), and compared with the baseline (dynamic content masked)
         watcher.setPhase("screenshot");
@@ -84,6 +90,7 @@ for (const role of roles) {
         watcher.setPhase("clicks");
 
         // click everything (the shell once, on the home page)
+        styles.push(await styleSnapshot(page, "after compare"));
         const clicks = await clickEverything(page, url!, isChromium ? 12 : 6, "main");
         found.clicks = clicks.findings;
         if (spec.pattern === "/") found.clicks.push(...(await clickEverything(page, url!, isChromium ? 14 : 6, SHELL_SCOPE)).findings);
