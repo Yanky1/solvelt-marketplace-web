@@ -38,9 +38,9 @@ const md = [
   "| Category | Visits with findings |", "|---|---|",
   ...CATEGORIES.map((c) => `| ${c} | ${byCategory[c]} |`),
   "",
-  `Distinct findings: **${top.length}**. The most frequent:`,
+  `Distinct findings: **${top.length}**${top.length > 40 ? " (the 40 most frequent are listed; all are in records/)" : ""}:`,
   "",
-  ...top.slice(0, 15).map((g) => `- ${g.count}x ${g.key} (e.g. ${[...g.where][0]})`),
+  ...top.slice(0, 40).map((g) => `- ${g.count}x ${g.key} (e.g. ${[...g.where][0]})`),
   "",
 ].join("\n");
 writeFileSync(join(OUT, "summary.md"), md);

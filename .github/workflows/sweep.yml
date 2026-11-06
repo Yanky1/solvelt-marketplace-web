@@ -19,7 +19,7 @@ on:
         description: "Browsers to sweep (comma separated: chromium,firefox,webkit)"
         default: "chromium,firefox,webkit"
   push:
-    branches: ["main", "feat/m8-ui-sweep"]   # the branch entry is for the first validation runs and is removed before the merge
+    branches: ["main"]
 
 permissions:
   contents: read
