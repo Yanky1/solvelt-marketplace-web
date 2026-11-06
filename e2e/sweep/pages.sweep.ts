@@ -47,7 +47,7 @@ for (const role of roles) {
         const watcher = watchPage(page, expected);
         const found: Record<string, Findings> = {};
         const t0 = Date.now();
-        const csp = await listenForCspViolations(page);
+        const csp = await listenForCspViolations(page, () => watcher.phase());
         const res = await page.goto(url!, { waitUntil: "domcontentloaded" });
         await settle(page);
         const styles = [await styleSnapshot(page, "after load")];
@@ -107,7 +107,7 @@ for (const role of roles) {
         found.console = consoleAll.filter((msg) => !engine.includes(msg));
 
         const failures = Object.entries(found).filter(([, v]) => v.length);
-        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, csp: csp.lines, cspCounts: { all: csp.all, select: csp.select, writes: csp.writes }, harnessSuppressed: watcher.suppressed(), engineSelectSetAside: engine.length, styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
+        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, csp: csp.lines, cspCounts: { all: csp.all, select: csp.select, writes: csp.writes, screenshotDocument: csp.screenshotDocument }, harnessSuppressed: watcher.suppressed(), engineSelectSetAside: engine.length, styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
         for (const [category, list] of Object.entries(found)) expect.soft(list, `${category} on ${role} ${url}`).toEqual([]);
       });
     }
