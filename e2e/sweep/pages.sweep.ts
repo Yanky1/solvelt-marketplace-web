@@ -92,7 +92,7 @@ for (const role of roles) {
 
         // click everything (the shell once, on the home page)
         styles.push(await styleSnapshot(page, "after compare"));
-        const clicks = await clickEverything(page, url!, isChromium ? 12 : 6, "main");
+        const clicks = await clickEverything(page, url!, isChromium ? 12 : 6, "main", (label) => watcher.setPhase(label));
         found.clicks = clicks.findings;
         await page.goto(url!, { waitUntil: "domcontentloaded" });
         await settle(page);

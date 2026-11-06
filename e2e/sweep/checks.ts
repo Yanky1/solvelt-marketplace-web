@@ -275,7 +275,7 @@ const fingerprint = (page: Page) => page.evaluate(() => `${location.href}|${docu
  * Clicks every visible, enabled clickable in `main` (up to `cap`), except the denylist, each from a fresh load of the page, and checks: something happened; a dialog that opens closes with Esc and with
  * its close button. Console errors and bad responses are collected by watchPage around the whole run.
  */
-export async function clickEverything(page: Page, url: string, cap: number, scope = "main"): Promise<{ findings: Findings; clicked: number; skippedDenied: number }> {
+export async function clickEverything(page: Page, url: string, cap: number, scope = "main", onStep: (label: string) => void = () => {}): Promise<{ findings: Findings; clicked: number; skippedDenied: number }> {
   const findings: Findings = [];
   const cands = await tagCandidates(page, scope);
   const seen = new Set<string>();
@@ -298,6 +298,7 @@ export async function clickEverything(page: Page, url: string, cap: number, scop
     const target = page.locator(`[data-sweep-i="${c.i}"]`);
     if (!(await target.count())) continue;
     const before = await fingerprint(page);
+    onStep(`click ${c.tag} "${c.name.slice(0, 24)}"`);
     try { await target.first().click({ timeout: 4_000 }); } catch (e) { findings.push(`click failed: ${c.tag} "${c.name.slice(0, 50)}": ${String(e).split("\n")[0]!.slice(0, 120)}`); continue; }
     clicked++;
     await page.waitForTimeout(350);

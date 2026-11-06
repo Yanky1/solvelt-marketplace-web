@@ -33,7 +33,7 @@ const top = [...groups.values()].sort((a, b) => b.count - a.count);
 // where the console errors came from (issue #3 diagnosis): by step and by reporting script, and what the document's styles looked like in one affected visit
 const bySource = new Map();
 for (const r of rows) for (const line of r.consoleSources ?? []) {
-  const m = /^\[(\w+)\] (\S+?)(?::\d+)? on /.exec(line);
+  const m = /^\[([^\]]+)\] (\S+?)(?::\d+)? on /.exec(line);
   const key = `${r.browser} [${m?.[1] ?? "?"}] reported by ${m?.[2] ?? "?"}`;
   bySource.set(key, (bySource.get(key) ?? 0) + 1);
 }
