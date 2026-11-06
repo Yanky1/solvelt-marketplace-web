@@ -128,7 +128,7 @@ export default function WishlistPage({ loaderData, actionData }: Route.Component
           <label className="field"><span>Name</span><input className="input" name="name" defaultValue={wishlist.name} maxLength={NAME_MAX} required autoComplete="off" /></label>
           <Button type="submit" variant="secondary" disabled={busy}>Rename</Button>
         </Form>
-        <Form method="post"><CsrfField /><input type="hidden" name="intent" value="delete" /><Button type="submit" variant="ghost" disabled={busy} aria-label={`Delete the list ${wishlist.name}`}>Delete this list</Button></Form>
+        <Form method="post"><CsrfField /><input type="hidden" name="intent" value="delete" /><Button type="submit" variant="ghost" disabled={busy} aria-label={`Delete this list, ${wishlist.name}`}>Delete this list</Button></Form>
       </section>
     </div>
   );
