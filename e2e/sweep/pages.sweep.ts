@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type TestInfo } from "@playwright/test";
-import { axeFindings, clickEverything, keyboardFindings, layoutFindings, settle, SHELL_SCOPE, styleSnapshot, watchPage, type Findings } from "./checks";
+import { axeFindings, clickEverything, cspEvents, listenForCspViolations, keyboardFindings, layoutFindings, settle, SHELL_SCOPE, styleSnapshot, watchPage, type Findings } from "./checks";
 import { plan, type Role, type World } from "./routes";
 
 /**
@@ -47,6 +47,7 @@ for (const role of roles) {
         const watcher = watchPage(page, expected);
         const found: Record<string, Findings> = {};
         const t0 = Date.now();
+        await listenForCspViolations(page);
         const res = await page.goto(url!, { waitUntil: "domcontentloaded" });
         await settle(page);
         const styles = [await styleSnapshot(page, "after load")];
@@ -94,12 +95,13 @@ for (const role of roles) {
         const clicks = await clickEverything(page, url!, isChromium ? 12 : 6, "main");
         found.clicks = clicks.findings;
         if (spec.pattern === "/") found.clicks.push(...(await clickEverything(page, url!, isChromium ? 14 : 6, SHELL_SCOPE)).findings);
+        const csp = await cspEvents(page);
         watcher.stop();
         found.http = watcher.http;
         found.console = [...watcher.consoleErrors, ...watcher.pageErrors];
 
         const failures = Object.entries(found).filter(([, v]) => v.length);
-        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
+        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, csp, styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
         for (const [category, list] of Object.entries(found)) expect.soft(list, `${category} on ${role} ${url}`).toEqual([]);
       });
     }

@@ -37,9 +37,12 @@ for (const r of rows) for (const line of r.consoleSources ?? []) {
   const key = `${r.browser} [${m?.[1] ?? "?"}] reported by ${m?.[2] ?? "?"}`;
   bySource.set(key, (bySource.get(key) ?? 0) + 1);
 }
+const byCsp = new Map();
+for (const r of rows) for (const line of r.csp ?? []) { const k = `${r.browser} ${line.replace(/\(.*$/, "").trim()}`; byCsp.set(k, (byCsp.get(k) ?? 0) + 1); }
+const cspLines = [...byCsp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `- ${n}x ${k}`);
 const sample = rows.find((r) => r.browser === "webkit" && r.found?.console?.length);
 const sourceLines = [...bySource.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, n]) => `- ${n}x ${k}`);
-const diag = sourceLines.length ? ["", "Where the console errors came from (first 20 per visit):", "", ...sourceLines, ...(sample ? ["", `One affected visit (${sample.role} ${sample.pattern} @ ${sample.project}):`, ...(sample.styles ?? []).map((x) => `- ${x}`), ...(sample.consoleSources ?? []).slice(0, 3).map((x) => `- ${x}`)] : []), ""] : [];
+const diag = sourceLines.length ? ["", "Where the console errors came from (first 20 per visit):", "", ...sourceLines, ...(cspLines.length ? ["", "CSP violation events seen inside the page (directive, blocked, element):", "", ...cspLines] : []), ...(sample ? ["", `One affected visit (${sample.role} ${sample.pattern} @ ${sample.project}):`, ...(sample.styles ?? []).map((x) => `- ${x}`), ...(sample.consoleSources ?? []).slice(0, 3).map((x) => `- ${x}`)] : []), ""] : [];
 
 const md = [
   "## UI sweep",
