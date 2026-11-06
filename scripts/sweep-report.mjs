@@ -30,6 +30,17 @@ for (const r of rows) for (const c of CATEGORIES) for (const f of r.found?.[c] ?
 }
 const top = [...groups.values()].sort((a, b) => b.count - a.count);
 
+// where the console errors came from (issue #3 diagnosis): by step and by reporting script, and what the document's styles looked like in one affected visit
+const bySource = new Map();
+for (const r of rows) for (const line of r.consoleSources ?? []) {
+  const m = /^\[(\w+)\] (\S+?)(?::\d+)? on /.exec(line);
+  const key = `${r.browser} [${m?.[1] ?? "?"}] reported by ${m?.[2] ?? "?"}`;
+  bySource.set(key, (bySource.get(key) ?? 0) + 1);
+}
+const sample = rows.find((r) => r.browser === "webkit" && r.found?.console?.length);
+const sourceLines = [...bySource.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, n]) => `- ${n}x ${k}`);
+const diag = sourceLines.length ? ["", "Where the console errors came from (first 20 per visit):", "", ...sourceLines, ...(sample ? ["", `One affected visit (${sample.role} ${sample.pattern} @ ${sample.project}):`, ...(sample.styles ?? []).map((x) => `- ${x}`), ...(sample.consoleSources ?? []).slice(0, 3).map((x) => `- ${x}`)] : []), ""] : [];
+
 const md = [
   "## UI sweep",
   "",
@@ -41,6 +52,7 @@ const md = [
   `Distinct findings: **${top.length}**${top.length > 40 ? " (the 40 most frequent are listed; all are in records/)" : ""}:`,
   "",
   ...top.slice(0, 40).map((g) => `- ${g.count}x ${g.key} (e.g. ${[...g.where][0]})`),
+  ...diag,
   "",
 ].join("\n");
 writeFileSync(join(OUT, "summary.md"), md);

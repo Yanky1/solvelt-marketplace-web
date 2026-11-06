@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type TestInfo } from "@playwright/test";
-import { axeFindings, clickEverything, keyboardFindings, layoutFindings, settle, SHELL_SCOPE, watchPage, type Findings } from "./checks";
+import { axeFindings, clickEverything, keyboardFindings, layoutFindings, settle, SHELL_SCOPE, styleSnapshot, watchPage, type Findings } from "./checks";
 import { plan, type Role, type World } from "./routes";
 
 /**
@@ -49,6 +49,8 @@ for (const role of roles) {
         const t0 = Date.now();
         const res = await page.goto(url!, { waitUntil: "domcontentloaded" });
         await settle(page);
+        const styles = [await styleSnapshot(page, "after load")];
+        watcher.setPhase("checks");
         const status = res?.status() ?? 0;
         found.status = expected.includes(status) || (status >= 300 && status < 400) ? [] : [`the page answered ${status} (expected ${expected.join(" or ")})`];
 
@@ -61,12 +63,15 @@ for (const role of roles) {
         found.keyboard = await keyboardFindings(page);
 
         // screenshots: published (full page), and compared with the baseline (dynamic content masked)
+        watcher.setPhase("screenshot");
         const shot = `shots/${role}/${slug(spec.pattern)}/${info.project.name}.png`;
         mkdirSync(join(OUT, "shots", role, slug(spec.pattern)), { recursive: true });
         await page.screenshot({ path: join(OUT, shot), fullPage: true, animations: "disabled" });
         // dynamic content: dates and times (the data is made fresh on every run), ids and the buyer's address of the world
         const masks = [page.locator("time"), page.locator("[data-sweep-mask]"), page.locator("img[src*='/img/']"), page.locator(":text-matches('\\\\b20\\\\d\\\\d\\\\b|\\\\b\\\\d{1,2}:\\\\d{2}\\\\b')")];
         for (const text of [world!.orderNumber, (world as unknown as { buyerEmail?: string }).buyerEmail, world!.bookingId].filter((t): t is string => !!t)) masks.push(page.getByText(text));
+        styles.push(await styleSnapshot(page, "after screenshot"));
+        watcher.setPhase("compare");
         let visual: Findings = [];
         try { await expect(page).toHaveScreenshot(`${role}-${slug(spec.pattern)}.png`, { fullPage: true, mask: masks, maxDiffPixelRatio: 0.02 }); }
         catch (e) {
@@ -76,6 +81,7 @@ for (const role of roles) {
           else visual = [`screenshot differs from the baseline: ${msg.split("\n")[0]!.slice(0, 160)}`];
         }
         found.visual = visual;
+        watcher.setPhase("clicks");
 
         // click everything (the shell once, on the home page)
         const clicks = await clickEverything(page, url!, isChromium ? 12 : 6, "main");
@@ -86,7 +92,7 @@ for (const role of roles) {
         found.console = [...watcher.consoleErrors, ...watcher.pageErrors];
 
         const failures = Object.entries(found).filter(([, v]) => v.length);
-        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
+        record(info, { role, pattern: spec.pattern, url, status, ms: Date.now() - t0, shot, consoleSources: watcher.sources, styles, clicked: clicks.clicked, deniedSkipped: clicks.skippedDenied, found, ok: failures.length === 0 });
         for (const [category, list] of Object.entries(found)) expect.soft(list, `${category} on ${role} ${url}`).toEqual([]);
       });
     }
