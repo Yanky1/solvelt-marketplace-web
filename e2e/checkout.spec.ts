@@ -7,7 +7,7 @@ const CHALLAH = "/p/classic-braided-challah";
 const addChallah = async (page: Page) => {
   await page.goto(CHALLAH);
   await waitHydrated(page);
-  await page.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ }).click();
+  await page.getByRole("button", { name: /^Add to cart, Classic Braided Challah, / }).click();
   await expect(page).toHaveURL(/\/cart\?notice=added$/);
 };
 // a unique address per run: the desktop and mobile projects run in parallel against one mock API, and the test finds ITS order by this address

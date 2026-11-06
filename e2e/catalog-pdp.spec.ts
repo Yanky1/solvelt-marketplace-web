@@ -43,7 +43,7 @@ test.describe("product page", () => {
   test("the add-to-cart slot is a real form with a quantity and the CSRF token (the cart exists now, decision M3W-01)", async ({ page }) => {
     await page.goto(CHALLAH);
     const slot = page.getByTestId("add-to-cart-slot");
-    await expect(slot.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ })).toBeEnabled();
+    await expect(slot.getByRole("button", { name: /^Add to cart, Classic Braided Challah, / })).toBeEnabled();
     await expect(slot.getByLabel("Quantity")).toHaveValue("1");
     await expect(slot).toHaveAttribute("action", "/cart/items");
     await expect(slot.locator('input[name="csrf"]')).toHaveCount(1);
@@ -261,6 +261,16 @@ test.describe("caching, privacy and the API boundary (W2-01, O-12)", () => {
       expect(res.headers()["content-type"] ?? "", p).not.toMatch(/application\/json/);
     }
   });
+});
+
+test("the add-to-cart button's accessible name starts with its visible text and axe's label-content-name-mismatch (WCAG 2.5.3) finds nothing on the product page (sweep issue #4)", async ({ page }) => {
+  await page.goto(CHALLAH);
+  const button = page.locator('.add-to-cart .btn-primary[type="submit"]');
+  await expect(button).toHaveText("Add to cart");
+  await expect(button).toHaveAccessibleName(/^Add to cart\b/);                  // the words the eye reads come first (voice control says "click Add to cart")
+  await expect(button).toHaveAccessibleName(/Classic Braided Challah/);          // and the context stays for screen reader users
+  const results = await new AxeBuilder({ page }).withTags(["wcag21a"]).analyze();   // the tag the UI sweep ran: it holds label-content-name-mismatch
+  expect(results.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }))).toEqual([]);
 });
 
 for (const theme of ["light", "dark"] as const) {

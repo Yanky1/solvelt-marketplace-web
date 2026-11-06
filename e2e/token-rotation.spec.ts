@@ -115,7 +115,7 @@ test("a slow request of another tab that finishes AFTER a password change does n
   // tab A: an add-to-cart that the API holds back (mock gate) after it was sent with the OLD token
   expect((await hook("hold-cart-add")).status()).toBe(204);
   // noWaitAfter: the form post is held, so the click must not wait for the navigation it starts
-  await page.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ }).click({ noWaitAfter: true });
+  await page.getByRole("button", { name: /^Add to cart, Classic Braided Challah, / }).click({ noWaitAfter: true });
   await expect.poll(async () => (await (await hook("cart-add-waiting")).json()).waiting).toBe(true);
   // tab B (same cookie jar): the password changes meanwhile; the API ends every session and answers with a new token, tab B's cookie carries it
   const tabB = await page.context().newPage();

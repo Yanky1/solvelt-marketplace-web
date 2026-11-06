@@ -111,7 +111,10 @@ describe("AddToCart slot", () => {
       expect((form.querySelector("[name=listingId]") as HTMLInputElement).value).toBe("l1");
       expect((form.querySelector("[name=variantId]") as HTMLInputElement).value).toBe("v1");
       expect((form.querySelector("[name=qty]") as HTMLInputElement).min).toBe("1");
-      expect(screen.getByRole("button", { name: "Add Challah, Small, to cart" })).toBeEnabled();
+      const add = screen.getByRole("button", { name: "Add to cart, Challah, Small" });
+      expect(add).toBeEnabled();
+      expect(add).toHaveTextContent("Add to cart");
+      expect(add.getAttribute("aria-label")!.startsWith(add.textContent!.trim())).toBe(true);   // WCAG 2.5.3 Label in Name: the visible text is the start of the accessible name (sweep issue #4)
     } finally { Object.assign(CART_ACTION, was); }
   });
 });

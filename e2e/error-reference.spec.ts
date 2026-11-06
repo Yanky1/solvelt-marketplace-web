@@ -61,7 +61,7 @@ test.describe("the error reference", () => {
   test("a checkout the API fails shows the reference in its message", async ({ page }) => {
     await page.goto("/p/classic-braided-challah");
     await waitHydrated(page);
-    await page.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ }).click();
+    await page.getByRole("button", { name: /^Add to cart, Classic Braided Challah, / }).click();
     await page.waitForURL(/\/cart\?notice=added$/);
     await page.goto("/checkout");
     await waitHydrated(page);
@@ -80,7 +80,7 @@ test.describe("the error reference", () => {
   test("a checkout whose answer breaks this server's own code ends in the handled message with a W- reference, not a bare error", async ({ page }) => {
     await page.goto("/p/classic-braided-challah");
     await waitHydrated(page);
-    await page.getByRole("button", { name: /^Add Classic Braided Challah, .*, to cart$/ }).click();
+    await page.getByRole("button", { name: /^Add to cart, Classic Braided Challah, / }).click();
     await expect(page).toHaveURL(/\/cart\?notice=added$/);
     await page.goto("/checkout");
     await waitHydrated(page);
