@@ -39,7 +39,7 @@ for (const r of rows) for (const line of r.consoleSources ?? []) {
 }
 const byCsp = new Map();
 for (const r of rows) for (const line of r.csp ?? []) { const k = `${r.browser} ${/^(WRITE|STYLE)/.test(line) ? line.slice(0, 220) : line.replace(/\(.*$/, "").trim()}`; byCsp.set(k, (byCsp.get(k) ?? 0) + 1); }
-const cspLines = [...byCsp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, n]) => `- ${n}x ${k}`);
+const cspLines = [...byCsp.entries()].filter(([k]) => !/on select/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, n]) => `- ${n}x ${k}`);
 const engineRows = rows.filter((r) => r.engineSelectSetAside > 0);
 const engineTotal = engineRows.reduce((n, r) => n + r.engineSelectSetAside, 0);
 const engineWhere = [...new Set(engineRows.map((r) => `${r.role} ${r.pattern}`))].slice(0, 20);
