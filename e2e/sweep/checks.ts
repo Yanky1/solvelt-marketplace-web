@@ -41,7 +41,7 @@ export function watchPage(page: Page, expectedMain: number[]) {
   return { http, consoleErrors, pageErrors, main, sources, suppressed: () => suppressed, phase: () => phase, setPhase: (p: string) => { phase = p; }, stop: () => page.off("response", onResponse) };
 }
 
-export interface CspEvents { lines: string[]; all: number; select: number; writes: number; screenshotDocument: number }
+export interface CspEvents { lines: string[]; other: string[]; all: number; select: number; writes: number; screenshotDocument: number }
 
 /**
  * Listens for CSP violations inside the page (securitypolicyviolation: which directive, what was blocked, which element) from the first script on, and for any script that writes a style
@@ -49,13 +49,16 @@ export interface CspEvents { lines: string[]; all: number; select: number; write
  * step (a page's own counters would be lost with every new document). Evidence for the WebKit finding of issue #3 (M8W-08).
  */
 export async function listenForCspViolations(page: Page, phase: () => string): Promise<CspEvents> {
-  const tally: CspEvents = { lines: [], all: 0, select: 0, writes: 0, screenshotDocument: 0 };
+  const tally: CspEvents = { lines: [], other: [], all: 0, select: 0, writes: 0, screenshotDocument: 0 };
   await page.exposeBinding("__sweepCsp", (_src, kind: "violation" | "write", isSelect: boolean, isDocument: boolean, line: string) => {
     const p = phase();
     // what Playwright's screenshot step injects targets the document (no element) while it takes or compares a screenshot: counted apart, it is the harness set-aside's business
     if (kind === "violation" && isDocument && (p === "screenshot" || p === "compare")) tally.screenshotDocument++;
     else if (kind === "violation") { tally.all++; if (isSelect) tally.select++; } else tally.writes++;
-    if (tally.lines.length < 14) tally.lines.push(`[${p}] ${line}`);
+    const text = `[${p}] ${line}`;
+    // events that are not on a select are kept in their own list (the select ones would fill the first one)
+    if (kind === "violation" && !isSelect && !(isDocument && (p === "screenshot" || p === "compare"))) { if (tally.other.length < 10) tally.other.push(text); }
+    else if (tally.lines.length < 14) tally.lines.push(text);
   });
   await page.addInitScript(() => {
     const report = (kind: "violation" | "write", isSelect: boolean, line: string, isDocument = false) => (window as unknown as { __sweepCsp?: (...a: unknown[]) => void }).__sweepCsp?.(kind, isSelect, isDocument, line);
