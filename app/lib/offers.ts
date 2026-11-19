@@ -69,7 +69,7 @@ export function money(cents: number, currency = "USD"): string {
 }
 
 /**
- * The listing badges: "Buy 20+, $0.90 each" for the first step of each offer (what a buyer must do to start saving), and "Free gift with 10+" for the earliest gift. Quantities and prices
+ * The listing badges: "Buy 20+, $0.90 each" for the first step of each offer (what a buyer must do to start saving), and "Free Card wallet from 10" for each gift (named by its title). Quantities and prices
  * are the seller's own numbers, shown as given.
  */
 export function listingOfferBadges(offers: ListingOffer[] | undefined, currency = "USD"): string[] {
@@ -77,8 +77,10 @@ export function listingOfferBadges(offers: ListingOffer[] | undefined, currency 
   for (const o of offers ?? []) {
     const first = o.tiers[0];
     if (first) out.push(`Buy ${first.minQuantity}+, ${money(first.unitPriceCents, currency)} each`);
-    const gift = [...o.gifts].sort((a, b) => a.minQuantity - b.minQuantity)[0];
-    if (gift) out.push(`Free gift with ${gift.minQuantity}+`);
+    // every gift is named, grouped by the quantity it starts at: "Free Card wallet, Card pack from 10"
+    const byMin = new Map<number, string[]>();
+    for (const g of [...o.gifts].sort((a, b) => a.minQuantity - b.minQuantity)) byMin.set(g.minQuantity, [...(byMin.get(g.minQuantity) ?? []), g.title]);
+    for (const [min, titles] of byMin) out.push(`Free ${titles.join(", ")} from ${min}`);
   }
   return out;
 }
@@ -86,12 +88,13 @@ export function listingOfferBadges(offers: ListingOffer[] | undefined, currency 
 export type CartOfferMessageKind = "next" | "gift" | "gift_unavailable";
 export interface CartOfferMessage { kind: CartOfferMessageKind; text: string }
 
-/** "Add 5 more for $0.90 each" / "Free gift included" / "Gift unavailable", in that order. A gift line the server could not include is "unavailable": the order still goes through without it. */
+/** "Add 5 more for $0.90 each" / "Free gift included: Card wallet" / "Gift unavailable: Card wallet", in that order (the gift is named by its title). A gift line the server could not include is "unavailable": the order still goes through without it. */
 export function cartOfferMessages(offer: CartOffer, currency = "USD"): CartOfferMessage[] {
   const out: CartOfferMessage[] = [];
   if (offer.nextTier && offer.unitsToNextTier > 0) out.push({ kind: "next", text: `Add ${offer.unitsToNextTier} more for ${money(offer.nextTier.unitPriceCents, currency)} each` });
-  if (offer.gifts.some((g) => g.status === "included")) out.push({ kind: "gift", text: "Free gift included" });
-  if (offer.gifts.some((g) => g.status === "unavailable")) out.push({ kind: "gift_unavailable", text: "Gift unavailable" });
+  const names = (status: "included" | "unavailable") => offer.gifts.filter((g) => g.status === status).map((g) => g.title).join(", ");
+  if (offer.gifts.some((g) => g.status === "included")) out.push({ kind: "gift", text: `Free gift included: ${names("included")}` });
+  if (offer.gifts.some((g) => g.status === "unavailable")) out.push({ kind: "gift_unavailable", text: `Gift unavailable: ${names("unavailable")}` });
   return out;
 }
 

@@ -51,7 +51,7 @@ export function QuoteGroupLines({ group, currency }: { group: QuoteGroup; curren
         ))}
       </ul>
       {(group.offers ?? []).flatMap((o) => cartOfferMessages(o, currency).filter((m) => m.kind === "gift_unavailable").map((m) => (
-        <p key={`${o.offerId}:${m.kind}`} role="status" className="muted u-margin-0" data-testid="checkout-gift-unavailable">{m.text}: your order goes through without it.</p>
+        <p key={`${o.offerId}:${m.kind}`} role="status" className="muted u-margin-0" data-testid="checkout-gift-unavailable">{m.text}. Your order goes through without it.</p>
       )))}
     </>
   );

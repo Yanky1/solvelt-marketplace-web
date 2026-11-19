@@ -15,7 +15,7 @@ describe("listing badge", () => {
     show(<ListingOfferBadges offers={[listingOffer]} currency="USD" />);
     const list = screen.getByRole("list", { name: "Quantity offers" });
     expect(within(list).getByText("Buy 20+, $0.90 each")).toBeInTheDocument();
-    expect(within(list).getByText("Free gift with 10+")).toBeInTheDocument();
+    expect(within(list).getByText("Free Wallet from 10")).toBeInTheDocument();
   });
   it("renders nothing without offers", () => {
     show(<ListingOfferBadges offers={undefined} currency="USD" />);
@@ -30,16 +30,16 @@ describe("cart group messages", () => {
   it("asks for the units the server says are missing", () => {
     show(<CartGroupOffers offers={[offer()]} currency="USD" />);
     expect(screen.getByText("Add 5 more for $0.90 each")).toBeInTheDocument();
-    expect(screen.queryByText("Free gift included")).toBeNull();
+    expect(screen.queryByText(/Free gift included/)).toBeNull();
   });
   it("says a gift is included", () => {
     show(<CartGroupOffers offers={[offer({ nextTier: null, unitsToNextTier: 0, gifts: [gift("included")] })]} currency="USD" />);
-    expect(screen.getByText("Free gift included")).toBeInTheDocument();
+    expect(screen.getByText("Free gift included: Wallet")).toBeInTheDocument();
   });
   it("says a gift is unavailable", () => {
     show(<CartGroupOffers offers={[offer({ nextTier: null, unitsToNextTier: 0, gifts: [gift("unavailable")] })]} currency="USD" />);
-    expect(screen.getByText("Gift unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("Free gift included")).toBeNull();
+    expect(screen.getByText("Gift unavailable: Wallet")).toBeInTheDocument();
+    expect(screen.queryByText(/Free gift included/)).toBeNull();
   });
   it("shows nothing for a group without offers", () => {
     show(<CartGroupOffers offers={undefined} currency="USD" />);
@@ -63,7 +63,7 @@ describe("cart page", () => {
   it("shows the offer discount on the line, the group message, and the net line total", () => {
     showCart(cart());
     expect(screen.getByTestId("cart-line-discount")).toHaveTextContent("Quantity offer: $2.00 off");
-    expect(screen.getByTestId("cart-offer")).toHaveTextContent("Free gift included");
+    expect(screen.getByTestId("cart-offer")).toHaveTextContent("Free gift included: Wallet");
     expect(screen.getByTestId("cart-line")).toHaveTextContent("$18.00");
   });
   it("shows no discount line when there is none", () => {
@@ -88,7 +88,7 @@ describe("checkout lines", () => {
   });
   it("says the order goes through without an unavailable gift", () => {
     show(<QuoteGroupLines group={group({ giftLines: [], offers: [offer({ nextTier: null, unitsToNextTier: 0, gifts: [gift("unavailable")] })] })} currency="USD" />);
-    expect(screen.getByTestId("checkout-gift-unavailable")).toHaveTextContent("Gift unavailable: your order goes through without it.");
+    expect(screen.getByTestId("checkout-gift-unavailable")).toHaveTextContent("Gift unavailable: Wallet. Your order goes through without it.");
     expect(screen.queryByTestId("checkout-gift-line")).toBeNull();
   });
   it("has no discount text for an ordinary line", () => {

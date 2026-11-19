@@ -23,7 +23,11 @@ describe("parseListingOffers", () => {
 
 describe("listingOfferBadges", () => {
   it("says what to do to start saving, with the seller's own numbers", () => {
-    expect(listingOfferBadges(parseListingOffers([offer()]))).toEqual(["Buy 20+, $0.90 each", "Free gift with 10+"]);
+    expect(listingOfferBadges(parseListingOffers([offer()]))).toEqual(["Buy 20+, $0.90 each", "Free Wallet from 10"]);
+  });
+  it("names every gift that starts at the same quantity", () => {
+    const o = { ...offer(), gifts: [{ minQuantity: 10, productId: "g1", title: "Wallet", quantity: 1, available: true }, { minQuantity: 10, productId: "g2", title: "Pack", quantity: 1, available: true }] };
+    expect(listingOfferBadges(parseListingOffers([o]))).toContain("Free Wallet, Pack from 10");
   });
   it("is empty without offers", () => {
     expect(listingOfferBadges(undefined)).toEqual([]);
@@ -39,8 +43,8 @@ describe("cartOfferMessages", () => {
   });
   it("says a gift is included, or unavailable, and never both for one state", () => {
     const g = (status: "included" | "unavailable") => ({ productId: "g", title: "Wallet", quantity: 1, status });
-    expect(cartOfferMessages(cartOffer({ nextTier: null, unitsToNextTier: 0, gifts: [g("included")] })).map((m) => m.text)).toEqual(["Free gift included"]);
-    expect(cartOfferMessages(cartOffer({ nextTier: null, unitsToNextTier: 0, gifts: [g("unavailable")] })).map((m) => m.text)).toEqual(["Gift unavailable"]);
+    expect(cartOfferMessages(cartOffer({ nextTier: null, unitsToNextTier: 0, gifts: [g("included")] })).map((m) => m.text)).toEqual(["Free gift included: Wallet"]);
+    expect(cartOfferMessages(cartOffer({ nextTier: null, unitsToNextTier: 0, gifts: [g("unavailable")] })).map((m) => m.text)).toEqual(["Gift unavailable: Wallet"]);
   });
   it("says nothing when the top tier is reached and there is no gift", () => {
     expect(cartOfferMessages(cartOffer({ nextTier: null, unitsToNextTier: 0 }))).toEqual([]);
