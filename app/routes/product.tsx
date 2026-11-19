@@ -10,6 +10,7 @@ import { ReviewsSection } from "~/components/ReviewsSection";
 import { SaveToList } from "~/components/SaveToList";
 import { VariantPicker } from "~/components/VariantPicker";
 import { Badge, Breadcrumb, Price } from "~/components/ui/display";
+import { listingOfferBadges } from "~/lib/offers";
 import { Link, useSearchParams } from "react-router";
 import { apiCtx } from "~/lib/auth.server";
 import { isQuoteOnly } from "~/lib/bookings";
@@ -125,6 +126,11 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
             {listing.summary && <p className="lead">{listing.summary}</p>}
           </div>
           <KosherBadges listing={listing} />
+          {listingOfferBadges(listing.offers, listing.currency).length > 0 && (
+            <ul className="chips" aria-label="Quantity offers" data-testid="offer-badges">
+              {listingOfferBadges(listing.offers, listing.currency).map((b) => <li key={b}><Badge tone="ok">{b}</Badge></li>)}
+            </ul>
+          )}
           <div className="pdp-price" aria-live="polite">
             <Price cents={variant.priceCents} wasCents={variant.compareAtCents ?? undefined} currency={listing.currency} />
             {listing.variants.length > 1 && <span className="muted"> for {variant.name}</span>}

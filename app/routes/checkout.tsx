@@ -11,6 +11,7 @@ import { ApiError, api, type Address, type Placed, type Quote } from "~/lib/api-
 import { apiCtx, assertCsrf, currentUser, formError, privateHeaders } from "~/lib/auth.server";
 import { carrierValue, deliveryField, estimateText, groupsOf, guestExpiry, publishableKeyOk, withGrant, localValue, readCheckoutValues, readSelections, selectedValue, validateCheckout, type CheckoutValues } from "~/lib/checkout";
 import { readCart } from "~/lib/cart.server";
+import { cartOfferMessages } from "~/lib/offers";
 import { getConfig } from "~/lib/config.server";
 import { noteFailure } from "~/lib/error-ref.server";
 import { isSafeId } from "~/lib/passkey.server";
@@ -90,7 +91,9 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (e instanceof ApiError) {
       if (e.status === 409 && e.code === "price_changed") {
         const fresh = (e.body as { quote?: Quote } | undefined)?.quote;
-        if (fresh) return formError({ step: "review", values, quote: fresh, fieldErrors: {}, message: "The price or delivery changed while you were checking out. Please review the new total and pay again." } satisfies Result, 200);
+        const offerChanged = (e.body as { messageCode?: string } | undefined)?.messageCode === "offer_changed";
+        const message = offerChanged ? "A quantity offer in your cart changed while you were checking out, so the total is different. Nothing was charged. Please review the new total and pay again." : "The price or delivery changed while you were checking out. Please review the new total and pay again.";
+        if (fresh) return formError({ step: "review", values, quote: fresh, fieldErrors: {}, message } satisfies Result, 200);
       }
       if (e.status === 409 && (e.code === "cart_not_ready" || e.code === "delivery_unavailable")) {
         return details(e.code === "delivery_unavailable" ? "We can't deliver part of your cart to that address. Check the address or change your cart." : "Something in your cart is no longer available. Please review your cart.", {});
@@ -180,6 +183,24 @@ function DeliveryAndTotals({ quote }: { quote: Quote }) {
         return (
           <fieldset key={field} className="card stack" data-testid="delivery-group">
             <legend>{g.brandName || g.sellerName} ({g.lines.reduce((n, l) => n + l.quantity, 0)} {g.lines.reduce((n, l) => n + l.quantity, 0) === 1 ? "item" : "items"}, {formatMoney(g.itemsCents, quote.currency)})</legend>
+            <ul className="stack u-list-style-none-padding-0-margin-0" data-testid="checkout-lines" aria-label="Items from this seller">
+              {g.lines.map((l) => (
+                <li key={l.lineId} className="row u-justify-content-space-between" data-testid="checkout-line">
+                  <span>{l.title}{l.variantName ? `, ${l.variantName}` : ""} × {l.quantity}</span>
+                  <span>
+                    {formatMoney(l.lineTotalCents, quote.currency)}
+                    {(l.discountCents ?? 0) > 0 && <span className="muted" data-testid="checkout-line-discount"> (quantity offer: {formatMoney(l.discountCents ?? 0, quote.currency)} off)</span>}
+                  </span>
+                </li>
+              ))}
+              {(g.giftLines ?? []).map((gl) => (
+                <li key={gl.productId} className="row u-justify-content-space-between" data-testid="checkout-gift-line">
+                  <span>{gl.title} × {gl.quantity}</span>
+                  <span>Free gift: {formatMoney(0, quote.currency)}</span>
+                </li>
+              ))}
+            </ul>
+            {(g.offers ?? []).flatMap((o) => cartOfferMessages(o, quote.currency).filter((m) => m.kind === "gift_unavailable").map((m) => <p key={`${o.offerId}:${m.kind}`} role="status" className="muted u-margin-0">{m.text}: your order goes through without it.</p>))}
             {g.shippingOptions.length === 0 && !g.local?.eligible && <p role="alert">This seller can't deliver to that address.</p>}
             {g.shippingOptions.map((o) => (
               <label key={o.speed} className="check">
@@ -199,6 +220,7 @@ function DeliveryAndTotals({ quote }: { quote: Quote }) {
       })}
       <dl className="stack u-margin-0" data-testid="checkout-totals">
         <div className="row u-justify-content-space-between u-margin-0"><dt>Items</dt><dd>{formatMoney(quote.itemsCents, quote.currency)}</dd></div>
+        {(quote.discountCents ?? 0) > 0 && <div className="row u-justify-content-space-between u-margin-0" data-testid="checkout-discount"><dt>Quantity offer savings (already taken off)</dt><dd>{formatMoney(quote.discountCents ?? 0, quote.currency)}</dd></div>}
         <div className="row u-justify-content-space-between u-margin-0"><dt>Shipping</dt><dd>{formatMoney(quote.shippingCents, quote.currency)}</dd></div>
         <div className="row u-justify-content-space-between u-margin-0"><dt>Tax</dt><dd>{formatMoney(quote.taxCents, quote.currency)}</dd></div>
         <div className="row u-justify-content-space-between u-margin-0"><dt><strong>Total</strong></dt><dd><strong data-testid="checkout-total">{formatMoney(quote.totalCents, quote.currency)}</strong></dd></div>
