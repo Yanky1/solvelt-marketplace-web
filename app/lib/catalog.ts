@@ -1,3 +1,4 @@
+import { parseListingOffers, type ListingOffer } from "./offers";
 /** Shapes of the public catalog API (API repo docs/API.md "Catalog"). Money is whole cents, currency USD. */
 
 export interface Brand { id: string; slug: string; name: string }
@@ -17,6 +18,8 @@ export interface ListingDetail {
   brand: Brand; seller: Seller; categoryPath: CategoryCard[];
   variants: Variant[]; images: ImageRef[]; attributes: Attribute[]; faqs: Faq[];
   createdAt: string; updatedAt: string;
+  /** Quantity offers that apply now (portal C18); absent or empty when none. */
+  offers?: ListingOffer[];
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -65,7 +68,7 @@ export function parseListingDetail(json: unknown): ListingDetail | null {
   const createdAt = str(json.createdAt, 40), updatedAt = str(json.updatedAt, 40);
   if (!id || !slug || !title || summary === null || description === null || !type || !currency || from === null || to === null || (json.compareAtFromCents != null && was === null)
     || !b || !s || !path || !variants || variants.length === 0 || !images || !attributes || !faqs || !createdAt || !updatedAt || typeof json.available !== "boolean") return null;
-  return { id, slug, type, title, summary, description, priceFromCents: from, priceToCents: to, compareAtFromCents: was, currency, available: json.available, demo: json.demo === true, brand: b, seller: s, categoryPath: path, variants, images, attributes, faqs, createdAt, updatedAt };
+  return { id, slug, type, title, summary, description, priceFromCents: from, priceToCents: to, compareAtFromCents: was, currency, available: json.available, demo: json.demo === true, brand: b, seller: s, categoryPath: path, variants, images, attributes, faqs, createdAt, updatedAt, offers: parseListingOffers(json.offers) };
 }
 
 /** The variant shown: the one asked for (by id) when it exists, else the first one that can be bought, else the first. */

@@ -9,6 +9,7 @@ import { cleanRef } from "./error-ref.server";
  * documented yet; shapes here are what the mock API in e2e/mock-api.mjs implements, to be confirmed by M1.
  */
 import { safeHttps } from "./orders";
+import type { CartOffer, GiftLine } from "./offers";
 import type { Availability, BookingView, PolicyView, QuoteView } from "./bookings";
 import { parseQuestions, parseReview, parseReviewPage, parseReviewable, type QuestionView, type ReviewPage, type ReviewView, type Reviewable } from "./reviews";
 import { parseCard, parseItems, parseSummary, type ListCardView, type WishlistItemView, type WishlistSummary } from "./lists";
@@ -137,8 +138,8 @@ async function rawPost(ctx: ApiRequestContext, path: string): Promise<Response> 
 }
 
 // ---- cart (M3; API repo docs/API.md "Cart") ----
-export interface CartLine { id: string; listingId: string; variantId: string; slug: string; title: string; variantName: string; imageId: string | null; quantity: number; unitPriceCents: number; compareAtCents: number | null; lineTotalCents: number; status: "ok" | "unavailable"; previousUnitPriceCents: number | null }
-export interface CartGroup { sellerId: string; sellerName: string; brandId: string; brandName: string; subtotalCents: number; lines: CartLine[] }
+export interface CartLine { id: string; listingId: string; variantId: string; slug: string; title: string; variantName: string; imageId: string | null; quantity: number; unitPriceCents: number; compareAtCents: number | null; lineTotalCents: number; status: "ok" | "unavailable"; previousUnitPriceCents: number | null; /** Quantity-offer discount on this line (C18); lineTotalCents is already net of it. */ discountCents?: number; offerId?: string }
+export interface CartGroup { sellerId: string; sellerName: string; brandId: string; brandName: string; subtotalCents: number; lines: CartLine[]; discountCents?: number; offers?: CartOffer[] }
 /** `cartToken` is returned ONCE, when the API creates a guest cart: the BFF seals it into the session cookie and never lets it reach the browser. */
 export interface Cart { currency: string; groups: CartGroup[]; itemCount: number; subtotalCents: number; canCheckout: boolean; cartToken?: string }
 export const EMPTY_CART: Cart = { currency: "USD", groups: [], itemCount: 0, subtotalCents: 0, canCheckout: false };
@@ -148,15 +149,17 @@ export const cartHeaders = (ctx: ApiRequestContext, cartToken?: string): Record<
 // ---- checkout (M3; API repo docs/API.md "Checkout") ----
 export interface ShippingOption { speed: string; priceCents: number; free: boolean; estimate: { earliest: string; latest: string } }
 export interface LocalWindow { windowId: string; date: string; start: string; end: string; remaining: number }
-export interface QuoteLine { lineId: string; listingId: string; variantId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number }
+export interface QuoteLine { lineId: string; listingId: string; variantId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number; discountCents?: number; offerId?: string }
 export interface QuoteGroup {
+  /** Quantity offers (C18): what each did to this group, and the free gift lines (price 0). Items are net of discounts. */
+  offers?: CartOffer[]; giftLines?: GiftLine[]; discountCents?: number;
   sellerId: string; sellerName: string; brandId: string; brandName: string; lines: QuoteLine[]; itemsCents: number; shippingOptions: ShippingOption[]; unavailableSpeeds: { speed: string; reason: string }[];
   local: { eligible: boolean; reason: string | null; feeCents: number | null; timeZone: string | null; windows: LocalWindow[] } | null;
   selected: { kind: "carrier" | "local"; speed: string | null; windowId: string | null; date: string | null; shippingCents: number } | null;
   shippingCents: number; shippingTaxCents: number; taxCents: number; totalCents: number;
 }
 /** `quoteHash` binds a checkout to exactly this quote (price, tax, delivery, destination) and expires; checkout sends it back. */
-export interface Quote { currency: string; groups: QuoteGroup[]; itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; canPay: boolean; quoteHash: string; expiresAt: string }
+export interface Quote { currency: string; groups: QuoteGroup[]; itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; canPay: boolean; quoteHash: string; expiresAt: string; discountCents?: number }
 export interface QuoteAddress { country: string; region?: string; postalCode: string }
 export interface GroupSelection { sellerId: string; brandId: string; speed?: string | null; localWindowId?: string | null; localDate?: string | null }
 export interface CheckoutAddress { name: string; line1: string; line2?: string; city: string; region?: string; postalCode: string; country: string; phone?: string }
