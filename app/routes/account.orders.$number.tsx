@@ -3,6 +3,7 @@ import { Form, Link, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/account.orders.$number";
 import { AccountNav } from "~/components/AccountNav";
 import { ErrorSummary, FormMessage } from "~/components/AuthForm";
+import { OrderGroupOfferNote, OrderLineOfferNote } from "~/components/OfferUi";
 import { CsrfField } from "~/components/Shell";
 import { Badge, Breadcrumb, Card, formatMoney } from "~/components/ui/display";
 import { Button, Select } from "~/components/ui/form";
@@ -211,6 +212,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
             <Badge tone={statusTone(g.status)}>{statusLabel(g.status)}</Badge>
           </div>
           <Steps status={g.status} />
+          <OrderGroupOfferNote group={g} />
           {g.oversold && <FormMessage kind="error">The seller is short of stock for part of this order and will contact you.</FormMessage>}
           {g.deliveryAttemptsFailed > 0 && g.status !== "delivered" && <FormMessage kind="error">A delivery attempt did not work{g.lastAttemptFailedReason && ATTEMPT_REASON[g.lastAttemptFailedReason] ? `: ${ATTEMPT_REASON[g.lastAttemptFailedReason]}` : ""}. The seller will try again or contact you.</FormMessage>}
           <table className="table table-fit">
@@ -219,7 +221,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
             <tbody>
               {g.lines.map((l) => (
                 <tr key={l.lineId}>
-                  <td>{l.title}{l.variantName ? <span className="muted"> ({l.variantName})</span> : null}{l.shippedQty > 0 && <div className="muted">{l.shippedQty} shipped{l.returnedQty > 0 ? `, ${l.returnedQty} returned` : ""}{l.refundedQty > 0 ? `, ${l.refundedQty} refunded` : ""}{l.cancelledQty > 0 ? `, ${l.cancelledQty} cancelled` : ""}</div>}</td>
+                  <td>{l.title}{l.variantName ? <span className="muted"> ({l.variantName})</span> : null}<OrderLineOfferNote line={l} currency={order.currency} />{l.shippedQty > 0 && <div className="muted">{l.shippedQty} shipped{l.returnedQty > 0 ? `, ${l.returnedQty} returned` : ""}{l.refundedQty > 0 ? `, ${l.refundedQty} refunded` : ""}{l.cancelledQty > 0 ? `, ${l.cancelledQty} cancelled` : ""}</div>}</td>
                   <td>{l.quantity}</td>
                   <td>{money(l.lineTotalCents)}</td>
                 </tr>

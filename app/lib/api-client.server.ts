@@ -77,7 +77,7 @@ async function call<T>(ctx: ApiRequestContext, path: string, body?: unknown, met
 export interface OrderListGroup { sellerOrderNumber: string | null; sellerName: string; brandName: string; status: string; itemCount: number; firstItem: string | null }
 export interface OrderListItem { number: string; createdAt: string; currency: string; totalCents: number; refundedCents: number; groups: OrderListGroup[] }
 export interface OrderList { orders: OrderListItem[]; next: { before: string; beforeId: string } | null }
-export interface OrderLineView { lineId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number; shippedQty: number; cancelledQty: number; returnedQty: number; refundedQty: number; returnableQty: number }
+export interface OrderLineView { lineId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number; shippedQty: number; cancelledQty: number; returnedQty: number; refundedQty: number; returnableQty: number; /** Quantity-offer discount on this line (C18; lineTotalCents is net) and whether it is a free gift line. */ discountCents?: number; offerId?: string; isGift?: boolean }
 export interface TimelineEvent { status: string | null; detail: string | null; location: string | null; at: string | null }
 export interface ShipmentView {
   id: string; method: string; carrier: string | null; service: string | null; trackingNumber: string | null; trackingUrl: string | null; shippedAt: string | null; deliveredAt: string | null; voided: boolean;
@@ -91,7 +91,7 @@ export interface ReturnView {
 export interface RefundView { amountCents: number; shippingCents: number; status: string; reason: string; createdAt: string }
 export interface OrderGroupView {
   sellerOrderNumber: string | null; sellerName: string; brandName: string; status: string; deliveryKind: string; shippingSpeed: string | null; localDate: string | null;
-  itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; refundedCents: number; oversold: boolean;
+  itemsCents: number; shippingCents: number; taxCents: number; totalCents: number; refundedCents: number; oversold: boolean; /** Quantity-offer discount in this seller order, and a gift the seller could not include (C18). */ discountCents?: number; giftUnavailable?: boolean;
   acceptedAt: string | null; shippedAt: string | null; deliveredAt: string | null; deliveredBy: string | null; cancelledAt: string | null;
   deliveryAttemptsFailed: number; lastAttemptFailedReason: string | null; buyerConfirmedAt: string | null;
   canCancel: boolean; canConfirmDelivery: boolean; canReturn: boolean;

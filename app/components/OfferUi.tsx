@@ -1,5 +1,5 @@
 import { Badge, formatMoney } from "~/components/ui/display";
-import type { QuoteGroup } from "~/lib/api-client.server";
+import type { OrderGroupView, OrderLineView, QuoteGroup } from "~/lib/api-client.server";
 import { cartOfferMessages, listingOfferBadges, money, type CartOffer, type ListingOffer } from "~/lib/offers";
 
 /** Offer badges on a listing: "Buy 20+, $0.90 each", "Free Card wallet from 10". Text in a badge, never colour alone. Renders nothing without offers. */
@@ -61,4 +61,17 @@ export function QuoteGroupLines({ group, currency }: { group: QuoteGroup; curren
 export function QuoteSavingsRow({ discountCents, currency }: { discountCents: number | undefined; currency: string }) {
   if ((discountCents ?? 0) <= 0) return null;
   return <div className="row u-justify-content-space-between u-margin-0" data-testid="checkout-discount"><dt>Quantity offer savings (already taken off)</dt><dd>{formatMoney(discountCents ?? 0, currency)}</dd></div>;
+}
+
+/** Under an order line: "Free gift" for a gift line, or the quantity-offer discount the buyer got. Nothing for an ordinary line. */
+export function OrderLineOfferNote({ line, currency }: { line: Pick<OrderLineView, "isGift" | "discountCents">; currency: string }) {
+  if (line.isGift) return <div className="muted" data-testid="order-gift-line"><Badge tone="ok">Free gift</Badge></div>;
+  if ((line.discountCents ?? 0) > 0) return <div className="muted" data-testid="order-line-discount">Quantity offer: {money(line.discountCents ?? 0, currency)} off</div>;
+  return null;
+}
+
+/** Under a seller order: said when the seller could not include an earned free gift; the order itself is unaffected. */
+export function OrderGroupOfferNote({ group }: { group: Pick<OrderGroupView, "giftUnavailable"> }) {
+  if (!group.giftUnavailable) return null;
+  return <p role="status" className="muted" data-testid="order-gift-unavailable">A free gift was not available, so this order was placed without it.</p>;
 }

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import Cart from "~/routes/cart";
 import type { Cart as CartData, QuoteGroup } from "~/lib/api-client.server";
 import { priceChangedMessage, type CartOffer, type ListingOffer } from "~/lib/offers";
-import { CartGroupOffers, ListingOfferBadges, QuoteGroupLines, QuoteSavingsRow } from "./OfferUi";
+import { CartGroupOffers, ListingOfferBadges, OrderGroupOfferNote, OrderLineOfferNote, QuoteGroupLines, QuoteSavingsRow } from "./OfferUi";
 
 const show = (ui: React.ReactElement) => render(<RouterProvider router={createMemoryRouter([{ path: "*", element: ui }])} />);
 
@@ -118,5 +118,27 @@ describe("409 price_changed notice", () => {
   it("keeps the usual wording for any other cause", () => {
     expect(priceChangedMessage({ quote: {} })).toBe("The price or delivery changed while you were checking out. Please review the new total and pay again.");
     expect(priceChangedMessage(undefined)).toContain("price or delivery");
+  });
+});
+
+describe("order view notes", () => {
+  it("marks a gift line as free and an ordinary discounted line with its saving", () => {
+    const { unmount } = render(<OrderLineOfferNote line={{ isGift: true, discountCents: 0 }} currency="USD" />);
+    expect(screen.getByTestId("order-gift-line")).toHaveTextContent("Free gift");
+    unmount();
+    render(<OrderLineOfferNote line={{ discountCents: 200 }} currency="USD" />);
+    expect(screen.getByTestId("order-line-discount")).toHaveTextContent("Quantity offer: $2.00 off");
+  });
+  it("says nothing for an ordinary line", () => {
+    render(<OrderLineOfferNote line={{ discountCents: 0 }} currency="USD" />);
+    expect(screen.queryByTestId("order-gift-line")).toBeNull();
+    expect(screen.queryByTestId("order-line-discount")).toBeNull();
+  });
+  it("says a seller order went without its gift only when it did", () => {
+    const { unmount } = render(<OrderGroupOfferNote group={{ giftUnavailable: true }} />);
+    expect(screen.getByTestId("order-gift-unavailable")).toHaveTextContent("placed without it");
+    unmount();
+    render(<OrderGroupOfferNote group={{ giftUnavailable: false }} />);
+    expect(screen.queryByTestId("order-gift-unavailable")).toBeNull();
   });
 });
