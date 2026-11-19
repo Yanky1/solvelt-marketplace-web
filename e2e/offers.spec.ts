@@ -170,4 +170,27 @@ test.describe("quantity offers", () => {
     await expect(page.getByTestId("cart-subtotal")).toHaveText("$9.50");             // the discount is unaffected: only the gift is out
     await axeBothThemes(page, context, baseURL!, "/cart with an unavailable gift");
   });
+
+  test("the in-place data-theme switch used on checkout steps gives exactly the palette the cookie round trip gives", async ({ page, context, baseURL }) => {
+    // On a page where a reload is safe, compare the computed colours of the same elements both ways: the theme cookie (the server renders data-theme) and the attribute set in place (what axeThemesNow does).
+    const palette = () => page.evaluate(() => {
+      const pick = (sel: string) => { const el = document.querySelector(sel); if (!el) return null; const c = getComputedStyle(el); return [c.color, c.backgroundColor, c.borderTopColor]; };
+      return ["body", "h1", "a", ".pdp-price", '[data-testid="offer-badges"] li', "footer"].map(pick);
+    });
+    for (const theme of ["light", "dark"] as const) {
+      await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
+      await page.goto(PACKS);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      const viaCookie = await palette();
+      await context.clearCookies({ name: "solvelt_theme" });
+      await page.goto(PACKS);
+      await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
+      await page.emulateMedia({ colorScheme: theme === "dark" ? "light" : "dark" });             // the OS says the OPPOSITE: the attribute alone must decide
+      await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
+      const inPlace = await palette();
+      expect(inPlace).toEqual(viaCookie);
+      expect(viaCookie.filter((x) => x !== null).length).toBeGreaterThan(3);                   // the elements were really found
+      await page.emulateMedia({ colorScheme: null });
+    }
+  });
 });
