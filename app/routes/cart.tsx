@@ -6,7 +6,8 @@ import { Button, LinkButton } from "~/components/ui/form";
 import { ApiError, api, type Cart } from "~/lib/api-client.server";
 import { apiCtx, assertCsrf, privateHeaders } from "~/lib/auth.server";
 import { cookieFor, readCart } from "~/lib/cart.server";
-import { cartOfferMessages, money } from "~/lib/offers";
+import { CartGroupOffers } from "~/components/OfferUi";
+import { money } from "~/lib/offers";
 import { isSafeId } from "~/lib/passkey.server";
 import type { SessionData } from "~/lib/session.server";
 
@@ -118,14 +119,7 @@ export default function CartPage({ loaderData }: Route.ComponentProps) {
                   </li>
                 ))}
               </ul>
-              {(g.offers ?? []).map((o) => {
-                const msgs = cartOfferMessages(o, cart.currency);
-                return msgs.length === 0 ? null : (
-                  <ul key={o.offerId} className="stack u-list-style-none-padding-0-margin-0" aria-label="Quantity offer" data-testid="cart-offer">
-                    {msgs.map((m) => <li key={m.kind}><Badge tone={m.kind === "gift_unavailable" ? "gold" : "ok"}>{m.text}</Badge></li>)}
-                  </ul>
-                );
-              })}
+              <CartGroupOffers offers={g.offers} currency={cart.currency} />
               <div className="row u-justify-content-space-between"><span>Subtotal</span><strong>{formatMoney(g.subtotalCents, cart.currency)}</strong></div>
             </Card>
           ))}

@@ -94,3 +94,11 @@ export function cartOfferMessages(offer: CartOffer, currency = "USD"): CartOffer
   if (offer.gifts.some((g) => g.status === "unavailable")) out.push({ kind: "gift_unavailable", text: "Gift unavailable" });
   return out;
 }
+
+/** The notice for a 409 `price_changed`: a body with `messageCode: "offer_changed"` says a quantity offer moved and nothing was charged; anything else keeps the usual price/delivery wording. */
+export function priceChangedMessage(body: unknown): string {
+  const code = isObj(body) ? body.messageCode : undefined;
+  return code === "offer_changed"
+    ? "A quantity offer in your cart changed while you were checking out, so the total is different. Nothing was charged. Please review the new total and pay again."
+    : "The price or delivery changed while you were checking out. Please review the new total and pay again.";
+}
