@@ -71,12 +71,14 @@ test.describe("quantity offers", () => {
     await expect(badges).toContainText("Buy 10+, $0.95 each");
     await expect(badges).toContainText("Free Card wallet from 10");
     await axeBothThemes(page, context, baseURL!, PACKS);
-    // the dedicated listing is reachable by its address only: the existing 26 generated listings (two pages of 24) are untouched
-    const all = await (await page.request.get(`${MOCK}/api/v1/catalog/listings?pageSize=100`)).json();
-    expect(all.items.map((i: { slug: string }) => i.slug)).not.toContain("tiered-card-packs");
-    expect(all.total).toBe(32);
-    await page.goto("/search?q=blitz");
-    await expect(page.getByText("tiered-card-packs")).toHaveCount(0);
+    // the dedicated listing is reachable by its address only: it is in no category page, no search and no listing page, so the existing 26 generated listings (two pages of 24) are untouched.
+    // (Read through the web, never straight from the mock: a direct call has no forwarding headers and would break the specs that check the API sees signed ones.)
+    for (const path of ["/search?q=blitz", "/search", "/c/gifts", "/c/gifts?page=2"]) {
+      await page.goto(path);
+      await expect(page.locator('a[href="/p/tiered-card-packs"]')).toHaveCount(0);
+    }
+    await page.goto("/c/gifts?page=2");
+    await expect(page.getByText("Gift Box 01")).toBeVisible();                       // the generated gift boxes still run over two pages
   });
 
   test("the cart says how many more reach the next price, then the free gift, then the next step, and never prices anything itself", async ({ page }) => {
