@@ -25,3 +25,23 @@ describe("failed order after a quantity offer mismatch", () => {
     expect(orderStatusText({ status: "placed", failureCode: "offer_mismatch" }).title).toContain("order is placed");
   });
 });
+
+describe("confirmation page with a quantity offer", () => {
+  const placed = (): CheckoutOrder => order({
+    status: "placed", totalCents: 1800,
+    groups: [{ sellerName: "Blitz", brandName: "Blitz Cards", deliveryKind: "carrier", shippingSpeed: "standard", localDate: null, totalCents: 1800, giftUnavailable: false, discountCents: 200,
+      lines: [{ title: "Cards", variantName: "Blue", quantity: 20, lineTotalCents: 1800, discountCents: 200, offerId: "o1" }, { title: "Card wallet", variantName: "", quantity: 1, lineTotalCents: 0, isGift: true, offerId: "o1" }] }],
+  });
+  it("marks the gift line as free and shows the discount on the paid line", () => {
+    show(placed());
+    expect(screen.getByTestId("order-gift-line")).toHaveTextContent("Free gift");
+    expect(screen.getByTestId("order-line-discount")).toHaveTextContent("Quantity offer: $2.00 off");
+    expect(screen.queryByTestId("order-gift-unavailable")).toBeNull();
+  });
+  it("says so when the seller could not include the gift", () => {
+    const o = placed(); o.groups![0]!.giftUnavailable = true; o.groups![0]!.lines = o.groups![0]!.lines.filter((l) => !l.isGift);
+    show(o);
+    expect(screen.getByTestId("order-gift-unavailable")).toHaveTextContent("placed without it");
+    expect(screen.queryByTestId("order-gift-line")).toBeNull();
+  });
+});

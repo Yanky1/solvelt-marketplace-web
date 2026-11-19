@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link, useRevalidator } from "react-router";
+import { OrderGroupOfferNote, OrderLineOfferNote } from "~/components/OfferUi";
 import { Card, EmptyState, formatMoney } from "~/components/ui/display";
 import { LinkButton } from "~/components/ui/form";
 import { WAITING_ORDER_STATUSES, orderStatusText, startPolling } from "~/lib/checkout";
@@ -32,7 +33,8 @@ export function OrderConfirmation({ order, lost }: Pick<ConfirmationData, "order
         {order.groups?.map((g) => (
           <div key={`${g.sellerName}:${g.brandName}`}>
             <strong>{g.brandName || g.sellerName}</strong>
-            <ul className="u-margin-0">{g.lines.map((l, i) => <li key={i}>{l.quantity} x {l.title}{l.variantName ? `, ${l.variantName}` : ""}</li>)}</ul>
+            <ul className="u-margin-0">{g.lines.map((l, i) => <li key={i}>{l.quantity} x {l.title}{l.variantName ? `, ${l.variantName}` : ""}<OrderLineOfferNote line={l} currency={order.currency ?? "USD"} /></li>)}</ul>
+            <OrderGroupOfferNote group={g} />
           </div>
         ))}
       </Card>
