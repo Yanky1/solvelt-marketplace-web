@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link, useRevalidator } from "react-router";
 import { Card, EmptyState, formatMoney } from "~/components/ui/display";
 import { LinkButton } from "~/components/ui/form";
-import { ORDER_STATUS_TEXT, WAITING_ORDER_STATUSES, startPolling } from "~/lib/checkout";
+import { WAITING_ORDER_STATUSES, orderStatusText, startPolling } from "~/lib/checkout";
 import type { ConfirmationData } from "~/lib/confirmation.server";
 
 /** The order page for the buyer after paying and for a guest's emailed link; the data comes from `loadConfirmation`. */
@@ -22,7 +22,7 @@ export function OrderConfirmation({ order, lost }: Pick<ConfirmationData, "order
       </EmptyState>
     );
   }
-  const text = ORDER_STATUS_TEXT[order.status] ?? { title: "Your order", text: "We are updating its status.", tone: "wait" as const };
+  const text = orderStatusText(order);
   return (
     <div className="stack">
       <h1>{text.title}</h1>

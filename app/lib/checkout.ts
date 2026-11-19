@@ -61,6 +61,15 @@ export const ORDER_STATUS_TEXT: Record<string, { title: string; text: string; to
   superseded: { title: "This checkout was replaced", text: "You started a newer checkout of the same cart. Please use the latest one.", tone: "bad" },
 };
 
+/** A failed order whose seller's quantity offer did not match after payment (portal C18 `offer_mismatch`): nothing was created at the seller and the payment is refunded in full. */
+export const OFFER_MISMATCH_TEXT = { title: "We couldn't place your order", text: "A quantity offer in your order changed before the seller could accept it. Your payment is being refunded in full (it can take a few days to show). Please check your cart and order again.", tone: "bad" as const };
+
+/** What the confirmation page says for this order: its status text, or the offer-specific one for a failed order with `failureCode: "offer_mismatch"`. */
+export function orderStatusText(order: { status: string; failureCode?: string }): { title: string; text: string; tone: "ok" | "wait" | "bad" } {
+  if (order.status === "failed" && order.failureCode === "offer_mismatch") return OFFER_MISMATCH_TEXT;
+  return ORDER_STATUS_TEXT[order.status] ?? { title: "Your order", text: "We are updating its status.", tone: "wait" };
+}
+
 // ---- the confirmation page and a guest's order-access token (review M2, M3, L3, L4) ----
 
 /** Statuses an order never leaves: once the page has shown one, a guest's token has done its job (the emailed link remains). */
