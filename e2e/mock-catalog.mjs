@@ -13,7 +13,10 @@ const brands = [
   { slug: "challah-corner", name: "Challah Corner", seller: "mazel" }, { slug: "brooklyn-judaica", name: "Brooklyn Judaica", seller: "judaica" },
   { slug: "hudson-home-pros", name: "Hudson Home Pros", seller: "hudson" }, { slug: "hudson-valley-vines", name: "Hudson Valley Vines", seller: "cellar" },
 ];
-const sellers = { mazel: "Mazel Bakery", judaica: "Brooklyn Judaica", hudson: "Hudson Home Services", cellar: "Kosher Wine Cellar" };
+const sellers = { mazel: "Mazel Bakery", judaica: "Brooklyn Judaica", hudson: "Hudson Home Services", cellar: "Kosher Wine Cellar", cards: "Card Studio" };
+// The quantity-offer listing (portal C18, decision Q-W10) belongs to a seller and brand of its own that are NOT in `brands`, and the listing is NOT in `list`: the generated 26 listings, the two pages of
+// 24, the facets, the search and the sitemap stay exactly as they were. It is reachable by slug and id (detail, cart, checkout), nowhere else.
+const hiddenBrands = [{ slug: "card-studio", name: "Card Studio", seller: "cards" }];
 
 // slug, title, type, brand, category, summary, description, variants [name, cents, wasCents|null, available], attrs, faqs, images
 const rows = [
@@ -36,14 +39,32 @@ const rows = [
     [["Consultation and quote", 15000, null, true]], [["pricing-model", "quote"], ["booking-mode", "request"], ["delivery", "online"], ["duration", "2 hours"]], [], 2],
 ];
 for (let n = 1; n <= 26; n++) rows.push([`gift-box-${n}`, `Gift Box ${String(n).padStart(2, "0")}`, "product", "brooklyn-judaica", "gifts", `Gift box number ${n}.`, `Gift box number ${n}.`, [["Box", 2000 + n * 100, null, true]], [["delivery", "ships"]], [], 1]);
+// ---- quantity offers (portal C18; shapes from the API's docs/API.md at main 6df64f1) ----
+// The mock never does the tier maths (decision Q-W10): it returns FIXED figures that mirror the API's own test fixtures (OfferOrderTests: a 100-cent pack, "10+ at 95c, 20+ at 90c, a free Card wallet from 10").
+// Units in the cart -> what the API would answer. Any other number of units gets no offer (the specs only use these).
+export const OFFER_ID = gid("offer:card-bundle"), GIFT_PRODUCT_ID = gid("l:card-wallet");
+const T10 = { minQuantity: 10, unitPriceCents: 95 }, T20 = { minQuantity: 20, unitPriceCents: 90 };
+export const OFFER_FIXTURES = {
+  3: { tier: null, nextTier: T10, unitsToNextTier: 7, perUnitCents: 0, gift: false },
+  10: { tier: T10, nextTier: T20, unitsToNextTier: 10, perUnitCents: 5, gift: true },    // 10 x 95c = 950
+  15: { tier: T10, nextTier: T20, unitsToNextTier: 5, perUnitCents: 5, gift: true },     // 15 x 95c = 1425
+  25: { tier: T20, nextTier: null, unitsToNextTier: 0, perUnitCents: 10, gift: true },   // 25 x 90c = 2250, discount 250
+};
+export const OFFER_NAME = "Card bundle";
+const offerRows = [
+  ["tiered-card-packs", "Blitz Card Pack", "product", "card-studio", "gifts", "Packs of cards: the more you buy, the less each costs.",
+    "Packs of cards with a quantity offer.", [["Pack A", 100, null, true], ["Pack B", 100, null, true]], [["delivery", "ships"]], [], 1],
+];
+export const TIERED_SLUG = "tiered-card-packs";
+
 const unlisted = new Set(["retired-spice-gift-set"]); // 410
 const iso = (d) => new Date(Date.UTC(2026, 8, 1 + d, 9)).toISOString();
 
 /** Listings the mock portal marks as demo data (feed `demo: true`). */
 export const DEMO_SLUGS = new Set(["classic-braided-challah"]);
 
-const list = rows.map(([slug, title, type, brand, category, summary, description, variants, attrs, faqs, nImages], i) => {
-  const b = brands.find((x) => x.slug === brand);
+const build = ([slug, title, type, brand, category, summary, description, variants, attrs, faqs, nImages], i) => {
+  const b = [...brands, ...hiddenBrands].find((x) => x.slug === brand);
   const catPath = []; for (let c = categories.find((x) => x.slug === category); c; c = c.parent && categories.find((x) => x.slug === c.parent)) catPath.unshift({ id: gid(`cat:${c.slug}`), slug: c.slug, name: c.name });
   const vs = variants.map(([name, cents, was, ok], j) => ({ id: gid(`v:${slug}:${j}`), name, priceCents: cents, compareAtCents: was, available: ok }));
   const buyable = vs.some((v) => v.available) ? vs.filter((v) => v.available) : vs;
@@ -58,7 +79,14 @@ const list = rows.map(([slug, title, type, brand, category, summary, description
     attributes: attrs.map(([key, value]) => ({ key, value })), faqs: faqs.map(([question, answer]) => ({ question, answer })),
     createdAt: iso(i), updatedAt: iso(i + 3),
   };
+};
+const list = rows.map(build);
+const offerList = offerRows.map((r, i) => {
+  const l = build(r, 40 + i);
+  l.offers = [{ offerId: OFFER_ID, name: OFFER_NAME, tiers: [T10, T20], gifts: [{ productId: GIFT_PRODUCT_ID, title: "Card wallet", quantity: 1, minQuantity: 10, available: true }], activeTo: null }];
+  return l;
 });
+const everyListing = () => [...list, ...offerList];
 
 const card = (l) => ({
   id: l.id, slug: l.slug, type: l.type, title: l.title, summary: l.summary, priceFromCents: l.priceFromCents, priceToCents: l.priceToCents, compareAtFromCents: l.compareAtFromCents,
@@ -85,7 +113,7 @@ export function catalogResponse(path, url) {
   if ((m = /^\/api\/v1\/catalog\/listings\/([^/]+)$/.exec(path))) {
     const key = decodeURIComponent(m[1]);
     if (unlisted.has(key)) return err(410, "gone");
-    const l = list.find((x) => x.slug === key || x.id === key);
+    const l = everyListing().find((x) => x.slug === key || x.id === key);
     return l ? ok(l) : err(404, "not_found");
   }
   if (path === "/api/v1/catalog/listings") {
@@ -172,9 +200,9 @@ export const IMAGE_BAD = gid("i:mock-bad"), IMAGE_DOWN = gid("i:mock-down");
 
 /** The size of a listing image the mock knows (null: not an image of a visible listing, the API's 404). */
 export function imageInfo(id) {
-  for (const l of list) for (const im of l.images) if (im.id === id) return { width: im.width, height: im.height, title: l.title };
+  for (const l of everyListing()) for (const im of l.images) if (im.id === id) return { width: im.width, height: im.height, title: l.title };
   return null;
 }
 /** Test helper for the cart mock: the listing and variant behind a variant id (or null). */
-export const listingById = (id) => list.find((l) => l.id === id) ?? null;
-export const variantInfo = (id) => { for (const l of list) for (const v of l.variants) if (v.id === id) return { listing: l, variant: v }; return null; };
+export const listingById = (id) => everyListing().find((l) => l.id === id) ?? null;
+export const variantInfo = (id) => { for (const l of everyListing()) for (const v of l.variants) if (v.id === id) return { listing: l, variant: v }; return null; };

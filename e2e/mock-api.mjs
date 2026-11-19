@@ -4,7 +4,7 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import sharp from "sharp";
 import { createStaffMock } from "./mock-staff.mjs";
-import { catalogResponse, gid, IMAGE_BAD, IMAGE_DOWN, imageInfo, listingById, variantInfo } from "./mock-catalog.mjs";
+import { catalogResponse, gid, GIFT_PRODUCT_ID, IMAGE_BAD, IMAGE_DOWN, imageInfo, listingById, OFFER_FIXTURES, OFFER_ID, OFFER_NAME, TIERED_SLUG, variantInfo } from "./mock-catalog.mjs";
 
 const port = Number(process.env.MOCK_API_PORT ?? 5080);
 const forwardingKey = process.env.WEB_FORWARDING_KEY ?? "";
@@ -61,6 +61,8 @@ const checkoutOrders = new Map(); // number -> {key, userId, guestEmail, token, 
 const carts = new Map(); // owner key ("u:<userId>" or "g:<token>") -> [{id, variantId, quantity, seenPrice}]
 // the API's own header name, spelled out here on purpose: the mock must not follow a wrong name in the web code (review H1)
 const failCartOnce = new Set();
+const giftUnavailableKeys = new Set();   // test hook (quantity offers): this cart's earned gift is out of stock (the API says status "unavailable" and giftUnavailable)
+const offerChangedEmails = new Set();    // test hook: this guest email's next checkout finds the offer changed (409 price_changed, messageCode offer_changed, the gift gone) and nothing is created
 const cartKeyOf = (req) => { const t = bearer(req); const uid = t ? sessions.get(t) : undefined; if (t && !uid) return null; return uid ? `u:${uid}` : (req.headers["x-solvelt-cart-token"] ? `g:${req.headers["x-solvelt-cart-token"]}` : undefined); };
 const heldCartAdds = new Map();   // account cart key -> { gate, release }: that account's next cart add waits at the gate until the test releases it (a slow request finishing after another tab rotated the token)
 function cartView(key, token) {
@@ -75,9 +77,23 @@ function cartView(key, token) {
     const gk = info ? `${info.listing.seller.id}:${info.listing.brand.id}` : "gone";
     if (!groups.has(gk)) groups.set(gk, { sellerId: info?.listing.seller.id ?? "", sellerName: info?.listing.seller.displayName ?? "", brandId: info?.listing.brand.id ?? "", brandName: info?.listing.brand.name ?? "", subtotalCents: 0, lines: [] });
     const g = groups.get(gk);
-    g.lines.push({ id: l.id, listingId: info?.listing.id ?? "", variantId: l.variantId, slug: info?.listing.slug ?? "", title: info?.listing.title ?? "Unavailable item", variantName: info?.variant.name ?? "", imageId: null, quantity: l.quantity, unitPriceCents: unit, compareAtCents: ok ? info.variant.compareAtCents : null, lineTotalCents: unit * l.quantity, status: ok ? "ok" : "unavailable", previousUnitPriceCents: ok && unit !== l.seenPrice ? l.seenPrice : null });
+    g.lines.push({ id: l.id, listingId: info?.listing.id ?? "", variantId: l.variantId, slug: info?.listing.slug ?? "", title: info?.listing.title ?? "Unavailable item", variantName: info?.variant.name ?? "", imageId: null, quantity: l.quantity, unitPriceCents: unit, compareAtCents: ok ? info.variant.compareAtCents : null, lineTotalCents: unit * l.quantity, status: ok ? "ok" : "unavailable", previousUnitPriceCents: ok && unit !== l.seenPrice ? l.seenPrice : null, discountCents: 0 });
     g.subtotalCents += unit * l.quantity;
     if (ok) { items += l.quantity; subtotal += unit * l.quantity; }
+  }
+  // Quantity offers (decision Q-W10): the units of the tiered listing in a group look up FIXED figures (OFFER_FIXTURES: mirrors the API test fixtures, no tier maths here). Lines are net of the discount,
+  // the group carries discountCents and the offer, exactly the API's cart shape (docs/API.md "Quantity offers").
+  for (const g of groups.values()) {
+    const mine = g.lines.filter((l) => l.status === "ok" && l.slug === TIERED_SLUG);
+    const units = mine.reduce((n, l) => n + l.quantity, 0);
+    const fx = OFFER_FIXTURES[units];
+    g.discountCents = 0; g.offers = [];
+    if (!fx) continue;
+    for (const l of mine) { l.discountCents = fx.perUnitCents * l.quantity; l.lineTotalCents = l.unitPriceCents * l.quantity - l.discountCents; l.offerId = OFFER_ID; }
+    g.discountCents = mine.reduce((n, l) => n + l.discountCents, 0);
+    g.subtotalCents -= g.discountCents; subtotal -= g.discountCents;
+    g.offers.push({ offerId: OFFER_ID, version: 1, name: OFFER_NAME, eligibleUnits: units, tier: fx.tier, nextTier: fx.nextTier, unitsToNextTier: fx.unitsToNextTier, discountCents: g.discountCents,
+      gifts: fx.gift ? [{ productId: GIFT_PRODUCT_ID, title: "Card wallet", quantity: 1, minQuantity: 10, status: giftUnavailableKeys.has(key) ? "unavailable" : "included" }] : [] });
   }
   return { currency: "USD", groups: [...groups.values()], itemCount: items, subtotalCents: subtotal, canCheckout, ...(token ? { cartToken: token } : {}) };
 }
@@ -99,11 +115,15 @@ function quoteFor(key, body, bump = 0) {
     const pick = picks.get(`${g.sellerId}:${g.brandId}`);
     const chosen = options.find((o) => o.speed === pick?.speed) ?? [...options].sort((x, y) => x.priceCents - y.priceCents)[0];
     const shipping = chosen?.priceCents ?? 0;
-    return { sellerId: g.sellerId, sellerName: g.sellerName, brandId: g.brandId, brandName: g.brandName, lines: g.lines.map((l) => ({ lineId: l.id, listingId: l.listingId, variantId: l.variantId, title: l.title, variantName: l.variantName, quantity: l.quantity, unitPriceCents: l.unitPriceCents, lineTotalCents: l.lineTotalCents, taxCents: 0 })),
-      itemsCents: g.subtotalCents, shippingOptions: options, unavailableSpeeds: [], local: null, selected: chosen ? { kind: "carrier", speed: chosen.speed, windowId: null, date: null, shippingCents: shipping } : null, shippingCents: shipping, shippingTaxCents: 0, taxCents: 0, totalCents: g.subtotalCents + shipping };
+    return { sellerId: g.sellerId, sellerName: g.sellerName, brandId: g.brandId, brandName: g.brandName, lines: g.lines.map((l) => ({ lineId: l.id, listingId: l.listingId, variantId: l.variantId, title: l.title, variantName: l.variantName, quantity: l.quantity, unitPriceCents: l.unitPriceCents, lineTotalCents: l.lineTotalCents, taxCents: 0, discountCents: l.discountCents ?? 0, ...(l.offerId ? { offerId: l.offerId } : {}) })),
+      itemsCents: g.subtotalCents, shippingOptions: options, unavailableSpeeds: [], local: null, selected: chosen ? { kind: "carrier", speed: chosen.speed, windowId: null, date: null, shippingCents: shipping } : null, shippingCents: shipping, shippingTaxCents: 0, taxCents: 0, totalCents: g.subtotalCents + shipping,
+      // the QUOTE's offer shape is not the cart's (docs/API.md): offers [{offerId, version, name, discountCents, giftUnavailable}] and gifts [{offerId, productId, title, quantity}]
+      discountCents: g.discountCents ?? 0,
+      offers: (g.offers ?? []).map((o) => ({ offerId: o.offerId, version: o.version, name: o.name, discountCents: o.discountCents, giftUnavailable: o.gifts.some((x) => x.status === "unavailable") })),
+      gifts: (g.offers ?? []).flatMap((o) => o.gifts.filter((x) => x.status === "included").map((x) => ({ offerId: o.offerId, productId: x.productId, title: x.title, quantity: x.quantity }))) };
   });
   const total = groups.reduce((n, g) => n + g.totalCents, 0) + bump;   // `bump`: a price that moved since the buyer's quote (test hook), part of the hash like any price
-  const sig = JSON.stringify([bump, groups.map((g) => [g.sellerId, g.brandId, g.selected?.speed, g.totalCents, g.lines.map((l) => [l.variantId, l.quantity, l.unitPriceCents])]), a.country, a.region, a.postalCode]);
+  const sig = JSON.stringify([bump, groups.map((g) => [g.sellerId, g.brandId, g.selected?.speed, g.totalCents, g.lines.map((l) => [l.variantId, l.quantity, l.unitPriceCents, l.discountCents ?? 0]), g.discountCents ?? 0, (g.gifts ?? []).length]), a.country, a.region, a.postalCode]);
   return { currency: "USD", groups, itemsCents: groups.reduce((n, g) => n + g.itemsCents, 0) + bump, shippingCents: groups.reduce((n, g) => n + g.shippingCents, 0), taxCents: 0, totalCents: total, canPay: groups.length > 0 && groups.every((g) => g.selected), quoteHash: `${Math.floor(Date.now() / 1000) + 900}.${createHash("sha256").update(sig).digest("hex")}`, expiresAt: new Date(Date.now() + 900_000).toISOString(), _sig: sig };
 }
 const publicQuote = (q) => {
@@ -152,6 +172,8 @@ http.createServer(async (req, res) => {
     if (path === "/__test/bad-publishable-key") { badPublishableKey.add(url.searchParams.get("email") ?? ""); return send(res, 204); }
     if (path === "/__test/checkout-orders") return send(res, 200, [...checkoutOrders.entries()].map(([number, o]) => ({ number, status: o.status, key: o.key.slice(0, 2), guestEmail: o.guestEmail, token: o.token, address: o.address, giftMessage: o.giftMessage })));
     if (path === "/__test/outbox") return send(res, 200, outbox);
+    if (path === "/__test/offer-gift-unavailable") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); if (u) giftUnavailableKeys.add(`u:${u.id}`); return send(res, 204); }   // quantity offers: this account's earned gift is out of stock
+    if (path === "/__test/offer-changed") { offerChangedEmails.add(url.searchParams.get("email") ?? ""); return send(res, 204); }   // quantity offers: this guest email's next checkout finds the offer changed (409 offer_changed)
     if (path === "/__test/fail-cart-once") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); if (u) failCartOnce.add(`u:${u.id}`); return send(res, 204); }   // the next cart read or merge of this account answers 503 (the sign-in cart call)
     if (path === "/__test/hold-cart-add" || path === "/__test/release-cart-add") {
       const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); const k = u ? `u:${u.id}` : "";
@@ -235,7 +257,7 @@ http.createServer(async (req, res) => {
     if (path === "/__test/reviews") return send(res, 200, { reviews: [...reviews.values()].map((r) => ({ ...reviewView(r, true), userId: r.userId })), reports: reviewReports, questions: questionsDb });
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { staffMock.reset(); carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { giftUnavailableKeys.clear(); offerChangedEmails.clear(); staffMock.reset(); carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -863,6 +885,10 @@ http.createServer(async (req, res) => {
     if (body.address?.name === "Null Checkout") return send(res, 200, null);   // failure drill: a 2xx with no order in it (a bug on the web side must still end in a handled 503 with a reference)
     if (body.address?.name === "Explode Checkout") return send(res, 500, { code: "internal_error", message: "Something went wrong." }, { "X-Correlation-Id": "0HN7E2ECORR002" });   // failure drill (M8W-03)
     const a = body.address ?? {};
+    if (guest && offerChangedEmails.delete(String(body.email))) {   // the offer changed after the buyer saw the quote: the gift is gone, nothing is created (API: 409 price_changed + messageCode offer_changed)
+      giftUnavailableKeys.add(key);
+      return send(res, 409, { code: "price_changed", messageCode: "offer_changed", message: "The price changed.", quote: publicQuote(quoteFor(key, { address: a, selections: body.selections })) });
+    }
     const fresh = quoteFor(key, { address: a, selections: body.selections }, guest ? priceBump.get(String(body.email)) ?? 0 : 0);
     if (!fresh.canPay) return send(res, 409, { code: "delivery_unavailable", message: "We can't deliver part of your cart to that address." });
     const given = String(body.quoteHash ?? "");
@@ -877,7 +903,7 @@ http.createServer(async (req, res) => {
     }
     const number = `MP-MOCK-${randomBytes(4).toString("hex").toUpperCase()}`;
     const token = guest ? `g1.${number}.${randomBytes(12).toString("hex")}` : undefined;
-    checkoutOrders.set(number, { fingerprint, tokenExpiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(), key, guest, guestEmail: guest ? body.email : null, token, status: "pending_payment", totalCents: fresh.totalCents, createdAt: new Date().toISOString(), groups: fresh.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, lines: g.lines })), address: a, giftMessage: body.giftMessage ?? null });
+    checkoutOrders.set(number, { fingerprint, tokenExpiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(), key, guest, guestEmail: guest ? body.email : null, token, status: "pending_payment", totalCents: fresh.totalCents, createdAt: new Date().toISOString(), groups: fresh.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, lines: g.lines, discountCents: g.discountCents ?? 0, giftUnavailable: (g.offers ?? []).some((o) => o.giftUnavailable), gifts: g.gifts ?? [] })), address: a, giftMessage: body.giftMessage ?? null });
     return send(res, 200, { orderNumber: number, status: "pending_payment", quote: publicQuote(fresh), payment: { provider: "stripe", clientSecret: `pi_mock_${number}_secret_x`, publishableKey: guest && badPublishableKey.has(String(body.email)) ? "pk_live_notallowed12345678" : "pk_test_mockkey12345678" }, ...(token ? { guestOrderToken: token, guestOrderTokenExpiresAt: checkoutOrders.get(number).tokenExpiresAt } : {}) });
   }
   const co = /^\/api\/v1\/checkout\/orders\/([A-Za-z0-9_-]+)$/.exec(path);
@@ -888,7 +914,10 @@ http.createServer(async (req, res) => {
     const allowed = !!o && ((req.headers.authorization && key && key === o.key) || (!req.headers.authorization && o.token && guestHdr === o.token));
     if (key === null) return send(res, 401, { code: "unauthorized" });
     if (!allowed) return send(res, !req.headers.authorization && !guestHdr ? 401 : 404, { code: "not_found" });
-    return send(res, 200, { number: co[1], status: o.status, currency: "USD", totalCents: o.totalCents, createdAt: o.createdAt, paidAt: o.status === "placed" ? o.createdAt : null, groups: o.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, deliveryKind: "carrier", shippingSpeed: "standard", localDate: null, totalCents: 0, lines: g.lines.map((l) => ({ title: l.title, variantName: l.variantName, quantity: l.quantity, lineTotalCents: l.lineTotalCents })) })) });
+    return send(res, 200, { number: co[1], status: o.status, currency: "USD", totalCents: o.totalCents, createdAt: o.createdAt, paidAt: o.status === "placed" ? o.createdAt : null, groups: o.groups.map((g) => ({ sellerName: g.sellerName, brandName: g.brandName, deliveryKind: "carrier", shippingSpeed: "standard", localDate: null, totalCents: 0, discountCents: g.discountCents ?? 0, giftUnavailable: g.giftUnavailable ?? false,
+      // the API orders paying lines first, then the free gift lines (docs/API.md)
+      lines: [...g.lines.map((l) => ({ title: l.title, variantName: l.variantName, quantity: l.quantity, lineTotalCents: l.lineTotalCents, discountCents: l.discountCents ?? 0, ...(l.offerId ? { offerId: l.offerId } : {}), isGift: false })),
+        ...(g.gifts ?? []).map((x) => ({ title: x.title, variantName: "", quantity: x.quantity, lineTotalCents: 0, discountCents: 0, offerId: x.offerId, isGift: true }))] })), failureCode: o.status === "failed" ? "offer_mismatch" : null });
   }
 
   // ---- services and bookings (M4; API repo docs/API.md "Services (M4)"): a small stateful stand-in ----
