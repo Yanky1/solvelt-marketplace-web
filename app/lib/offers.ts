@@ -9,7 +9,10 @@ export interface ListingOffer { offerId: string; name: string; tiers: OfferTier[
 export interface CartOfferGift { productId: string; title: string; quantity: number; status: "included" | "unavailable" }
 /** What an offer did to one cart group, from the server's pricing. */
 export interface CartOffer { offerId: string; eligibleUnits: number; tier: OfferTier | null; nextTier: OfferTier | null; unitsToNextTier: number; discountCents: number; gifts: CartOfferGift[] }
-export interface GiftLine { productId: string; title: string; quantity: number; unitPriceCents: number }
+/** A quote group's view of an offer (checkout): what it took off and whether an earned gift could not be included. */
+export interface QuoteOffer { offerId: string; version?: number; name?: string; discountCents: number; giftUnavailable: boolean }
+/** A free gift line in a quote group ($0). */
+export interface QuoteGift { offerId: string; productId: string; title: string; quantity: number }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const posInt = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);

@@ -203,7 +203,7 @@ function DeliveryAndTotals({ quote }: { quote: Quote }) {
       })}
       <dl className="stack u-margin-0" data-testid="checkout-totals">
         <div className="row u-justify-content-space-between u-margin-0"><dt>Items</dt><dd>{formatMoney(quote.itemsCents, quote.currency)}</dd></div>
-        <QuoteSavingsRow discountCents={quote.discountCents} currency={quote.currency} />
+        <QuoteSavingsRow discountCents={quote.discountCents ?? quote.groups.reduce((n, g) => n + (g.discountCents ?? 0), 0)} currency={quote.currency} />
         <div className="row u-justify-content-space-between u-margin-0"><dt>Shipping</dt><dd>{formatMoney(quote.shippingCents, quote.currency)}</dd></div>
         <div className="row u-justify-content-space-between u-margin-0"><dt>Tax</dt><dd>{formatMoney(quote.taxCents, quote.currency)}</dd></div>
         <div className="row u-justify-content-space-between u-margin-0"><dt><strong>Total</strong></dt><dd><strong data-testid="checkout-total">{formatMoney(quote.totalCents, quote.currency)}</strong></dd></div>

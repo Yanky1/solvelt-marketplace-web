@@ -76,7 +76,7 @@ describe("cart page", () => {
 const group = (over: Partial<QuoteGroup> = {}): QuoteGroup => ({
   sellerId: "s", sellerName: "Blitz", brandId: "b", brandName: "Blitz Cards", itemsCents: 1800, shippingOptions: [], unavailableSpeeds: [], local: null, selected: null, shippingCents: 0, shippingTaxCents: 0, taxCents: 0, totalCents: 1800,
   lines: [{ lineId: "l1", listingId: "p1", variantId: "v1", title: "Cards", variantName: "Blue", quantity: 20, unitPriceCents: 100, lineTotalCents: 1800, taxCents: 0, discountCents: 200 }],
-  giftLines: [{ productId: "g", title: "Card wallet", quantity: 1, unitPriceCents: 0 }], ...over,
+  gifts: [{ offerId: "o1", productId: "g", title: "Card wallet", quantity: 1 }], ...over,
 });
 
 describe("checkout lines", () => {
@@ -87,14 +87,15 @@ describe("checkout lines", () => {
     expect(screen.getByTestId("checkout-gift-line")).toHaveTextContent("Free gift: $0.00");
   });
   it("says the order goes through without an unavailable gift", () => {
-    show(<QuoteGroupLines group={group({ giftLines: [], offers: [offer({ nextTier: null, unitsToNextTier: 0, gifts: [gift("unavailable")] })] })} currency="USD" />);
-    expect(screen.getByTestId("checkout-gift-unavailable")).toHaveTextContent("Gift unavailable: Wallet. Your order goes through without it.");
+    show(<QuoteGroupLines group={group({ gifts: [], offers: [{ offerId: "o1", discountCents: 200, giftUnavailable: true }] })} currency="USD" />);
+    expect(screen.getByTestId("checkout-gift-unavailable")).toHaveTextContent("Gift unavailable. Your order goes through without it.");
     expect(screen.queryByTestId("checkout-gift-line")).toBeNull();
   });
   it("has no discount text for an ordinary line", () => {
-    const g = group({ giftLines: [] }); g.lines[0]!.discountCents = 0;
+    const g = group({ gifts: [], offers: [{ offerId: "o1", discountCents: 0, giftUnavailable: false }] }); g.lines[0]!.discountCents = 0;
     show(<QuoteGroupLines group={g} currency="USD" />);
     expect(screen.queryByTestId("checkout-line-discount")).toBeNull();
+    expect(screen.queryByTestId("checkout-gift-unavailable")).toBeNull();
   });
 });
 

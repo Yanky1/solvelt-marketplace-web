@@ -9,7 +9,7 @@ import { cleanRef } from "./error-ref.server";
  * documented yet; shapes here are what the mock API in e2e/mock-api.mjs implements, to be confirmed by M1.
  */
 import { safeHttps } from "./orders";
-import type { CartOffer, GiftLine } from "./offers";
+import type { CartOffer, QuoteGift, QuoteOffer } from "./offers";
 import type { Availability, BookingView, PolicyView, QuoteView } from "./bookings";
 import { parseQuestions, parseReview, parseReviewPage, parseReviewable, type QuestionView, type ReviewPage, type ReviewView, type Reviewable } from "./reviews";
 import { parseCard, parseItems, parseSummary, type ListCardView, type WishlistItemView, type WishlistSummary } from "./lists";
@@ -152,7 +152,7 @@ export interface LocalWindow { windowId: string; date: string; start: string; en
 export interface QuoteLine { lineId: string; listingId: string; variantId: string; title: string; variantName: string; quantity: number; unitPriceCents: number; lineTotalCents: number; taxCents: number; discountCents?: number; offerId?: string }
 export interface QuoteGroup {
   /** Quantity offers (C18): what each did to this group, and the free gift lines (price 0). Items are net of discounts. */
-  offers?: CartOffer[]; giftLines?: GiftLine[]; discountCents?: number;
+  offers?: QuoteOffer[]; gifts?: QuoteGift[]; discountCents?: number;
   sellerId: string; sellerName: string; brandId: string; brandName: string; lines: QuoteLine[]; itemsCents: number; shippingOptions: ShippingOption[]; unavailableSpeeds: { speed: string; reason: string }[];
   local: { eligible: boolean; reason: string | null; feeCents: number | null; timeZone: string | null; windows: LocalWindow[] } | null;
   selected: { kind: "carrier" | "local"; speed: string | null; windowId: string | null; date: string | null; shippingCents: number } | null;

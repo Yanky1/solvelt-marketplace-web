@@ -2,7 +2,7 @@ import { Badge, formatMoney } from "~/components/ui/display";
 import type { QuoteGroup } from "~/lib/api-client.server";
 import { cartOfferMessages, listingOfferBadges, money, type CartOffer, type ListingOffer } from "~/lib/offers";
 
-/** Offer badges on a listing: "Buy 20+, $0.90 each", "Free gift with 10+". Text in a badge, never colour alone. Renders nothing without offers. */
+/** Offer badges on a listing: "Buy 20+, $0.90 each", "Free Card wallet from 10". Text in a badge, never colour alone. Renders nothing without offers. */
 export function ListingOfferBadges({ offers, currency }: { offers: ListingOffer[] | undefined; currency: string }) {
   const badges = listingOfferBadges(offers, currency);
   if (badges.length === 0) return null;
@@ -43,16 +43,16 @@ export function QuoteGroupLines({ group, currency }: { group: QuoteGroup; curren
             </span>
           </li>
         ))}
-        {(group.giftLines ?? []).map((gl) => (
-          <li key={gl.productId} className="row u-justify-content-space-between" data-testid="checkout-gift-line">
+        {(group.gifts ?? []).map((gl) => (
+          <li key={`${gl.offerId}:${gl.productId}`} className="row u-justify-content-space-between" data-testid="checkout-gift-line">
             <span>{gl.title} × {gl.quantity}</span>
             <span>Free gift: {formatMoney(0, currency)}</span>
           </li>
         ))}
       </ul>
-      {(group.offers ?? []).flatMap((o) => cartOfferMessages(o, currency).filter((m) => m.kind === "gift_unavailable").map((m) => (
-        <p key={`${o.offerId}:${m.kind}`} role="status" className="muted u-margin-0" data-testid="checkout-gift-unavailable">{m.text}. Your order goes through without it.</p>
-      )))}
+      {(group.offers ?? []).filter((o) => o.giftUnavailable).map((o) => (
+        <p key={o.offerId} role="status" className="muted u-margin-0" data-testid="checkout-gift-unavailable">Gift unavailable. Your order goes through without it.</p>
+      ))}
     </>
   );
 }
