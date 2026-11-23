@@ -38,18 +38,21 @@ function ThemeSwitch({ theme }: { theme: ThemePref }) {
   );
 }
 
-/** How many top-level categories the desktop bar shows before "All categories"; the mobile menu shows them all. */
-export const DESKTOP_CATEGORIES = 6;
+type NavItem = { slug: string; name: string };
+
+/** The category links (W3-03): the top-level catalog categories in the portal's order, server-rendered from the root loader. */
+export function categoryLinks(nav: NavItem[] | undefined): { to: string; label: string }[] {
+  return (nav ?? []).map((c) => ({ to: `/c/${encodeURIComponent(c.slug)}`, label: c.name }));
+}
 
 /**
- * The header links (W3-03): the top-level catalog categories in the portal's order, server-rendered from the root loader, then "All categories" when the bar cannot show them all, then
- * the fixed links that are not categories. Without categories (the API could not be read) the fixed links alone, as before.
+ * The top bar's own links: the fixed ones, minus any a category already names (Services is a top-level category: it is in the category row, not twice). Without categories (the API could
+ * not be read) the fixed links alone, as before.
  */
-export function navLinks(nav: { slug: string; name: string }[] | undefined, max: number): { to: string; label: string }[] {
+export function mainLinks(nav: NavItem[] | undefined): { to: string; label: string }[] {
   if (!nav || nav.length === 0) return NAV_LINKS;
-  const cats = nav.slice(0, max).map((c) => ({ to: `/c/${encodeURIComponent(c.slug)}`, label: c.name }));
-  const named = new Set(nav.map((c) => c.name.trim().toLowerCase()));   // a fixed link a category already names (Services) is not shown twice
-  return [...cats, { to: "/categories", label: nav.length > max ? "All categories" : "Categories" }, ...NAV_LINKS.filter((l) => l.to !== "/categories" && !named.has(l.label.toLowerCase()))];
+  const named = new Set(nav.map((c) => c.name.trim().toLowerCase()));
+  return NAV_LINKS.filter((l) => !named.has(l.label.toLowerCase()));
 }
 
 export function Header() {
@@ -69,16 +72,24 @@ export function Header() {
         {testMode && <span className="test-mode" data-testid="test-mode-badge"><Badge tone="gold">TEST MODE</Badge></span>}
         <SearchBox />
         <nav className="nav-desktop" aria-label="Main">
-          {navLinks(nav, DESKTOP_CATEGORIES).map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
+          {mainLinks(nav).map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
         </nav>
         {user
           ? <Link to="/account" className="btn btn-ghost" aria-label={`Account of ${user.displayName}`}>{user.displayName.split(" ")[0]}</Link>
           : <Link to="/sign-in" className="btn btn-ghost">Sign in</Link>}
         <Link to="/cart" className="btn btn-secondary" aria-label={`Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}>Cart <span aria-hidden="true" data-testid="cart-count">{cartCount}</span></Link>
       </div>
+      {/* the category row (W3-03): wide screens only; it scrolls inside itself when the categories do not fit, never the page. The mobile menu lists them instead. */}
+      {categoryLinks(nav).length > 0 && (
+        <nav className="catbar" aria-label="Shop by category">
+          <div className="container catbar-inner">
+            {categoryLinks(nav).map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
+          </div>
+        </nav>
+      )}
       <Modal open={open} onClose={() => setOpen(false)} title="Menu" variant="drawer">
         <nav aria-label="Mobile" className="stack u-margin-top-var-s2">
-          {navLinks(nav, Number.MAX_SAFE_INTEGER).map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost u-justify-content-flex-start-width-100" onClick={() => setOpen(false)}>{l.label}</Link>)}
+          {[...categoryLinks(nav), ...mainLinks(nav)].map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost u-justify-content-flex-start-width-100" onClick={() => setOpen(false)}>{l.label}</Link>)}
         </nav>
       </Modal>
     </header>

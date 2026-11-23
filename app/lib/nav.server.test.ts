@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_NAV_CATEGORIES, navCategories, resetNavCache, topLevel } from "./nav.server";
-import { navLinks, NAV_LINKS } from "~/components/Shell";
+import { categoryLinks, mainLinks, NAV_LINKS } from "~/components/Shell";
 
 vi.mock("./config.server", () => ({ getConfig: vi.fn(() => ({ apiBaseUrl: "http://api.test" })) }));
 vi.mock("./api.server", () => ({ apiFetch: vi.fn() }));
@@ -57,20 +57,17 @@ describe("navCategories (cached, SSR)", () => {
   });
 });
 
-describe("navLinks (the header)", () => {
+describe("the header's links", () => {
   const cats = topLevel(TREE)!;
-  it("puts the categories first, then Categories and the fixed links a category does not already name", () => {
-    expect(navLinks(cats, 6)).toEqual([
-      { to: "/c/food-drink", label: "Food & Drink" }, { to: "/c/home-judaica", label: "Home & Judaica" }, { to: "/c/services", label: "Services" }, { to: "/c/gifts", label: "Gifts" },
-      { to: "/categories", label: "Categories" }, { to: "/brands", label: "Brands" },
-    ]);
+  it("the category row has every top-level category, in order, as /c/<slug>", () => {
+    expect(categoryLinks(cats)).toEqual([{ to: "/c/food-drink", label: "Food & Drink" }, { to: "/c/home-judaica", label: "Home & Judaica" }, { to: "/c/services", label: "Services" }, { to: "/c/gifts", label: "Gifts" }]);
   });
-  it("says All categories when the bar cannot show them all", () => {
-    const links = navLinks(cats, 2);
-    expect(links.slice(0, 3).map((l) => l.label)).toEqual(["Food & Drink", "Home & Judaica", "All categories"]);
+  it("the top bar keeps the fixed links a category does not already name", () => {
+    expect(mainLinks(cats)).toEqual([{ to: "/categories", label: "Categories" }, { to: "/brands", label: "Brands" }]);
   });
-  it("is the fixed list when there are no categories", () => {
-    expect(navLinks([], 6)).toBe(NAV_LINKS);
-    expect(navLinks(undefined, 6)).toBe(NAV_LINKS);
+  it("is the fixed list, and no category row, when there are no categories", () => {
+    expect(mainLinks([])).toBe(NAV_LINKS);
+    expect(mainLinks(undefined)).toBe(NAV_LINKS);
+    expect(categoryLinks(undefined)).toEqual([]);
   });
 });
