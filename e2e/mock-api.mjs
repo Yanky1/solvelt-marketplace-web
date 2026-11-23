@@ -50,9 +50,11 @@ const phoneCodes = new Map(); // challengeId -> {phone, code, purpose, attempts,
 const lastSms = new Map(); // e164 -> last code texted (read by the specs through /__test/sms)
 const e164 = (raw) => { const t = String(raw ?? "").trim(); const d = t.replace(/\D/g, ""); if (t.startsWith("+")) return d.length >= 8 && d.length <= 15 ? `+${d}` : null; if (d.length === 10) return `+1${d}`; if (d.length === 11 && d[0] === "1") return `+${d}`; return null; };
 const phoneUser = (phone) => [...users.values()].find((u) => u.phoneE164 === phone);
+/** As the API (W3-02): a challenge for any number, but a text ONLY to a number an eligible account holds (no SMS pumping). */
 function textCode(phone, purpose, userId) {
   const id = randomUUID(); const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
-  phoneCodes.set(id, { phone, code, purpose, attempts: 0, used: false, userId: userId ?? null }); lastSms.set(phone, code);
+  phoneCodes.set(id, { phone, code, purpose, attempts: 0, used: false, userId: userId ?? null });
+  if (userId) lastSms.set(phone, code);
   return id;
 }
 let exportedAt;
@@ -386,7 +388,7 @@ http.createServer(async (req, res) => {
     if (!phone) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { phone: "Enter a phone number." } });
     if (phone.endsWith("0429")) return send(res, 429, { code: "rate_limited", message: "Too many" }, { "Retry-After": "3600" });
     const u = phoneUser(phone);
-    return send(res, 202, { challengeId: textCode(phone, "sign-in", u && !u.password ? u.id : null), expiresInSeconds: 600 });   // a code for any valid number
+    return send(res, 202, { challengeId: textCode(phone, "sign-in", u && !u.password ? u.id : null), expiresInSeconds: 600 });   // the same answer for any valid number
   }
   if ((path === "/api/v1/auth/phone/verify" || path === "/api/v1/auth/reauthenticate/phone") && req.method === "POST") {
     const stepUp = path.endsWith("/reauthenticate/phone");

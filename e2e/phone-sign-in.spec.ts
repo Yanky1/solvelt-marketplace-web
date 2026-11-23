@@ -43,7 +43,7 @@ test.describe("an account made by phone on the website", () => {
     await expect(page).toHaveURL(/\/account$/);
   });
 
-  test("a wrong code is said plainly, and a number without an account is told only after its code", async ({ page }) => {
+  test("a wrong code is said plainly, and a number without an account looks the same and gets no text", async ({ page }) => {
     const number = freshNumber();
     await phoneAccount(page, number);
     await page.goto("/sign-in/phone");
@@ -58,15 +58,17 @@ test.describe("an account made by phone on the website", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL(/\/account$/);
 
-    const stranger = freshNumber();   // no account: the first step answers exactly the same
+    const stranger = freshNumber();   // no account: the page answers exactly the same, but nothing is texted (API W3-02: no SMS pumping)
     await page.context().clearCookies();
     await page.goto("/sign-in/phone");
     await page.getByLabel("Phone number").fill(stranger);
     await page.getByRole("button", { name: "Text me a code" }).click();
     await expect(page.getByTestId("code-sent")).toContainText("If an account can use it");
-    await page.getByLabel("Six-digit code").fill(await smsCode(page, stranger));
+    const { code } = (await (await page.request.get(`${MOCK}/__test/sms?phone=${stranger}`)).json()) as { code: string | null };
+    expect(code).toBeNull();
+    await page.getByLabel("Six-digit code").fill("123456");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.locator("[data-error-summary]")).toContainText("No account signs in with this number");
+    await expect(page.locator("[data-error-summary]")).toContainText("That code is not correct");   // a guess gets the same answer as on a real number
   });
 
   test("adds a confirmed email, then a password, and then signs in with them", async ({ page }) => {
