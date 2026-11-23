@@ -454,6 +454,27 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="solvelt-my-data.json"', "Cache-Control": "private, no-store" });
     return res.end(body);
   }
+  // ---- deleting an account without a password by a code texted for exactly that (API W3-06) ----
+  if (path === "/api/v1/account/delete/phone/start" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (!u.phoneE164 || u.password) return send(res, 409, { code: "no_phone", message: "No phone" });
+    return send(res, 202, { challengeId: textCode(u.phoneE164, "delete-account", u.id), expiresInSeconds: 600 });
+  }
+  if (path === "/api/v1/account/delete/phone" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (u.password) return send(res, 409, { code: "password_required", message: "Has a password" });
+    const c = phoneCodes.get(String(body.challengeId ?? ""));
+    if (!c || c.used || c.attempts >= 5 || c.purpose !== "delete-account") return send(res, 400, { code: "code_expired", message: "Expired" });
+    c.attempts++;
+    if (String(body.code ?? "") !== c.code) return c.attempts >= 5 ? send(res, 400, { code: "code_expired", message: "Expired" }) : send(res, 401, { code: "invalid_code", message: "Wrong" });
+    if (c.userId !== u.id) return send(res, 401, { code: "invalid_code", message: "Wrong" });
+    c.used = true;
+    for (const [t, id] of [...sessions]) if (id === u.id) sessions.delete(t);
+    for (const [k, x] of [...users]) if (x.id === u.id) users.delete(k);
+    return send(res, 204);
+  }
   if (path === "/api/v1/account/delete" && req.method === "POST") {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });

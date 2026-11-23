@@ -263,6 +263,9 @@ export const api = {
   dataExport: (ctx: ApiRequestContext) => rawPost(ctx, "/api/v1/account/data-export"),
   /** Deletes the account (soft delete now, erasure by the API's job): needs the password and a recent sign-in. */
   deleteAccount: (ctx: ApiRequestContext, password: string) => call<void>(ctx, "/api/v1/account/delete", { password }),
+  /** An account with NO password (W3 follow-up): a code for deleting it, texted to its own proven number; then the delete with that code. Both need a recent sign-in. */
+  deleteAccountPhoneStart: (ctx: ApiRequestContext) => call<unknown>(ctx, "/api/v1/account/delete/phone/start", {}).then(phoneChallenge),
+  deleteAccountByPhone: (ctx: ApiRequestContext, b: { challengeId: string; code: string }) => call<void>(ctx, "/api/v1/account/delete/phone", b),
   reauthenticate: (ctx: ApiRequestContext, password: string) => call<void>(ctx, "/api/v1/auth/reauthenticate", { password }),
   signIn: (ctx: ApiRequestContext, b: { email: string; password: string }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/sign-in", b),
   signOut: (ctx: ApiRequestContext) => call<void>(ctx, "/api/v1/auth/sign-out", {}),
