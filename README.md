@@ -16,6 +16,8 @@ npm run build && npm start   # production SSR server on :3000
 
 ## Configuration (environment)
 
+Setting up a deployment of both apps (secrets, TLS, the reverse proxy and where the API sits, PostgreSQL, Stripe and portal webhooks, the first staff admin): `docs/DEPLOY.md` in the API repository (Yanky1/solvelt-marketplace-api).
+
 | Variable | Required in production | Meaning |
 |---|---|---|
 | `API_BASE_URL` | yes | Marketplace API base URL |
@@ -27,6 +29,8 @@ npm run build && npm start   # production SSR server on :3000
 | `TRUSTED_PROXIES` | no | Comma-separated IPs or CIDRs (IPv4 or IPv6) of your reverse proxies; `X-Forwarded-For` is trusted only from these. Invalid entries stop start-up. Keep server clocks in NTP sync (the API accepts the signed timestamp for a short window) |
 | `REAUTH_WINDOW_SECONDS` | no | How recent a sign-in must be to remove a passkey (default 600, 1..3600) |
 | `PORT` | no | Server port (default 3000) |
+| `STRIPE_JS_URL` | no | Where Stripe.js is loaded from (default `https://js.stripe.com/v3`); production accepts only Stripe's own origin. The site holds no Stripe key: it shows the API's test publishable key |
+| `ALLOW_STRIPE_STUB` | no, tests only | `1` lets the E2E run load a stand-in Stripe.js from localhost (only when `PUBLIC_ORIGIN` is localhost) |
 
 The server refuses to start in production when a required value is missing or invalid (the error never prints secret values). Anything except `NODE_ENV=development` or `test` counts as production, including an unset `NODE_ENV`. Secrets must be random (at least 12 distinct characters, no placeholders such as `change-me`).
 
@@ -36,7 +40,7 @@ The browser only holds a sealed `HttpOnly` cookie; the API token stays on this s
 
 ## Pages
 
-Home, sign-up, sign-in (password or passkey), verify and resend-verification, forgot and reset password, `/account` (overview, profile, addresses, passkeys), `/styleguide` (every component, `noindex`), error and 404 pages, `robots.txt`, `sitemap.xml` (placeholder). Catalog, search and image routes belong to the M2 worker (see `docs/DESIGN.md` W1-53).
+Home, sign-up, sign-in (password or passkey), verify and resend-verification, forgot and reset password, `/account` (overview, profile, addresses, passkeys), `/styleguide` (every component, `noindex`), error and 404 pages, `robots.txt`, and `sitemap.xml`: a real sitemap index built from the API's catalog sitemap endpoints, with one child sitemap per kind and page (`/sitemaps/:kind/:n.xml`: listings, categories, brands), each with last-modified dates and an ETag. The catalog, search, product, storefront, cart, checkout, account, bookings, quotes, reviews, lists and staff pages are described in `docs/DESIGN.md`.
 
 ## Test
 
