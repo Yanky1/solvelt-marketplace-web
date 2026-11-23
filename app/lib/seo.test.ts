@@ -68,3 +68,15 @@ describe("breadcrumbJsonLd", () => it("numbers the items from 1 with absolute ur
   const ld = breadcrumbJsonLd("https://shop.example", [{ name: "Home", path: "/" }, { name: "Bakery", path: "/c/bakery" }]);
   expect(ld.itemListElement.map((i) => [i.position, i.item])).toEqual([[1, "https://shop.example/"], [2, "https://shop.example/c/bakery"]]);
 }));
+
+describe("listingJsonLd for a service priced by quote (W3-01)", () => {
+  it("has no Offer at all, so no price of 0 reaches search engines", () => {
+    const ld = listingJsonLd(listing({ type: "service", priceMode: "quote", priceFromCents: 0, priceToCents: 0, variants: [] }), "https://shop.example") as Record<string, unknown>;
+    expect(ld["@type"]).toBe("Service");
+    expect(ld).not.toHaveProperty("offers");
+    expect(JSON.stringify(ld)).not.toContain("price");
+  });
+  it("keeps the offers of a priced listing", () => {
+    expect((listingJsonLd(listing(), "https://shop.example") as { offers: unknown[] }).offers).toHaveLength(2);
+  });
+});

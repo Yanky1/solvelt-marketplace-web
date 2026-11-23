@@ -90,7 +90,7 @@ export default function WishlistPage({ loaderData, actionData }: Route.Component
                   <>
                     {i.listing.image && <Img imageId={i.listing.image.id} width={i.listing.image.width} height={i.listing.image.height} alt={i.listing.image.alt} sizes="(min-width: 700px) 25vw, 50vw" />}
                     <p className="u-margin-0"><Link to={listingPath(i.listing.slug)}><strong>{i.listing.title}</strong></Link></p>
-                    <p className="u-margin-0"><Price cents={i.listing.priceFromCents} currency={i.listing.currency} /></p>
+                    <p className="u-margin-0">{i.listing.priceMode === "quote" ? <span data-testid="request-quote">Request a quote</span> : <Price cents={i.listing.priceFromCents} currency={i.listing.currency} />}</p>
                     {!i.listing.available && <Badge tone="neutral">Sold out</Badge>}
                   </>
                 ) : (

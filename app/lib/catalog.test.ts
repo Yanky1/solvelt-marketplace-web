@@ -88,3 +88,20 @@ describe("the demo flag of a listing (M9)", () => {
   });
 });
 
+
+describe("a service priced by quote (API W3-01)", () => {
+  const quote = () => ({ ...good(), type: "service", priceMode: "quote", priceFromCents: 0, priceToCents: 0, compareAtFromCents: null, variants: [] });
+  it("is read with no variants and says quote", () => {
+    const l = parseListingDetail(quote())!;
+    expect([l.priceMode, l.variants.length]).toEqual(["quote", 0]);
+  });
+  it("is fixed when the API does not say (an older API), and a priced listing still needs a variant", () => {
+    expect(parseListingDetail(good())!.priceMode).toBe("fixed");
+    expect(parseListingDetail({ ...good(), priceMode: "fixed", variants: [] })).toBeNull();
+    expect(parseListingDetail({ ...good(), variants: [] })).toBeNull();
+  });
+  it("refuses a quote-priced product and a quote-priced listing that has variants", () => {
+    expect(parseListingDetail({ ...quote(), type: "product" })).toBeNull();
+    expect(parseListingDetail({ ...quote(), variants: good().variants })).toBeNull();
+  });
+});

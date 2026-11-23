@@ -9,10 +9,18 @@ export interface Variant { id: string; name: string; priceCents: number; compare
 export interface Attribute { key: string; value: string }
 export interface Faq { question: string; answer: string }
 
+/**
+ * `quote`: a service the seller prices per job (API decision W3-01). Its price fields are 0 and are never shown: the page offers "Request a quote" instead, and it has no variants.
+ * An answer without the field (an older API) is `fixed`.
+ */
+export type PriceMode = "fixed" | "quote";
+export const priceModeOf = (v: unknown): PriceMode => (v === "quote" ? "quote" : "fixed");
+
 export interface ListingDetail {
   id: string; slug: string; type: "product" | "service";
   title: string; summary: string; description: string;
   priceFromCents: number; priceToCents: number; compareAtFromCents: number | null; currency: string; available: boolean;
+  priceMode?: PriceMode;
   /** The portal marks it as demo data (M9): shown with a "Demo" pill. */
   demo: boolean;
   brand: Brand; seller: Seller; categoryPath: CategoryCard[];
@@ -66,9 +74,12 @@ export function parseListingDetail(json: unknown): ListingDetail | null {
   const attributes = each(json.attributes, 100, (a) => (isObj(a) && str(a.key, 100) && str(a.value, 500) !== null ? { key: a.key as string, value: a.value as string } : null));
   const faqs = each(json.faqs, 50, (f) => (isObj(f) && str(f.question, 600) && str(f.answer, 20_000) !== null ? { question: f.question as string, answer: f.answer as string } : null));
   const createdAt = str(json.createdAt, 40), updatedAt = str(json.updatedAt, 40);
+  const priceMode = priceModeOf(json.priceMode);
+  // a priced listing always has something to buy or book; a quote-priced service has nothing (and a service is the only thing that can be quote-priced)
+  const variantsOk = variants !== null && (priceMode === "quote" ? type === "service" && variants.length === 0 : variants.length > 0);
   if (!id || !slug || !title || summary === null || description === null || !type || !currency || from === null || to === null || (json.compareAtFromCents != null && was === null)
-    || !b || !s || !path || !variants || variants.length === 0 || !images || !attributes || !faqs || !createdAt || !updatedAt || typeof json.available !== "boolean") return null;
-  return { id, slug, type, title, summary, description, priceFromCents: from, priceToCents: to, compareAtFromCents: was, currency, available: json.available, demo: json.demo === true, brand: b, seller: s, categoryPath: path, variants, images, attributes, faqs, createdAt, updatedAt, offers: parseListingOffers(json.offers) };
+    || !b || !s || !path || !variants || !variantsOk || !images || !attributes || !faqs || !createdAt || !updatedAt || typeof json.available !== "boolean") return null;
+  return { id, slug, type, title, summary, description, priceFromCents: from, priceToCents: to, compareAtFromCents: was, currency, available: json.available, priceMode, demo: json.demo === true, brand: b, seller: s, categoryPath: path, variants, images, attributes, faqs, createdAt, updatedAt, offers: parseListingOffers(json.offers) };
 }
 
 /** The variant shown: the one asked for (by id) when it exists, else the first one that can be bought, else the first. */

@@ -130,6 +130,10 @@ describe("parseListingPage", () => {
     for (const bad of [null, "x", [], {}, page({ items: "no" }), page({ items: [card({ priceFromCents: -1 })] }), page({ items: [card({ currency: "usd" })] }), page({ items: [card({ type: "gadget" })] }), page({ total: "3" }), page({ items: [card({ slug: undefined })] }), page({ facets: "oops" }), page({ facets: { categories: "oops" } })])
       expect(parseListingPage(bad)).toBeNull();
   });
+  it("reads the price mode of a card: quote when the API says so (W3-01), fixed otherwise", () => {
+    const items = parseListingPage(page({ items: [card({ priceMode: "quote", type: "service", priceFromCents: 0, priceToCents: 0 }), card(), card({ priceMode: "hourly" })] }))!.items;
+    expect(items.map((i) => i.priceMode)).toEqual(["quote", "fixed", "fixed"]);
+  });
   it("never lets a range run backwards and tolerates a missing image or category", () => {
     const c = parseListingPage(page({ items: [card({ priceFromCents: 500, priceToCents: 100, image: null, category: null })] }))!.items[0]!;
     expect([c.priceToCents, c.image, c.category]).toEqual([500, null, null]);

@@ -23,7 +23,8 @@ const availabilityUrl = (v: Variant): string => (v.available ? "https://schema.o
 /** schema.org Product (a service is a Service) with one Offer per variant; the canonical URL never carries the variant, an offer's url does. */
 export function listingJsonLd(listing: ListingDetail, origin: string) {
   const url = origin + listingPath(listing.slug);
-  const offers = listing.variants.map((v) => ({
+  // a service priced per job has no price to offer (API W3-01): no Offer at all, rather than one at 0
+  const offers = listing.priceMode === "quote" ? [] : listing.variants.map((v) => ({
     "@type": "Offer",
     name: v.name,
     url: `${url}?variant=${encodeURIComponent(v.id)}`,
@@ -38,7 +39,7 @@ export function listingJsonLd(listing: ListingDetail, origin: string) {
     description: clipText(listing.summary || listing.description, 5000),
     url,
     ...(listing.images.length ? { image: listing.images.slice(0, 8).map((i) => imageUrl(origin, i.id)) } : {}),
-    offers,
+    ...(offers.length ? { offers } : {}),
   };
   if (listing.type === "service") return { "@type": "Service", ...base, provider: { "@type": "Organization", name: listing.seller.displayName }, ...(listing.categoryPath.length ? { serviceType: listing.categoryPath.at(-1)!.name } : {}) };
   return { "@type": "Product", ...base, brand: { "@type": "Brand", name: listing.brand.name }, ...(listing.categoryPath.length ? { category: listing.categoryPath.map((c) => c.name).join(" > ") } : {}) };

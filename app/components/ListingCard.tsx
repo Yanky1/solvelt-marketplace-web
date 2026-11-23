@@ -6,7 +6,8 @@ import { listingPath } from "~/lib/urls";
 
 /** One listing in a grid: the whole card is one link (one tab stop), with the price and stock state as text, not colour. */
 export function ListingCard({ item, priority = false }: { item: ListingCardData; priority?: boolean }) {
-  const range = item.priceToCents > item.priceFromCents;
+  const quote = item.priceMode === "quote";
+  const range = !quote && item.priceToCents > item.priceFromCents;
   return (
     <li className="listing-card">
       <Link to={listingPath(item.slug)} className="listing-card-link">
@@ -16,13 +17,13 @@ export function ListingCard({ item, priority = false }: { item: ListingCardData;
           ) : (
             <span className="listing-card-noimage" aria-hidden="true" />
           )}
-          {!item.available && <span className="listing-card-flag"><Badge tone="neutral">Sold out</Badge></span>}
+          {!item.available && <span className="listing-card-flag"><Badge tone="neutral">{quote ? "Unavailable" : "Sold out"}</Badge></span>}
           {item.demo && <span className="listing-card-demo" data-testid="demo-pill"><Badge tone="gold">Demo</Badge></span>}
         </div>
         <span className="listing-card-brand">{item.brand.name}</span>
         <span className="listing-card-title">{item.title}</span>
         <span className="listing-card-price">
-          {range ? <><span className="listing-card-from">From </span><Price cents={item.priceFromCents} currency={item.currency} /></> : <Price cents={item.priceFromCents} wasCents={item.compareAtFromCents ?? undefined} currency={item.currency} />}
+          {quote ? <span className="listing-card-quote" data-testid="request-quote">Request a quote</span> : range ? <><span className="listing-card-from">From </span><Price cents={item.priceFromCents} currency={item.currency} /></> : <Price cents={item.priceFromCents} wasCents={item.compareAtFromCents ?? undefined} currency={item.currency} />}
           {range && <span className="sr-only">, up to {formatMoney(item.priceToCents, item.currency)}</span>}
         </span>
         {item.type === "service" && <span className="listing-card-kind">Service</span>}

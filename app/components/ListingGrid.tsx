@@ -13,11 +13,11 @@ export function ListingGrid({ items, label }: { items: ListCardView[]; label: st
           <Link to={listingPath(c.slug)} className="listing-card-link">
             <div className="listing-card-media">
               {c.image ? <Img imageId={c.image.id} width={c.image.width} height={c.image.height} alt={c.image.alt} sizes="(min-width: 1100px) 20vw, (min-width: 700px) 25vw, 50vw" /> : <span className="listing-card-noimage" aria-hidden="true" />}
-              {!c.available && <span className="listing-card-flag"><Badge tone="neutral">Sold out</Badge></span>}
+              {!c.available && <span className="listing-card-flag"><Badge tone="neutral">{c.priceMode === "quote" ? "Unavailable" : "Sold out"}</Badge></span>}
             </div>
             {c.brandName && <span className="listing-card-brand">{c.brandName}</span>}
             <span className="listing-card-title">{c.title}</span>
-            <span className="listing-card-price"><Price cents={c.priceFromCents} currency={c.currency} /></span>
+            <span className="listing-card-price">{c.priceMode === "quote" ? <span className="listing-card-quote" data-testid="request-quote">Request a quote</span> : <Price cents={c.priceFromCents} currency={c.currency} />}</span>
           </Link>
         </li>
       ))}

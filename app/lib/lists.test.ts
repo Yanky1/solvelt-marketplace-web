@@ -64,4 +64,8 @@ describe("parsers", () => {
     expect(items.map((i) => [i.listingId, i.unavailable, i.listing?.id ?? null])).toEqual([["a", true, null], ["b", false, "id2"]]);
     expect(parseItems("x")).toEqual([]);
   });
+  it("read the price mode (W3-01): quote when the API says so, fixed when it does not (an older entry in the browser)", () => {
+    expect(parseCard({ ...card(1), priceMode: "quote" })?.priceMode).toBe("quote");
+    expect(parseCard(card(1))?.priceMode).toBe("fixed");
+  });
 });

@@ -37,6 +37,13 @@ describe("ListingCard", () => {
     expect(screen.getByText("Service")).toBeInTheDocument();
     expect(screen.getByAltText("Photo")).toHaveAttribute("fetchpriority", "high");
   });
+  it("says Request a quote instead of a price for a service priced by quote (W3-01), never $0", () => {
+    withRouter(<ul><ListingCard item={card({ type: "service", priceMode: "quote", priceFromCents: 0, priceToCents: 0, compareAtFromCents: null })} /></ul>);
+    const link = screen.getByRole("link");
+    expect(link).toHaveTextContent("Request a quote");
+    expect(link).not.toHaveTextContent("$");
+    expect(link).not.toHaveTextContent("From");
+  });
   it("copes with a listing that has no photo", () => {
     withRouter(<ul><ListingCard item={card({ image: null })} /></ul>);
     expect(screen.queryByRole("img")).toBeNull();

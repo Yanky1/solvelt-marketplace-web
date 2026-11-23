@@ -3,6 +3,7 @@
  * Nothing from the address reaches the API unparsed: every field is checked here, anything unknown or malformed is dropped (never repaired into a different
  * meaning), and lists and numbers are bounded to what the API accepts, so a hostile or hand-edited address gives a normal page instead of a 400.
  */
+import { priceModeOf, type PriceMode } from "./catalog";
 
 export const SORTS = ["relevance", "newest", "price_asc", "price_desc", "title"] as const;
 export type Sort = (typeof SORTS)[number];
@@ -156,6 +157,8 @@ export function withChange(q: ListingQuery, change: Partial<ListingQuery>): List
 export interface ListingCardData {
   id: string; slug: string; type: "product" | "service"; title: string; summary: string;
   priceFromCents: number; priceToCents: number; compareAtFromCents: number | null; currency: string; available: boolean;
+  /** `quote`: priced per job (API W3-01): the card says "Request a quote", never a price. */
+  priceMode?: PriceMode;
   /** The portal marks it as demo data (M9): shown with a "Demo" pill. */
   demo: boolean;
   brand: { slug: string; name: string }; seller: { id: string; displayName: string }; category: { slug: string; name: string } | null;
@@ -189,7 +192,7 @@ function parseCard(v: unknown): ListingCardData | null {
   const cat = obj(o.category), img = obj(o.image);
   const imgId = img ? str(img.id, 64) : null, w = img ? int(img.width) : null, h = img ? int(img.height) : null;
   return {
-    id, slug, type, title, summary: str(o.summary, 2000) ?? "", priceFromCents: from, priceToCents: Math.max(from, to), compareAtFromCents: int(o.compareAtFromCents), currency, available: o.available, demo: o.demo === true,
+    id, slug, type, title, summary: str(o.summary, 2000) ?? "", priceFromCents: from, priceToCents: Math.max(from, to), compareAtFromCents: int(o.compareAtFromCents), currency, available: o.available, priceMode: priceModeOf(o.priceMode), demo: o.demo === true,
     brand: { slug: bSlug, name: bName }, seller: { id: sId, displayName: sName },
     category: cat && str(cat.slug, 160) && str(cat.name, 400) ? { slug: str(cat.slug, 160)!, name: str(cat.name, 400)! } : null,
     image: imgId && w && h ? { id: imgId, width: w, height: h, alt: str(img!.alt, 400) ?? "" } : null,

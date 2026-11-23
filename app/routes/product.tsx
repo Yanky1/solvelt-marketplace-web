@@ -78,8 +78,10 @@ export function meta({ data: d }: Route.MetaArgs) {
     { property: "og:description", content: description },
     { property: "og:url", content: url },
     ...(main ? [{ property: "og:image", content: imageUrl(origin, main.id) }, { property: "og:image:alt", content: main.alt }] : []),
-    { property: "product:price:amount", content: priceString(listing.priceFromCents) },
-    { property: "product:price:currency", content: listing.currency },
+    ...(listing.priceMode === "quote" ? [] : [   // priced per job: no price to state (W3-01)
+      { property: "product:price:amount", content: priceString(listing.priceFromCents) },
+      { property: "product:price:currency", content: listing.currency },
+    ]),
     { name: "twitter:card", content: main ? "summary_large_image" : "summary" },
     { name: "twitter:title", content: title },
     { name: "twitter:description", content: description },
@@ -108,7 +110,8 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
   const { listing, origin, reviews, reviewQuery: rq } = loaderData;
   // The choice lives in the address, not in loader data: choosing an option does not reload the listing (shouldRevalidate), so only the address changes.
   const [params] = useSearchParams();
-  const variant = pickVariant(listing, params.get("variant"));
+  const quote = listing.priceMode === "quote";
+  const variant = quote ? null : pickVariant(listing, params.get("variant"));   // a quote-priced service has no variants (W3-01)
   const crumbs = [{ label: "Home", to: "/" }, ...listing.categoryPath.map((c) => ({ label: c.name, to: categoryPath(c.slug) })), { label: listing.title }];
   const delivery = deliveryLabels(listing);
   const specs = specAttributes(listing).filter((a) => !a.key.startsWith("kosher-"));
@@ -127,21 +130,35 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
           </div>
           <KosherBadges listing={listing} />
           <ListingOfferBadges offers={listing.offers} currency={listing.currency} />
-          <div className="pdp-price" aria-live="polite">
-            <Price cents={variant.priceCents} wasCents={variant.compareAtCents ?? undefined} currency={listing.currency} />
-            {listing.variants.length > 1 && <span className="muted"> for {variant.name}</span>}
-            <p className={variant.available ? "stock stock-in" : "stock stock-out"}>{variant.available ? (isService ? "Available to book" : "In stock") : "Sold out"}</p>
-          </div>
-          <VariantPicker variants={listing.variants} selectedId={variant.id} currency={listing.currency} />
+          {variant ? (
+            <>
+              <div className="pdp-price" aria-live="polite">
+                <Price cents={variant.priceCents} wasCents={variant.compareAtCents ?? undefined} currency={listing.currency} />
+                {listing.variants.length > 1 && <span className="muted"> for {variant.name}</span>}
+                <p className={variant.available ? "stock stock-in" : "stock stock-out"}>{variant.available ? (isService ? "Available to book" : "In stock") : "Sold out"}</p>
+              </div>
+              <VariantPicker variants={listing.variants} selectedId={variant.id} currency={listing.currency} />
+            </>
+          ) : (
+            <div className="pdp-price" data-testid="quote-price">
+              <p className="pdp-quote">Priced per job: request a quote</p>
+              <p className={listing.available ? "stock stock-in" : "stock stock-out"}>{listing.available ? "Taking quote requests" : "Not taking requests right now"}</p>
+            </div>
+          )}
           {delivery.length > 0 && (
             <ul className="chips" aria-label={isService ? "How this service is offered" : "Delivery options"}>
               {delivery.map((d) => <li key={d}><Badge>{d}</Badge></li>)}
             </ul>
           )}
-          {isService
+          {quote
+            ? listing.available
+              ? <BookingSlot listingId={listing.id} variantId={listing.id} title={listing.title} variantName="" priceCents={0} currency={listing.currency}
+                  locations={serviceLocations(listing)} bookingMode={attributeValues(listing, "booking-mode")[0]} quoteOnly durationLabel={attributeValues(listing, "duration")[0]} available />
+              : <p className="muted">This provider is not taking quote requests right now. Please check back later.</p>
+            : isService && variant
             ? <BookingSlot listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency}
                 locations={serviceLocations(listing)} bookingMode={attributeValues(listing, "booking-mode")[0]} quoteOnly={isQuoteOnly(attributeValues(listing, "pricing-model")[0])} durationLabel={attributeValues(listing, "duration")[0]} available={variant.available} />
-            : variant.available
+            : variant?.available
               ? <AddToCart listingId={listing.id} variantId={variant.id} title={listing.title} variantName={variant.name} priceCents={variant.priceCents} currency={listing.currency} />
               : <p className="muted">This option is sold out. {listing.variants.some((v) => v.available) ? "Choose another option." : "Please check back later."}</p>}
           <SaveToList listingId={listing.id} title={listing.title} />
@@ -170,7 +187,7 @@ export default function ProductPage({ loaderData }: Route.ComponentProps) {
           ))}
         </section>
       )}
-      <RecordView card={{ id: listing.id, slug: listing.slug, type: listing.type, title: listing.title, priceFromCents: listing.priceFromCents, priceToCents: listing.priceToCents, currency: listing.currency, available: listing.available,
+      <RecordView card={{ id: listing.id, slug: listing.slug, type: listing.type, title: listing.title, priceFromCents: listing.priceFromCents, priceToCents: listing.priceToCents, currency: listing.currency, available: listing.available, priceMode: listing.priceMode,
         brandName: listing.brand.name, sellerName: listing.seller.displayName, image: listing.images[0] ? { id: listing.images[0].id, width: listing.images[0].width, height: listing.images[0].height, alt: listing.images[0].alt } : null }} />
       <RecentlyViewedShelf exclude={listing.id} />
       {reviews && <ReviewsSection listingId={listing.id} data={reviews} query={rq} />}

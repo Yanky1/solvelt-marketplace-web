@@ -3,11 +3,14 @@
  * list in the browser: catalog data only (slug, title, price, image id), never anything about the person, capped, under the `solvelt.user.` prefix so sign-out clears it, and merged
  * into the account once on sign-in (the browser sends ids only; the API stamps the times).
  */
+import { priceModeOf, type PriceMode } from "./catalog";
 import { USER_STORAGE_PREFIX } from "./client-storage";
 
 export interface ListCardView {
   id: string; slug: string; type: string; title: string; priceFromCents: number; priceToCents: number; currency: string; available: boolean;
   brandName: string; sellerName: string; image: { id: string; width: number; height: number; alt: string } | null;
+  /** `quote`: priced per job (API W3-01): shown as "Request a quote", never as a price. Absent (an older API, an older browser entry) is `fixed`. */
+  priceMode?: PriceMode;
 }
 export interface WishlistSummary { id: string; name: string; itemCount: number; shared: boolean; sharedAt: string | null }
 export interface WishlistItemView { listingId: string; addedAt: string; unavailable: boolean; listing: ListCardView | null }
@@ -32,7 +35,7 @@ export function parseCard(v: unknown): ListCardView | null {
   const img = obj(o.image);
   const iid = img ? text(img.id, 64) : null, w = img ? num(img.width) : null, h = img ? num(img.height) : null;
   return {
-    id, slug, type, title, priceFromCents: from, priceToCents: Math.max(from, to), currency, available: o.available, brandName: text(o.brandName) ?? "", sellerName: text(o.sellerName) ?? "",
+    id, slug, type, title, priceFromCents: from, priceToCents: Math.max(from, to), currency, available: o.available, brandName: text(o.brandName) ?? "", sellerName: text(o.sellerName) ?? "", priceMode: priceModeOf(o.priceMode),
     image: iid && w && h ? { id: iid, width: w, height: h, alt: text(img!.alt) ?? "" } : null,
   };
 }

@@ -36,8 +36,10 @@ const rows = [
     [["2 bedrooms", 18000, 20000, true], ["3 bedrooms", 24000, null, true]], [["service-area", "Brooklyn, Manhattan, Queens"], ["duration", "4 to 6 hours"], ["insured", "yes"], ["delivery", "at-home"]], [["What areas do you serve?", "Brooklyn, Manhattan, Queens"]], 3],
   ["custom-kitchen-remodel", "Custom Kitchen Remodel", "service", "hudson-home-pros", "cleaning", "Priced per job after a look at your kitchen.",
     "Priced per job: describe what you need and the provider sends a price and times to choose from.",
-    [["Consultation and quote", 15000, null, true]], [["pricing-model", "quote"], ["booking-mode", "request"], ["delivery", "online"], ["duration", "2 hours"]], [], 2],
+    [], [["pricing-model", "quote"], ["booking-mode", "request"], ["delivery", "online"], ["duration", "2 hours"]], [], 2],
 ];
+/** Services the seller prices per job (API decision W3-01): `priceMode: "quote"`, no variants, prices 0 that are never shown, last in both price sorts, outside price filters and the price facet. */
+export const QUOTE_SLUGS = new Set(["custom-kitchen-remodel"]);
 for (let n = 1; n <= 26; n++) rows.push([`gift-box-${n}`, `Gift Box ${String(n).padStart(2, "0")}`, "product", "brooklyn-judaica", "gifts", `Gift box number ${n}.`, `Gift box number ${n}.`, [["Box", 2000 + n * 100, null, true]], [["delivery", "ships"]], [], 1]);
 // ---- quantity offers (portal C18; shapes from the API's docs/API.md at main 6df64f1) ----
 // The mock never does the tier maths (decision Q-W10): it returns FIXED figures that mirror the API's own test fixtures (OfferOrderTests: a 100-cent pack, "10+ at 95c, 20+ at 90c, a free Card wallet from 10").
@@ -68,11 +70,12 @@ const build = ([slug, title, type, brand, category, summary, description, varian
   const catPath = []; for (let c = categories.find((x) => x.slug === category); c; c = c.parent && categories.find((x) => x.slug === c.parent)) catPath.unshift({ id: gid(`cat:${c.slug}`), slug: c.slug, name: c.name });
   const vs = variants.map(([name, cents, was, ok], j) => ({ id: gid(`v:${slug}:${j}`), name, priceCents: cents, compareAtCents: was, available: ok }));
   const buyable = vs.some((v) => v.available) ? vs.filter((v) => v.available) : vs;
+  const quote = QUOTE_SLUGS.has(slug);
   return {
     id: gid(`l:${slug}`), slug, type, title, summary, description,
-    priceFromCents: Math.min(...buyable.map((v) => v.priceCents)), priceToCents: Math.max(...buyable.map((v) => v.priceCents)),
-    compareAtFromCents: buyable.map((v) => v.compareAtCents).filter((x) => x && x > Math.min(...buyable.map((y) => y.priceCents))).sort((a, c) => a - c)[0] ?? null,
-    currency: "USD", available: vs.some((v) => v.available), demo: DEMO_SLUGS.has(slug),
+    priceFromCents: quote ? 0 : Math.min(...buyable.map((v) => v.priceCents)), priceToCents: quote ? 0 : Math.max(...buyable.map((v) => v.priceCents)),
+    compareAtFromCents: quote ? null : buyable.map((v) => v.compareAtCents).filter((x) => x && x > Math.min(...buyable.map((y) => y.priceCents))).sort((a, c) => a - c)[0] ?? null,
+    currency: "USD", available: quote || vs.some((v) => v.available), demo: DEMO_SLUGS.has(slug), priceMode: quote ? "quote" : "fixed",
     brand: { id: gid(`b:${brand}`), slug: brand, name: b.name }, seller: { id: gid(`s:${b.seller}`), displayName: sellers[b.seller] },
     categoryPath: catPath, variants: vs,
     images: Array.from({ length: nImages }, (_, k) => ({ id: gid(`i:${slug}:${k}`), width: k === 0 ? 1200 : 1600, height: 1200, alt: `${title}, photo ${k + 1}` })),
@@ -90,7 +93,7 @@ const everyListing = () => [...list, ...offerList];
 
 const card = (l) => ({
   id: l.id, slug: l.slug, type: l.type, title: l.title, summary: l.summary, priceFromCents: l.priceFromCents, priceToCents: l.priceToCents, compareAtFromCents: l.compareAtFromCents,
-  currency: l.currency, available: l.available, demo: l.demo, brand: l.brand, seller: l.seller, category: l.categoryPath.at(-1), image: l.images[0] ?? null,
+  currency: l.currency, available: l.available, demo: l.demo, priceMode: l.priceMode, brand: l.brand, seller: l.seller, category: l.categoryPath.at(-1), image: l.images[0] ?? null,
 });
 
 const descendants = (slug) => { const out = [slug]; for (let i = 0; i < out.length; i++) for (const c of categories) if (c.parent === out[i] && !out.includes(c.slug)) out.push(c.slug); return out; };
@@ -128,7 +131,7 @@ export function catalogResponse(path, url) {
       && (except === "category" || !q.get("category") || descendants(q.get("category")).includes(l.categoryPath.at(-1).slug))
       && (!q.get("seller") || l.seller.id === q.get("seller"))
       && (words.length === 0 || words.every((w) => `${l.title} ${l.summary} ${l.brand.name}`.toLowerCase().includes(w)))
-      && (except === "price" || ((q.get("priceMin") === null || l.priceToCents >= Number(q.get("priceMin"))) && (q.get("priceMax") === null || l.priceFromCents <= Number(q.get("priceMax")))))
+      && (except === "price" || ((q.get("priceMin") === null || (l.priceMode !== "quote" && l.priceToCents >= Number(q.get("priceMin")))) && (q.get("priceMax") === null || (l.priceMode !== "quote" && l.priceFromCents <= Number(q.get("priceMax"))))))
       && (except === "available" || q.get("available") !== "true" || l.available)
       && (except === "kosher" || has(l, "kosher-certification", multi("kosher")))
       && (except === "delivery" || has(l, "delivery", multi("delivery")))
@@ -136,14 +139,15 @@ export function catalogResponse(path, url) {
     if (q.get("priceMin") !== null && q.get("priceMax") !== null && Number(q.get("priceMin")) > Number(q.get("priceMax"))) return err(400, "invalid_query");
     const items = list.filter((l) => matches(l));
     const sort = q.get("sort") ?? (term ? "relevance" : "newest");
-    if (sort === "price_asc") items.sort((a, b) => a.priceFromCents - b.priceFromCents); else if (sort === "price_desc") items.sort((a, b) => b.priceFromCents - a.priceFromCents);
+    const quoteLast = (a, b) => (a.priceMode === "quote") - (b.priceMode === "quote");   // after every priced listing in both directions (W3-01)
+    if (sort === "price_asc") items.sort((a, b) => quoteLast(a, b) || a.priceFromCents - b.priceFromCents || a.id.localeCompare(b.id)); else if (sort === "price_desc") items.sort((a, b) => quoteLast(a, b) || b.priceFromCents - a.priceFromCents || a.id.localeCompare(b.id));
     else if (sort === "title") items.sort((a, b) => a.title.localeCompare(b.title)); else items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = Number(q.get("page") ?? 1), size = Number(q.get("pageSize") ?? 24);
     const body = { items: items.slice((page - 1) * size, page * size).map(card), page, pageSize: size, total: items.length, totalPages: Math.ceil(items.length / size), nextCursor: null };
     if (q.get("facets") === "true") {
       const count = (pool, pick) => { const m = new Map(); for (const l of pool) for (const v of new Set(pick(l))) m.set(v, (m.get(v) ?? 0) + 1); return m; };
       const attrFacet = (key, except) => [...count(list.filter((l) => matches(l, except)), (l) => l.attributes.filter((a) => a.key === key).map((a) => a.value))].map(([value, c]) => ({ value, count: c })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
-      const priced = list.filter((l) => matches(l, "price"));
+      const priced = list.filter((l) => matches(l, "price") && l.priceMode !== "quote");
       body.facets = {
         categories: [], types: [...count(list.filter((l) => matches(l, "type")), (l) => [l.type])].map(([value, c]) => ({ value, count: c })),
         brands: [...count(list.filter((l) => matches(l, "brand")), (l) => [l.brand.slug])].map(([slug, c]) => ({ id: gid(`b:${slug}`), slug, name: brands.find((b) => b.slug === slug).name, count: c })),
