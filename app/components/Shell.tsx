@@ -8,7 +8,7 @@ import { Modal } from "./ui/overlay";
 import type { loader as rootLoader } from "~/root";
 import type { ThemePref } from "~/lib/theme.server";
 
-// Placeholder until the catalog categories endpoint is wired (W1 catalog slice).
+// The fixed links: always after the category links, and the whole header when the categories cannot be read (W3-03).
 export const NAV_LINKS = [
   { to: "/categories", label: "Categories" },
   { to: "/services", label: "Services" },
@@ -38,9 +38,24 @@ function ThemeSwitch({ theme }: { theme: ThemePref }) {
   );
 }
 
+/** How many top-level categories the desktop bar shows before "All categories"; the mobile menu shows them all. */
+export const DESKTOP_CATEGORIES = 6;
+
+/**
+ * The header links (W3-03): the top-level catalog categories in the portal's order, server-rendered from the root loader, then "All categories" when the bar cannot show them all, then
+ * the fixed links that are not categories. Without categories (the API could not be read) the fixed links alone, as before.
+ */
+export function navLinks(nav: { slug: string; name: string }[] | undefined, max: number): { to: string; label: string }[] {
+  if (!nav || nav.length === 0) return NAV_LINKS;
+  const cats = nav.slice(0, max).map((c) => ({ to: `/c/${encodeURIComponent(c.slug)}`, label: c.name }));
+  const named = new Set(nav.map((c) => c.name.trim().toLowerCase()));   // a fixed link a category already names (Services) is not shown twice
+  return [...cats, { to: "/categories", label: nav.length > max ? "All categories" : "Categories" }, ...NAV_LINKS.filter((l) => l.to !== "/categories" && !named.has(l.label.toLowerCase()))];
+}
+
 export function Header() {
   const [open, setOpen] = useState(false);
   const user = useRootData()?.user;
+  const nav = useRootData()?.nav;
   const testMode = useRootData()?.demo?.badge === true;
   // a page that just emptied the cart (the paid confirmation) says so itself: the root loader ran against the old cookie in the same request
   const emptied = useMatches().some((m) => (m.data as { cartEmptied?: boolean } | undefined)?.cartEmptied === true);
@@ -54,7 +69,7 @@ export function Header() {
         {testMode && <span className="test-mode" data-testid="test-mode-badge"><Badge tone="gold">TEST MODE</Badge></span>}
         <SearchBox />
         <nav className="nav-desktop" aria-label="Main">
-          {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
+          {navLinks(nav, DESKTOP_CATEGORIES).map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost">{l.label}</Link>)}
         </nav>
         {user
           ? <Link to="/account" className="btn btn-ghost" aria-label={`Account of ${user.displayName}`}>{user.displayName.split(" ")[0]}</Link>
@@ -63,7 +78,7 @@ export function Header() {
       </div>
       <Modal open={open} onClose={() => setOpen(false)} title="Menu" variant="drawer">
         <nav aria-label="Mobile" className="stack u-margin-top-var-s2">
-          {NAV_LINKS.map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost u-justify-content-flex-start-width-100" onClick={() => setOpen(false)}>{l.label}</Link>)}
+          {navLinks(nav, Number.MAX_SAFE_INTEGER).map((l) => <Link key={l.to} to={l.to} className="btn btn-ghost u-justify-content-flex-start-width-100" onClick={() => setOpen(false)}>{l.label}</Link>)}
         </nav>
       </Modal>
     </header>
