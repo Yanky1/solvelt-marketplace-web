@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 /**
@@ -44,3 +45,33 @@ test("the mobile menu lists every top-level category, then Categories and Brands
   await menu.getByRole("link", { name: "Gifts" }).click();
   await expect(page).toHaveURL(/\/c\/gifts$/);
 });
+
+test("the category row is reachable by keyboard, with a visible focus ring that the scroll box does not clip", async ({ page, isMobile }) => {
+  test.skip(isMobile, "the row is for wide screens");
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto("/");
+  const row = page.getByRole("navigation", { name: "Shop by category" });
+  const first = row.getByRole("link").first();
+  for (let i = 0; i < 40 && !(await first.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("Tab");
+  await expect(first).toBeFocused();
+  const ring = await first.evaluate((el) => { const s = getComputedStyle(el); return { style: s.outlineStyle, width: parseFloat(s.outlineWidth), offset: parseFloat(s.outlineOffset) }; });
+  expect(ring.style).not.toBe("none");
+  expect(ring.width).toBeGreaterThan(0);
+  // the ring's outer edge (width + offset) stays inside the row's scroll box, top and bottom
+  const fits = await first.evaluate((el, extra) => { const box = el.parentElement!.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.top - extra >= box.top - 0.5 && r.bottom + extra <= box.bottom + 0.5; }, ring.width + ring.offset);
+  expect(fits).toBe(true);
+  await page.keyboard.press("Tab");
+  await expect(row.getByRole("link").nth(1)).toBeFocused();
+});
+
+for (const theme of ["light", "dark"] as const) {
+  test(`axe: the category row (${theme})`, async ({ page, context, baseURL, isMobile }) => {
+    test.skip(isMobile, "the row is for wide screens");
+    await context.addCookies([{ name: "solvelt_theme", value: theme, url: baseURL! }]);
+    await page.goto("/");
+    await expect(page.locator("body")).toHaveCSS("background-color", theme === "dark" ? "rgb(7, 22, 18)" : "rgb(244, 246, 244)");
+    await page.getByRole("navigation", { name: "Shop by category" }).getByRole("link").first().focus();
+    const results = await new AxeBuilder({ page }).include(".catbar").withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+    expect(results.violations, JSON.stringify(results.violations.map((x) => ({ id: x.id, nodes: x.nodes.map((n) => n.target) })), null, 1)).toEqual([]);
+  });
+}
