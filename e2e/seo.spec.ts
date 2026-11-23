@@ -89,7 +89,7 @@ test.describe("the categories page", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("All categories");
     const food = page.getByRole("region", { name: /Food & Drink/ });
     await expect(food.getByRole("link", { name: /Bakery/ })).toHaveAttribute("href", "/c/bakery");
-    await expect(page.getByRole("link", { name: /^Gifts/ })).toHaveAttribute("href", "/c/gifts");
+    await expect(page.getByRole("main").getByRole("link", { name: /^Gifts/ })).toHaveAttribute("href", "/c/gifts");   // the page's own link; the header's category row has one too (W3-03)
     await food.getByRole("link", { name: /Bakery/ }).click();
     await expect(page).toHaveURL(/\/c\/bakery$/);
   });
