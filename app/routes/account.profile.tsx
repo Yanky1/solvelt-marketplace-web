@@ -1,4 +1,4 @@
-import { Form, redirect, useActionData, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/account.profile";
 import { AccountNav } from "~/components/AccountNav";
 import { AuthPage, ErrorSummary, FormMessage } from "~/components/AuthForm";
@@ -61,7 +61,9 @@ export default function Profile({ loaderData }: Route.ComponentProps) {
           {loaderData.saved && !a && <FormMessage kind="ok">Profile saved.</FormMessage>}
           <ErrorSummary submission={a} message={a?.message} errors={a?.fieldErrors} />
           <Input label="Name" name="displayName" autoComplete="name" defaultValue={a?.displayName ?? loaderData.displayName} error={a?.fieldErrors?.displayName} required />
-          <Input label="Email" name="email" type="email" value={loaderData.email} readOnly hint="To change your email address, contact support." />
+          {loaderData.email
+            ? <Input label="Email" name="email" type="email" value={loaderData.email} readOnly hint="To change your email address, contact support." />
+            : <p data-testid="no-email">Your account has no email address yet. <Link to="/account/sign-in-methods">Add one on the sign-in methods page</Link>.</p>}
           <Input label="Phone (optional)" name="phone" type="tel" autoComplete="tel" defaultValue={a?.phone ?? loaderData.phone} error={a?.fieldErrors?.phone} />
           <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save profile"}</Button>
         </Form>

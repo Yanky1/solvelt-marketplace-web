@@ -138,6 +138,7 @@ export default function SignIn({ loaderData }: Route.ComponentProps) {
           </div>
         )}
         <p><Link to="/forgot-password">Forgot your password?</Link></p>
+        <p>Made your account on a phone call? <Link to={`/sign-in/phone${next ? `?next=${encodeURIComponent(next)}` : ""}`}>Get a code by text message</Link>.</p>
       </Form>
       {passkeys && (
         <div className="stack">

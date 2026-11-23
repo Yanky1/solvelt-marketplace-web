@@ -1,6 +1,6 @@
 // Stateful mock of the marketplace API for E2E. The auth shapes are the ASSUMED contract (docs/DESIGN.md W1-21).
 // Test-only hooks live under /__test and are not part of the contract.
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import http from "node:http";
 import sharp from "sharp";
 import { createStaffMock } from "./mock-staff.mjs";
@@ -45,6 +45,16 @@ const challenges = new Map(); // challengeId -> {challenge, userId?, kind}
 const failSignOutOnce = new Set(); // tokens whose NEXT sign-out call answers 503 (then it works again)
 const failSignOut = new Set(); // tokens whose sign-out calls answer 503 (test hook)
 const authAt = new Map(); // session token -> ms of the last successful step-up (the API-side O-11 clock)
+// ---- accounts made by phone (API W3-02): no email, no password, a proven number. Stored in `users` under "phone:<e164>". ----
+const phoneCodes = new Map(); // challengeId -> {phone, code, purpose, attempts, used, userId}
+const lastSms = new Map(); // e164 -> last code texted (read by the specs through /__test/sms)
+const e164 = (raw) => { const t = String(raw ?? "").trim(); const d = t.replace(/\D/g, ""); if (t.startsWith("+")) return d.length >= 8 && d.length <= 15 ? `+${d}` : null; if (d.length === 10) return `+1${d}`; if (d.length === 11 && d[0] === "1") return `+${d}`; return null; };
+const phoneUser = (phone) => [...users.values()].find((u) => u.phoneE164 === phone);
+function textCode(phone, purpose, userId) {
+  const id = randomUUID(); const code = String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+  phoneCodes.set(id, { phone, code, purpose, attempts: 0, used: false, userId: userId ?? null }); lastSms.set(phone, code);
+  return id;
+}
 let exportedAt;
 const threads = new Map(); // threadId -> {userId, kind, subject, sellerName, orderNumber, listingId, messages:[]}
 const reports = []; // {messageId, reason}
@@ -184,6 +194,16 @@ http.createServer(async (req, res) => {
     if (path === "/__test/cart-add-waiting") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, { waiting: !!(u && heldCartAdds.get(`u:${u.id}`)?.waiting) }); }
     if (path === "/__test/fail-signout-once") { const t = url.searchParams.get("token"); if (t) failSignOutOnce.add(t); return send(res, 204); }
     if (path === "/__test/fail-signout") { const t = url.searchParams.get("token"); if (t) failSignOut.add(t); return send(res, 204); }
+    if (path === "/__test/phone-account") {   // an account made by phone: no email, no password, the number proven
+      const phone = e164(url.searchParams.get("phone")); if (!phone) return send(res, 400, {});
+      const u = { id: randomBytes(6).toString("hex"), email: null, displayName: url.searchParams.get("name") ?? "Dana Levi", password: null, verified: false, phoneE164: phone, pendingEmail: null };
+      users.set(`phone:${phone}`, u); return send(res, 200, { id: u.id });
+    }
+    if (path === "/__test/sms") return send(res, 200, { code: lastSms.get(e164(url.searchParams.get("phone")) ?? "") ?? null });
+    if (path === "/__test/confirm-pending-email") {   // what the API's own confirm page does when the mailed link is opened (V-13b)
+      const u = phoneUser(e164(url.searchParams.get("phone"))); if (!u || !u.pendingEmail) return send(res, 404, {});
+      u.email = u.pendingEmail; u.pendingEmail = null; u.verified = true; return send(res, 204);
+    }
     if (path === "/__test/revoke") { const t = url.searchParams.get("token"); if (t) sessions.delete(t); return send(res, 204); }
     if (path === "/__test/add-passkeys") {   // creates passkeys for a user without a ceremony: ?email=&count=
       const u = users.get(String(url.searchParams.get("email") ?? "").toLowerCase());
@@ -257,7 +277,7 @@ http.createServer(async (req, res) => {
     if (path === "/__test/reviews") return send(res, 200, { reviews: [...reviews.values()].map((r) => ({ ...reviewView(r, true), userId: r.userId })), reports: reviewReports, questions: questionsDb });
     if (path === "/__test/reports") return send(res, 200, reports);
     if (path === "/__test/prefs") { const u = users.get((url.searchParams.get("email") ?? "").toLowerCase()); return send(res, 200, u ? prefs.get(u.id) ?? null : null); }
-    if (path === "/__test/reset") { giftUnavailableKeys.clear(); offerChangedEmails.clear(); staffMock.reset(); carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
+    if (path === "/__test/reset") { giftUnavailableKeys.clear(); offerChangedEmails.clear(); staffMock.reset(); carts.clear(); threads.clear(); reports.length = 0; notifs.clear(); prefs.clear(); orders.clear(); addresses.clear(); wishlists.clear(); viewed.clear(); reviews.clear(); eligibleBy.clear(); reviewReports.length = 0; questionsDb.length = 0; passkeys.clear(); challenges.clear(); phoneCodes.clear(); lastSms.clear(); users.clear(); sessions.clear(); outbox.length = 0; seen.length = 0; return send(res, 204); }
     return send(res, 404, { code: "not_found", message: "Not found" });
   }
 
@@ -311,7 +331,7 @@ http.createServer(async (req, res) => {
     const du = userFor(req);
     if (!du) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
     if (path === "/api/v1/demo/status" && req.method === "GET") return send(res, 200, { hasDemoData: demoData.has(du.id), counts: demoCounts(du) });
-    if (((path === "/api/v1/demo/fill" && du.email.includes("limitfill")) || (path === "/api/v1/demo/remove" && du.email.includes("limitremove"))) && req.method === "POST") return send(res, 429, { code: "too_many_attempts", message: "Slow down" }, { "Retry-After": "42" });   // the per-account limit
+    if (((path === "/api/v1/demo/fill" && (du.email ?? "").includes("limitfill")) || (path === "/api/v1/demo/remove" && (du.email ?? "").includes("limitremove"))) && req.method === "POST") return send(res, 429, { code: "too_many_attempts", message: "Slow down" }, { "Retry-After": "42" });   // the per-account limit
     if (path === "/api/v1/demo/fill" && req.method === "POST") {
       const already = demoData.has(du.id); demoData.add(du.id);
       return send(res, already ? 200 : 201, { batchId: randomBytes(8).toString("hex"), created: !already, counts: DEMO_COUNTS, notes: [] });
@@ -359,6 +379,62 @@ http.createServer(async (req, res) => {
     if (u.password !== body.password) { u.wrongPasswords = (u.wrongPasswords ?? 0) + 1; return send(res, 401, { code: "invalid_credentials", message: "Invalid" }); }
     authAt.set(bearer(req), Date.now());
     return send(res, 204);
+  }
+  // ---- sign-in by SMS code and the phone step-up (API W3-02) ----
+  if (path === "/api/v1/auth/phone/start" && req.method === "POST") {
+    const phone = e164(body.phone);
+    if (!phone) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { phone: "Enter a phone number." } });
+    if (phone.endsWith("0429")) return send(res, 429, { code: "rate_limited", message: "Too many" }, { "Retry-After": "3600" });
+    const u = phoneUser(phone);
+    return send(res, 202, { challengeId: textCode(phone, "sign-in", u && !u.password ? u.id : null), expiresInSeconds: 600 });   // a code for any valid number
+  }
+  if ((path === "/api/v1/auth/phone/verify" || path === "/api/v1/auth/reauthenticate/phone") && req.method === "POST") {
+    const stepUp = path.endsWith("/reauthenticate/phone");
+    const me = stepUp ? userFor(req) : undefined;
+    if (stepUp && !me) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    const c = phoneCodes.get(String(body.challengeId ?? ""));
+    if (!c || c.used || c.attempts >= 5 || c.purpose !== (stepUp ? "step-up" : "sign-in")) return send(res, 400, { code: "code_expired", message: "Expired" });
+    c.attempts++;
+    if (String(body.code ?? "") !== c.code) return c.attempts >= 5 ? send(res, 400, { code: "code_expired", message: "Expired" }) : send(res, 401, { code: "invalid_code", message: "Wrong" });
+    if (stepUp && c.userId !== me.id) return send(res, 401, { code: "invalid_code", message: "Wrong" });
+    c.used = true;
+    if (stepUp) { authAt.set(bearer(req), Date.now()); return send(res, 204); }
+    const u = c.userId ? [...users.values()].find((x) => x.id === c.userId && !x.password) : undefined;
+    if (!u) return send(res, 404, { code: "no_account", message: "No account" });
+    const token = `tok_${randomBytes(24).toString("hex")}`;
+    sessions.set(token, u.id); authAt.set(token, Date.now());
+    return send(res, 200, { token, user: { id: u.id, displayName: u.displayName } });
+  }
+  if (path === "/api/v1/auth/reauthenticate/phone/start" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (!u.phoneE164 || u.password) return send(res, 409, { code: "no_phone", message: "No phone" });
+    return send(res, 202, { challengeId: textCode(u.phoneE164, "step-up", u.id), expiresInSeconds: 600 });
+  }
+  if (path === "/api/v1/account/sign-in-methods" && req.method === "GET") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    return send(res, 200, { email: u.email ?? null, emailVerified: !!u.email && !!u.verified, pendingEmail: u.pendingEmail ?? null, hasPassword: !!u.password,
+      passkeys: [...passkeys.values()].filter((p) => p.userId === u.id).length, phoneLast4: u.phoneE164 ? u.phoneE164.slice(-4) : null });
+  }
+  if (path === "/api/v1/account/email" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (u.email) return send(res, 409, { code: "email_already_set", message: "Has one" });
+    const email = String(body.email ?? "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 422, { code: "validation_failed", message: "Invalid", errors: { email: "Enter a valid email address." } });
+    if (!users.has(email)) { u.pendingEmail = email; outbox.push({ kind: "phone-email", email }); }   // an address another account holds is never attached; the answer is the same
+    return send(res, 202);
+  }
+  if (path === "/api/v1/account/password/set" && req.method === "POST") {
+    const u = userFor(req);
+    if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
+    if (u.password) return send(res, 409, { code: "password_already_set", message: "Has one" });
+    if (!u.email || !u.verified) return send(res, 409, { code: "email_required", message: "Email first" });
+    if (String(body.newPassword ?? "").length < 12) return send(res, 422, { code: "validation_failed", message: "Weak", errors: { newPassword: "Use at least 12 characters." } });
+    u.password = String(body.newPassword);
+    users.delete(`phone:${u.phoneE164}`); users.set(u.email, u);   // signs in with the email from now on
+    return endAllSessionsAndIssue(u, res, send);
   }
   if (path === "/api/v1/account/me" && req.method === "GET") {
     const u = userFor(req);
@@ -715,7 +791,7 @@ http.createServer(async (req, res) => {
     const challenge = b64u(randomBytes(32)), challengeId = randomBytes(8).toString("hex");
     challenges.set(challengeId, { challenge, userId: u.id, kind: "create" });
     return send(res, 200, { challengeId, options: {
-      challenge, rp: { id: u.email.includes("badrp") ? "evil.example" : "localhost", name: "Solvelt" }, user: { id: b64u(Buffer.from(u.id)), name: u.email, displayName: u.displayName },
+      challenge, rp: { id: (u.email ?? "").includes("badrp") ? "evil.example" : "localhost", name: "Solvelt" }, user: { id: b64u(Buffer.from(u.id)), name: u.email ?? u.displayName, displayName: u.displayName },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }], timeout: 60000, attestation: "none",
       authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
       excludeCredentials: [...passkeys.values()].filter((p) => p.userId === u.id).map((p) => ({ type: "public-key", id: p.credentialId })),
@@ -725,7 +801,7 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/account/passkeys" && (req.method === "GET" || req.method === "POST")) {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
-    if (req.method === "GET" && u.pwChanged && u.email.includes("unconfirmed")) return send(res, 503, { code: "unavailable", message: "Down" });   // the read-back after a password change fails
+    if (req.method === "GET" && u.pwChanged && (u.email ?? "").includes("unconfirmed")) return send(res, 503, { code: "unavailable", message: "Down" });   // the read-back after a password change fails
     if (req.method === "GET") return send(res, 200, [...passkeys.values()].filter((p) => p.userId === u.id).map((p) => ({ id: p.id, name: p.name, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt })));
     if (ipOf(req) === IP.REG_5XX) return send(res, 503, { code: "unavailable", message: "Down" });
     if (ipOf(req) === IP.REG_LENIENT) return send(res, 201, { id: "lenient", name: String(body.name || "Passkey"), createdAt: new Date().toISOString() }); // accepts ANY ceremony: only the web-side check can refuse
@@ -743,26 +819,26 @@ http.createServer(async (req, res) => {
   if (path === "/api/v1/account/passkeys" && req.method === "DELETE") {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
-    if (u.email.includes("legacyapi")) return send(res, 405, { code: "method_not_allowed", message: "Not allowed" });
-    if (u.email.includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
+    if ((u.email ?? "").includes("legacyapi")) return send(res, 405, { code: "method_not_allowed", message: "Not allowed" });
+    if ((u.email ?? "").includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
     const mine = [...passkeys.entries()].filter(([, p]) => p.userId === u.id);
     if (mine.length === 0) return send(res, 409, { code: "no_passkeys", message: "None" });
-    if (u.email.includes("nopassword")) return send(res, 409, { code: "last_sign_in_method", message: "Only way in" });
+    if ((u.email ?? "").includes("nopassword")) return send(res, 409, { code: "last_sign_in_method", message: "Only way in" });
     for (const [k] of mine) passkeys.delete(k);
-    if (u.email.includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
+    if ((u.email ?? "").includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
     return send(res, 204);
   }
   if (path === "/api/v1/account/password" && req.method === "POST") {
     const u = userFor(req);
     if (!u) return send(res, 401, { code: "unauthorized", message: "Sign in required" });
-    if (u.email.includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
-    if (u.email.includes("ratelimit")) return send(res, 429, { code: "too_many_attempts", message: "Slow down" }, { "Retry-After": "42" });
-    if (u.email.includes("acctchanged")) return send(res, 409, { code: "account_changed", message: "The account changed" });   // a reset landed while this ran
+    if ((u.email ?? "").includes("reauthapi") && !authAt.has(bearer(req))) return send(res, 403, { code: "reauthentication_required", message: "Sign in again" });
+    if ((u.email ?? "").includes("ratelimit")) return send(res, 429, { code: "too_many_attempts", message: "Slow down" }, { "Retry-After": "42" });
+    if ((u.email ?? "").includes("acctchanged")) return send(res, 409, { code: "account_changed", message: "The account changed" });   // a reset landed while this ran
     if (u.password !== body.currentPassword) return send(res, 401, { code: "invalid_credentials", message: "Invalid" });
     if (String(body.newPassword ?? "").length < 12) return send(res, 422, { code: "validation_failed", message: "Weak", errors: { newPassword: "Use at least 12 characters." } });
     u.password = String(body.newPassword); u.pwChanged = true;
-    if (body.removePasskeys === true && !u.email.includes("legacyapi")) for (const [k, p] of [...passkeys.entries()]) if (p.userId === u.id) passkeys.delete(k);
-    if (u.email.includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
+    if (body.removePasskeys === true && !(u.email ?? "").includes("legacyapi")) for (const [k, p] of [...passkeys.entries()]) if (p.userId === u.id) passkeys.delete(k);
+    if ((u.email ?? "").includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
     for (const [t, id] of [...sessions.entries()]) if (id === u.id && t !== bearer(req)) sessions.delete(t);   // the other sessions end; this one stays
     return send(res, 204);
   }
@@ -774,7 +850,7 @@ http.createServer(async (req, res) => {
     if (!hit) return send(res, 404, { code: "not_found", message: "Not found" });
     if (hit[1].name.includes("undeletable")) return send(res, 503, { code: "unavailable", message: "Down" });
     passkeys.delete(hit[0]);
-    if (u.email.includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
+    if ((u.email ?? "").includes("tokenapi")) return endAllSessionsAndIssue(u, res, send);
     return send(res, 204);
   }
   if (path === "/api/v1/auth/passkey/options" && req.method === "POST") {

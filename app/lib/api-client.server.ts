@@ -28,7 +28,27 @@ export type AddressBody = Omit<Address, "id">;
 export interface PasskeyInfo { id: string; name: string; createdAt: string; lastUsedAt?: string }
 export interface PasskeyChallenge { challengeId: string; options: Record<string, unknown> }
 
-export interface ApiUser { id: string; displayName: string; email?: string }
+export interface ApiUser { id: string; displayName: string; email?: string | null }
+/** What the account page offers to add (API W3-02). `email` is null for an account made by phone; only the last four digits of the proven number. */
+export interface SignInMethods { email: string | null; emailVerified: boolean; pendingEmail: string | null; hasPassword: boolean; passkeys: number; phoneLast4: string | null }
+export interface PhoneChallenge { challengeId: string; expiresInSeconds: number }
+
+const isUuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+/** Only a challenge id of the documented shape goes back into a page and the next request. */
+function phoneChallenge(v: unknown): PhoneChallenge {
+  const o = (typeof v === "object" && v !== null ? v : {}) as { challengeId?: unknown; expiresInSeconds?: unknown };
+  if (!isUuid(o.challengeId)) throw new ApiError(502, "bad_response", "Unexpected answer.");
+  return { challengeId: o.challengeId, expiresInSeconds: typeof o.expiresInSeconds === "number" && o.expiresInSeconds > 0 && o.expiresInSeconds <= 3600 ? Math.floor(o.expiresInSeconds) : 600 };
+}
+function signInMethods(v: unknown): SignInMethods {
+  const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
+  const text = (x: unknown, max: number) => (typeof x === "string" && x.length <= max ? x : null);
+  return {
+    email: text(o.email, 254), emailVerified: o.emailVerified === true, pendingEmail: text(o.pendingEmail, 254), hasPassword: o.hasPassword === true,
+    passkeys: typeof o.passkeys === "number" && Number.isSafeInteger(o.passkeys) && o.passkeys >= 0 ? o.passkeys : 0,
+    phoneLast4: typeof o.phoneLast4 === "string" && /^\d{4}$/.test(o.phoneLast4) ? o.phoneLast4 : null,
+  };
+}
 
 // ---- demo data (test mode, M9; API repo docs/API.md "Demo data") ----
 export interface DemoCounts { addresses: number; carts: number; cartLines: number; orders: number; bookings: number; threads: number; messages: number; notifications: number }
@@ -323,6 +343,19 @@ export const api = {
   changePassword: (ctx: ApiRequestContext, b: { currentPassword: string; newPassword: string; removePasskeys?: boolean }) => call<unknown>(ctx, "/api/v1/account/password", b).then(tokenOf),
   deletePasskey: (ctx: ApiRequestContext, id: string) => call<unknown>(ctx, `/api/v1/account/passkeys/${pid(id)}`, undefined, "DELETE").then(tokenOf),
   passkeySignInOptions: (ctx: ApiRequestContext) => call<PasskeyChallenge>(ctx, "/api/v1/auth/passkey/options", {}),
+  // ---- an account made by phone (API W3-02) ----
+  /** 202 for ANY valid number (a code is texted whether or not an account signs in with it); 422 not a number; 429; 503. */
+  phoneStart: (ctx: ApiRequestContext, phone: string) => call<unknown>(ctx, "/api/v1/auth/phone/start", { phone }).then(phoneChallenge),
+  /** 200 { token, user }; 401 invalid_code; 400 code_expired; 404 no_account. */
+  phoneVerify: (ctx: ApiRequestContext, b: { challengeId: string; code: string }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/phone/verify", b),
+  /** Step-up by SMS to the account's own proven number (an account without a password): 202; 409 no_phone. */
+  phoneStepUpStart: (ctx: ApiRequestContext) => call<unknown>(ctx, "/api/v1/auth/reauthenticate/phone/start", {}).then(phoneChallenge),
+  phoneStepUp: (ctx: ApiRequestContext, b: { challengeId: string; code: string }) => call<void>(ctx, "/api/v1/auth/reauthenticate/phone", b),
+  signInMethods: (ctx: ApiRequestContext) => call<unknown>(ctx, "/api/v1/account/sign-in-methods").then(signInMethods),
+  /** 202: a link was mailed (V-13b); 403 reauthentication_required; 409 email_already_set; 422. */
+  addEmail: (ctx: ApiRequestContext, email: string) => call<void>(ctx, "/api/v1/account/email", { email }),
+  /** The first password: 200 { token } (every session ended, this is the new one); 403; 409 email_required / password_already_set; 422. */
+  setPassword: (ctx: ApiRequestContext, newPassword: string) => call<unknown>(ctx, "/api/v1/account/password/set", { newPassword }).then(tokenOf),
   passkeySignIn: (ctx: ApiRequestContext, b: { challengeId: string; credential: unknown }) => call<{ token: string; user: ApiUser }>(ctx, "/api/v1/auth/passkey/sign-in", b),
   // Demo data (404 from the API while its Demo:Enabled is off).
   demoStatus: (ctx: ApiRequestContext) => call<DemoStatus>(ctx, "/api/v1/demo/status"),

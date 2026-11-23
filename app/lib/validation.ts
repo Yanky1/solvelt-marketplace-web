@@ -45,6 +45,10 @@ export const COUNTRIES: Record<string, string> = {
 };
 
 const PHONE = /^\+?[0-9 ()\-.]{6,24}$/;
+/** The digits of a phone number as typed (at most 20). */
+export const phoneDigits = (v: string): string => (v.match(/\d/g) ?? []).join("").slice(0, 20);
+/** Enough digits to text: ten for a US number, eight or more after a +, as the API reads them (W3-02). */
+export const textablePhone = (v: string): boolean => { const n = phoneDigits(v).length; return n <= 15 && n >= (v.trim().startsWith("+") ? 8 : 10); };
 
 export function validatePhone(v: string, required = false): string | null {
   const p = v.trim();

@@ -17,10 +17,17 @@ export function headers() {
   return privateHeaders;
 }
 
-export function loader({ request, context }: Route.LoaderArgs) {
-  requireAccount(request, context);
-  return null;
+/**
+ * An account made by phone has no password (W3-02): it confirms with a code texted to its own proven number instead. Which way is offered comes from the API; when that cannot be read
+ * the page offers the password, as before (an account with a password never gets the text option: the API refuses it too).
+ */
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { ctx } = requireAccount(request, context);
+  const methods = await api.signInMethods(ctx).catch((e: unknown) => { if (e instanceof ApiError && e.status === 401) return failAccount(e, request); return null; });
+  return { phoneLast4: methods && !methods.hasPassword && methods.phoneLast4 ? methods.phoneLast4 : null };
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const LOCKED_MESSAGE = "Too many incorrect passwords. We could not end your session on the server, so confirmation is locked. Please try again later.";
 
@@ -54,6 +61,40 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   if ((session.rf ?? 0) >= MAX_CONFIRM_FAILURES) return lock();
 
+  // ---- by text message (an account without a password, W3-02) ----
+  const intent = str(form, "intent");
+  if (intent === "phone-start") {
+    try {
+      const { challengeId } = await api.phoneStepUpStart(ctx);
+      return formError({ message: null, error: null, challengeId, sent: true }, 200);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return failAccount(e, request);
+      if (e instanceof ApiError && e.status === 429) return formError({ message: "Too many codes were asked for. Please wait a while and try again.", error: null }, 429);
+      return formError({ message: "We could not send a code right now. Please try again in a moment.", error: null }, 503);
+    }
+  }
+  if (intent === "phone-verify") {
+    const challengeId = str(form, "challengeId");
+    const code = str(form, "code").replace(/\s+/g, "");
+    if (!UUID.test(challengeId)) return formError({ message: "Please ask for a new code.", error: null }, 400);
+    if (!/^\d{6}$/.test(code)) return formError({ message: null, error: "Enter the six-digit code from the text message.", challengeId, sent: true }, 422);
+    try {
+      await api.phoneStepUp(ctx, { challengeId, code });
+      const { rf: _rf, ...rest } = session;
+      void _rf;
+      return redirect(safeNext(str(form, "next"), "/account"), { headers: { "Set-Cookie": sessionCookie({ ...rest, authAt: Math.floor(Date.now() / 1000) }, cfg), ...privateHeaders } });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401 && e.code === "invalid_code") {
+        const failures = (session.rf ?? 0) + 1;   // the same UX counter as wrong passwords; the API's own limit is five tries per code
+        if (failures >= MAX_CONFIRM_FAILURES) return lock();
+        return formError({ message: null, error: "That code is not correct.", challengeId, sent: true }, 401, { "Set-Cookie": sessionCookie({ ...session, rf: failures }, cfg) });
+      }
+      if (e instanceof ApiError && e.status === 401) return failAccount(e, request);
+      if (e instanceof ApiError && e.status === 400) return formError({ message: "That code has expired or was tried too many times. Ask for a new one.", error: null }, 400);
+      return formError({ message: "We could not check the code right now. Please try again.", error: null, challengeId, sent: true }, 503);
+    }
+  }
+
   const password = str(form, "password");
   if (!password) return formError({ message: null, error: "Enter your password." });
   try {
@@ -79,10 +120,37 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 }
 
-export default function Confirm() {
-  const a = useActionData<typeof action>();
+export default function Confirm({ loaderData }: Route.ComponentProps) {
+  const a = useActionData<typeof action>() as { message?: string | null; error?: string | null; challengeId?: string; sent?: boolean } | undefined;
   const busy = useNavigation().state !== "idle";
   const [params] = useSearchParams();
+  const next = params.get("next") ?? "";
+  if (loaderData?.phoneLast4) {
+    return (
+      <AuthPage title="Confirm it is you" intro={`For your security, we text a code to your number ending in ${loaderData.phoneLast4}. This protects your account if someone else is using your device.`}>
+        <ErrorSummary submission={a} message={a?.message} errors={a?.error ? { code: a.error } : undefined} />
+        {a?.sent && a.challengeId ? (
+          <div className="stack">
+            <Form method="post" className="stack" noValidate>
+              <CsrfField />
+              <input type="hidden" name="next" value={next} />
+              <input type="hidden" name="challengeId" value={a.challengeId} />
+              <p data-testid="code-sent">We texted a code to the number ending in {loaderData.phoneLast4}. It works for 10 minutes.</p>
+              <Input label="Six-digit code" name="code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} error={a?.error ?? undefined} required />
+              <Button type="submit" name="intent" value="phone-verify" disabled={busy}>{busy ? "Checking…" : "Confirm"}</Button>
+            </Form>
+            <Form method="post"><CsrfField /><input type="hidden" name="next" value={next} /><Button type="submit" name="intent" value="phone-start" variant="secondary" disabled={busy}>Send a new code</Button></Form>
+          </div>
+        ) : (
+          <Form method="post" className="stack" noValidate>
+            <CsrfField />
+            <input type="hidden" name="next" value={next} />
+            <Button type="submit" name="intent" value="phone-start" disabled={busy}>{busy ? "Sending…" : "Text me a code"}</Button>
+          </Form>
+        )}
+      </AuthPage>
+    );
+  }
   return (
     <AuthPage title="Confirm it is you" intro="For your security, please enter your password to continue. This protects your account if someone else is using your device.">
       <Form method="post" className="stack" noValidate>
