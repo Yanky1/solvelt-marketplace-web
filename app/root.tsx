@@ -1,3 +1,4 @@
+import { navCategories, type NavCategory } from "~/lib/nav.server";
 import { useEffect, useState } from "react";
 import { data, isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation, useRouteLoaderData } from "react-router";
 import { Logo } from "~/components/Logo";
@@ -27,7 +28,7 @@ export function headers({ errorHeaders }: Route.HeadersArgs) {
 export async function loader({ request, context }: Route.LoaderArgs) {
   // The staff area (M7W-01) has its own session: no buyer visitor cookie, no buyer API call and no test-mode lookup on its pages.
   if (isStaffPath(new URL(request.url).pathname)) {
-    return data({ theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref, csrf: "", cartCount: 0, user: null, demo: { badge: false, buttons: false } });
+    return data({ theme: parseTheme(request.headers.get("cookie")) satisfies ThemePref, csrf: "", cartCount: 0, user: null, demo: { badge: false, buttons: false }, nav: [] as NavCategory[] });
   }
   const { user, expired } = await currentUser(request, context);
   const visitor = ensureVisitor(request, expired);
@@ -45,6 +46,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       user: user ? { id: user.id, displayName: user.displayName } : null,
       // Test mode (M9): the badge shows when the API says so; the demo buttons only when this server agrees too. Never anything secret.
       demo: await demoMode(apiCtx(request, context, null)),
+      // The header's category links (W3-03): top-level catalog categories, cached in this process; empty when the API cannot be read (the header then shows its fixed links).
+      nav: await navCategories(apiCtx(request, context, null)),
     },
     // A new visitor (or a dead session) gets a fresh sealed cookie; the API token never leaves the server.
     { headers: visitor.setCookie || healed ? { "Set-Cookie": (visitor.setCookie ?? healed?.setCookie) as string } : {} },
