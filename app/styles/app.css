@@ -91,7 +91,7 @@ dialog.drawer { margin: 0; inset: 0 auto 0 0; height: 100%; max-height: 100%; wi
 @media (min-width: 900px) { .nav-desktop { display: flex; } .nav-mobile-toggle { display: none; } }
 /* the category row under the top bar (W3-03): wide screens only, one line that scrolls inside itself, never the page */
 .catbar { display: none; border-top: 1px solid var(--border); }
-.catbar-inner { display: flex; gap: var(--s1); overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+.catbar-inner { display: flex; gap: var(--s1); overflow-x: auto; white-space: nowrap; scrollbar-width: thin; padding-block: 6px; }   /* the padding keeps the 3px focus ring (offset 2px) inside the scroll box, which would clip it */
 .catbar-inner .btn { flex: none; }
 @media (min-width: 900px) { .catbar { display: block; } }
 @media (max-width: 640px) { .search { order: 5; flex-basis: 100%; max-width: none; } .topbar-inner { flex-wrap: wrap; padding-block: var(--s1); } }
